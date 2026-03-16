@@ -1,0 +1,18 @@
+# The CLI injects one related project image for the entire batch at scheduling time.
+jobs:
+  - name: valmer-vector-refresh
+    execution_path: scripts/update_vector_valmer.py
+    cpu_request: 0.50
+    memory_request: 1.00
+    task_schedule:
+      schedule:
+        type: crontab
+        expression: "5 13 * * 1-5"
+  - name: valmer-tiie-zero-curve-refresh
+    execution_path: scripts/update_tiie_zero_curve.py
+    cpu_request: 0.50
+    memory_request: 1.00
+    task_schedule:
+      schedule:
+        type: crontab
+        expression: "15 13 * * 1-5"
