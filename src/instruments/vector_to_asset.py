@@ -18,6 +18,8 @@ from tqdm import tqdm
 import mainsequence.client as msc
 import mainsequence.instruments as msi
 from mainsequence.instruments.instruments import Position
+from msm_pricing.pricing_engine.bond_analytics import compare_bond_to_market_quote
+from msm_pricing.pricing_engine.coupon_schedules import compute_coupon_schedule_force_match
 from src.settings import SUBYACENTE_TO_INDEX_MAP
 
 # =============================================================================
@@ -37,6 +39,25 @@ class BuiltBond:
     serie: str
     bond: msi.FloatingRateBond  # your model
     eval_date: dt.date
+
+
+@dataclass(frozen=True)
+class CoreBondPricingPayload:
+    instrument_type: str
+    valuation_date: dt.date
+    issue_date: dt.date
+    maturity_date: dt.date
+    face_value: float
+    day_count: ql.DayCounter
+    calendar: ql.Calendar
+    business_day_convention: int
+    settlement_days: int
+    benchmark_rate_index_name: str
+    coupon_frequency: ql.Period | None = None
+    coupon_rate: float | None = None
+    floating_rate_index_name: str | None = None
+    spread: float | None = None
+    schedule: ql.Schedule | None = None
 
 
 # =============================================================================
@@ -153,51 +174,11 @@ def compute_sheet_schedule_force_match(
     dc: ql.DayCounter = ql.Actual360(),  # to force DIAS TRANSC. CPN
 ) -> ql.Schedule:
     """
-    Build an explicit schedule that:
-      1) Matches the vendor's CUPONES X COBRAR exactly,
-      2) Matches DIAS TRANSC. CPN exactly (vs FECHA),
-      3) If natural future coupons < sheet N, inserts missing dates as 1‑day
-         slices just *before maturity* (minimal price impact),
-      4) If natural future coupons > sheet N, removes the *last* coupons
-         closest to maturity (minimal price impact).
-
-    Counting convention for (1): from settlement (T+settlement_days) if
-    count_from_settlement=True, and include_boundary_for_count=True means that
-    a payment on settlement is counted as "to collect".
+    Valmer row adapter for provider-neutral coupon schedule reconciliation.
     """
-
-    # ---- helpers -------------------------------------------------------------
-    def _adjust(d: dt.date, convention: int = bdc) -> dt.date:
-        return pyd(calendar.adjust(qld(d), convention))
-
-    def _strictly_before(a: dt.date, b: dt.date) -> bool:
-        return a < b
-
-    # ---- inputs --------------------------------------------------------------
-    eval_date = parse_val_date(row["fecha"])
-    maturity_raw = parse_iso_date(row["fechavcto"])
-    maturity_pay = _adjust(maturity_raw) if adjust_maturity_date else maturity_raw
-    # frequency in days (28, 30, 91, ...)
-
-    # counting boundary (vendor: settlement, including on-ref)
-    if count_from_settlement:
-        boundary = pyd(calendar.advance(qld(eval_date), settlement_days, ql.Days, bdc))
-    else:
-        boundary = eval_date
-
-    # --- clamp boundary so it never sits to the right of the last insertable day ---
-    last_insertable = maturity_pay - dt.timedelta(days=1)
-    if include_boundary_for_count:
-        boundary_eff = min(boundary, maturity_pay)
-    else:
-        boundary_eff = min(boundary, last_insertable)
-
-    cmp_keep = (
-        (lambda d: d >= boundary_eff)
-        if include_boundary_for_count
-        else (lambda d: d > boundary_eff)
-    )
-
+    if freq_days.units() != ql.Days:
+        raise ValueError("freq_days must be a QuantLib Period in days")
+    _ = dc  # kept for the existing public signature; reconciliation uses actual days.
     coupons_left = (
         int(row["cuponesxcobrar"])
         if "cuponesxcobrar" in row and pd.notna(row["cuponesxcobrar"])
@@ -205,113 +186,19 @@ def compute_sheet_schedule_force_match(
     )
     dias_trans = int(row["diastransccpn"]) if pd.notna(row.get("diastransccpn")) else None
 
-    # Case A: sheet says no coupons left => return redemption-only schedule
-    if coupons_left is not None and coupons_left <= 0:
-        dv = ql.DateVector()
-        dv.push_back(qld(maturity_pay))
-        return ql.Schedule(dv, calendar, bdc)
-
-    # ---- step back from maturity to get the "natural" future dates -----------
-    # Collect all payment dates >= boundary by walking backwards with 'freq_days'.
-    nat_desc: List[dt.date] = [maturity_pay]
-    d = maturity_pay
-    assert freq_days.units() == ql.Days, "Period should be in days"
-    while True:
-        prev_unadj = d - dt.timedelta(days=freq_days.length())
-        prev_adj = _adjust(prev_unadj)
-        # if adjustment doesn't move it strictly back, nudge with Preceding and day-by-day
-        if not _strictly_before(prev_adj, d):
-            prev_adj = _adjust(prev_unadj, ql.Preceding)
-            while not _strictly_before(prev_adj, d):
-                prev_unadj -= dt.timedelta(days=1)
-                prev_adj = _adjust(prev_unadj, ql.Preceding)
-
-        if prev_adj < boundary_eff:
-            break
-        nat_desc.append(prev_adj)
-        d = prev_adj
-
-    future_dates = sorted(set(nat_desc))  # ascending, unique
-    natural_cnt = len(future_dates)
-
-    # If sheet didn't give the count, we can return a schedule based on natural dates.
-    if coupons_left is None:
-        # previous pay for the current period:
-        if dias_trans is None:
-            # generic: one full freq before first future
-            prev_unadj = future_dates[0] - dt.timedelta(days=freq_days)
-            prev_pay = _adjust(prev_unadj)
-            if not _strictly_before(prev_pay, future_dates[0]):
-                prev_pay = pyd(calendar.advance(qld(future_dates[0]), -1, ql.Days, ql.Preceding))
-        else:
-            # force DIAS TRANSC. CPN vs FECHA
-            prev_pay = eval_date - dt.timedelta(days=int(dias_trans))
-            # keep strictly before first future
-            if not _strictly_before(prev_pay, future_dates[0]):
-                prev_pay = future_dates[0] - dt.timedelta(days=1)
-
-        dv = ql.DateVector()
-        dv.push_back(qld(prev_pay))
-        for x in future_dates:
-            dv.push_back(qld(x))
-        return ql.Schedule(dv, calendar, bdc)
-
-    # ---- Force the count to EXACTLY match the sheet --------------------------
-    N = int(coupons_left)
-
-    if natural_cnt < N:
-        # Need to ADD K missing dates with minimal impact: pack them just before maturity.
-        K = N - natural_cnt
-        existing = set(future_dates)
-        extra: List[dt.date] = []
-
-        # insertion window [lo, hi] inclusive
-        hi = last_insertable  # maturity - 1 day
-        lo = boundary_eff if include_boundary_for_count else (boundary_eff + dt.timedelta(days=1))
-
-        # if the window is empty or too tight, widen it just enough to fit K slices
-        span = (hi - lo).days + 1
-        if span < K:
-            lo = hi - dt.timedelta(days=K - 1)
-
-        cand = hi
-        safety = 0
-        while len(extra) < K:
-            if (cand not in existing) and (cand not in extra) and (cand < maturity_pay):
-                extra.append(cand)
-            cand -= dt.timedelta(days=1)
-            if cand < lo:
-                # move further left for the remaining slots; still bounded
-                cand = hi - dt.timedelta(days=len(extra))
-            safety += 1
-            if safety > 2000:
-                raise RuntimeError("Failed to insert extra dates (safety stop).")
-
-        future_dates = sorted(set(future_dates + extra))  # now count >= N, unique
-
-    elif natural_cnt > N:
-        # Need to DROP extra dates with minimal impact -> drop the last ones (closest to maturity).
-        future_dates = future_dates[:N]
-
-    # ---- Force DIAS TRANSC. CPN by setting the previous date ----------------
-    if dias_trans is None:
-        prev_unadj = future_dates[0] - dt.timedelta(days=freq_days)
-        prev_pay = _adjust(prev_unadj)
-        if not _strictly_before(prev_pay, future_dates[0]):
-            prev_pay = pyd(calendar.advance(qld(future_dates[0]), -1, ql.Days, ql.Preceding))
-    else:
-        # Make dayCount(prev_pay, FECHA) == dias_trans (Actual/360 returns actual days)
-        prev_pay = eval_date - dt.timedelta(days=int(dias_trans))
-        if not _strictly_before(prev_pay, future_dates[0]):
-            # Keep strictly increasing schedule; if clash, move previous back.
-            prev_pay = future_dates[0] - dt.timedelta(days=1)
-
-    # ---- Build final schedule (previous + N future dates) --------------------
-    dv = ql.DateVector()
-    dv.push_back(qld(prev_pay))
-    for x in future_dates:
-        dv.push_back(qld(x))
-    return ql.Schedule(dv, calendar, bdc)
+    return compute_coupon_schedule_force_match(
+        valuation_date=parse_val_date(row["fecha"]),
+        maturity_date=parse_iso_date(row["fechavcto"]),
+        coupon_frequency_days=freq_days.length(),
+        remaining_coupon_count=coupons_left,
+        elapsed_coupon_days=dias_trans,
+        calendar=calendar,
+        business_day_convention=bdc,
+        adjust_maturity_date=adjust_maturity_date,
+        settlement_days=settlement_days,
+        count_from_settlement=count_from_settlement,
+        include_boundary_for_count=include_boundary_for_count,
+    )
 
 
 def _count_future_coupons(b: ql.Bond, ref_py: dt.date, include_ref: bool) -> int:
@@ -583,7 +470,9 @@ def count_future_coupons(
 # =============================================================================
 # Build a QL floater from a sheet row + curve
 # =============================================================================
-def build_qll_bond_from_row(
+
+
+def valmer_row_to_core_bond_pricing_payload(
     row: pd.Series,
     *,
     calendar: ql.Calendar,
@@ -591,15 +480,11 @@ def build_qll_bond_from_row(
     bdc: int,
     settlement_days: int,
     SPREAD_IS_PERCENT: bool = True,
-) -> BuiltBond:
-    """
-    Create your FloatingRateBond model with an explicit schedule that matches the sheet.
-    """
-    # --- read inputs (Spanish columns) ---
+) -> CoreBondPricingPayload:
     eval_date = parse_val_date(row["fecha"])
     issue_date = parse_iso_date(row["fechaemision"])
     maturity_date = parse_iso_date(row["fechavcto"])
-    face_adj = float(row["valornominalactualizado"])
+    face_value = float(row["valornominalactualizado"])
     raw_spread = 0.0 if pd.isna(row["sobretasa"]) else float(row["sobretasa"])
     spread_decimal = (raw_spread / 100.0) if SPREAD_IS_PERCENT else raw_spread
 
@@ -608,16 +493,13 @@ def build_qll_bond_from_row(
     tipo_valor = row["tipovalor"]
     cuponesemision = row["cuponesemision"]
 
-    # --- global QL settings ---
-    ql.Settings.instance().evaluationDate = qld(eval_date)
-    ql.Settings.instance().includeReferenceDateEvents = INCLUDE_REF_DATE_EVENTS
-    ql.Settings.instance().enforceTodaysHistoricFixings = False
-
     zero_corps_tipo_valor = ["I", "93", "92"]
 
     is_zero_coupon = tipo_valor in zero_corps_tipo_valor or emisora in ["CETES"]
     is_zero_coupon = is_zero_coupon if cuponesemision == 0 else False
-    # --- schedule that forces remaining coupons to match the sheet ---
+    coupon_frequency = None
+    explicit_schedule = None
+
     if not is_zero_coupon:
         try:
             if f"{tipo_valor}_{emisora}" in ["MC_BONOS", "MP_BONOS"]:
@@ -656,30 +538,36 @@ def build_qll_bond_from_row(
             benchmark_rate_index_name = SUBYACENTE_TO_INDEX_MAP["CETE_28"]
         else:
             raise NotImplementedError
-        frb = msi.ZeroCouponBond(
-            face_value=face_adj,
-            benchmark_rate_index_name=benchmark_rate_index_name,
+
+        return CoreBondPricingPayload(
+            instrument_type="zero_coupon_bond",
+            valuation_date=eval_date,
             issue_date=issue_date,
             maturity_date=maturity_date,
+            face_value=face_value,
             day_count=dc,
             calendar=calendar,
             business_day_convention=bdc,
             settlement_days=settlement_days,
+            benchmark_rate_index_name=benchmark_rate_index_name,
         )
+
     elif coupon_rule == "Tasa Fija":  # Fixed Rate Bond
         benchmark_rate_index_name = SUBYACENTE_TO_INDEX_MAP[row["subyacente"]]
 
-        frb = msi.FixedRateBond(
-            face_value=face_adj,
-            coupon_rate=row["tasacupon"] / 100,
-            benchmark_rate_index_name=benchmark_rate_index_name,
+        return CoreBondPricingPayload(
+            instrument_type="fixed_rate_bond",
+            valuation_date=eval_date,
             issue_date=issue_date,
             maturity_date=maturity_date,
-            coupon_frequency=coupon_frequency,
+            face_value=face_value,
             day_count=dc,
             calendar=calendar,
             business_day_convention=bdc,
             settlement_days=settlement_days,
+            benchmark_rate_index_name=benchmark_rate_index_name,
+            coupon_rate=float(row["tasacupon"]) / 100,
+            coupon_frequency=coupon_frequency,
             schedule=explicit_schedule,
         )
 
@@ -689,24 +577,99 @@ def build_qll_bond_from_row(
         except KeyError as e:
             raise e
 
-        # --- your model (ensure it supports 'schedule=...') ---
-        frb = msi.FloatingRateBond(
-            face_value=face_adj,
-            floating_rate_index_name=floating_rate_index_name,
-            spread=spread_decimal,
+        return CoreBondPricingPayload(
+            instrument_type="floating_rate_bond",
+            valuation_date=eval_date,
             issue_date=issue_date,
             maturity_date=maturity_date,
-            coupon_frequency=coupon_frequency,
+            face_value=face_value,
             day_count=dc,
             calendar=calendar,
             business_day_convention=bdc,
             settlement_days=settlement_days,
             benchmark_rate_index_name=floating_rate_index_name,
+            floating_rate_index_name=floating_rate_index_name,
+            spread=spread_decimal,
+            coupon_frequency=coupon_frequency,
             schedule=explicit_schedule,
         )
-    frb.set_valuation_date(
-        eval_date,
+
+
+def build_instrument_from_core_bond_pricing_payload(
+    payload: CoreBondPricingPayload,
+) -> msi.Instrument:
+    ql.Settings.instance().evaluationDate = qld(payload.valuation_date)
+    ql.Settings.instance().includeReferenceDateEvents = INCLUDE_REF_DATE_EVENTS
+    ql.Settings.instance().enforceTodaysHistoricFixings = False
+
+    if payload.instrument_type == "zero_coupon_bond":
+        instrument = msi.ZeroCouponBond(
+            face_value=payload.face_value,
+            benchmark_rate_index_name=payload.benchmark_rate_index_name,
+            issue_date=payload.issue_date,
+            maturity_date=payload.maturity_date,
+            day_count=payload.day_count,
+            calendar=payload.calendar,
+            business_day_convention=payload.business_day_convention,
+            settlement_days=payload.settlement_days,
+        )
+    elif payload.instrument_type == "fixed_rate_bond":
+        instrument = msi.FixedRateBond(
+            face_value=payload.face_value,
+            coupon_rate=payload.coupon_rate,
+            benchmark_rate_index_name=payload.benchmark_rate_index_name,
+            issue_date=payload.issue_date,
+            maturity_date=payload.maturity_date,
+            coupon_frequency=payload.coupon_frequency,
+            day_count=payload.day_count,
+            calendar=payload.calendar,
+            business_day_convention=payload.business_day_convention,
+            settlement_days=payload.settlement_days,
+            schedule=payload.schedule,
+        )
+    elif payload.instrument_type == "floating_rate_bond":
+        instrument = msi.FloatingRateBond(
+            face_value=payload.face_value,
+            floating_rate_index_name=payload.floating_rate_index_name,
+            spread=payload.spread,
+            issue_date=payload.issue_date,
+            maturity_date=payload.maturity_date,
+            coupon_frequency=payload.coupon_frequency,
+            day_count=payload.day_count,
+            calendar=payload.calendar,
+            business_day_convention=payload.business_day_convention,
+            settlement_days=payload.settlement_days,
+            benchmark_rate_index_name=payload.benchmark_rate_index_name,
+            schedule=payload.schedule,
+        )
+    else:
+        raise ValueError(f"Unsupported core bond pricing payload type: {payload.instrument_type}")
+
+    instrument.set_valuation_date(payload.valuation_date)
+    return instrument
+
+
+def build_qll_bond_from_row(
+    row: pd.Series,
+    *,
+    calendar: ql.Calendar,
+    dc: ql.DayCounter,
+    bdc: int,
+    settlement_days: int,
+    SPREAD_IS_PERCENT: bool = True,
+) -> msi.Instrument:
+    """
+    Convert a Valmer row to a normalized pricing payload, then build an instrument.
+    """
+    payload = valmer_row_to_core_bond_pricing_payload(
+        row,
+        calendar=calendar,
+        dc=dc,
+        bdc=bdc,
+        settlement_days=settlement_days,
+        SPREAD_IS_PERCENT=SPREAD_IS_PERCENT,
     )
+    frb = build_instrument_from_core_bond_pricing_payload(payload)
 
     # --- assert/diagnose + (optionally) auto-fix the front boundary ---
     # with_yield = float(row["TASA DE RENDIMIENTO"]) / 100
@@ -890,66 +853,31 @@ def run_price_check(
             print(row)
             raise e
 
-        # Model analytics (force construction)
-        try:
-            analytics = bond.analytics(with_yield=float(row["tasaderendimiento"]) / 100.0)
-        except Exception as e:
-            # Some FRNs with CUPONES X COBRAR == 0 might not be representable as FloatingRateBond.
-            raise e
-
-        ql_bond = bond.get_ql_bond()  # underlying QL object
-
         face = float(row["valornominalactualizado"])
-        model_dirty = float(analytics["dirty_price"]) * face / 100.0
-        model_clean = float(analytics["clean_price"]) * face / 100.0
-        model_accr = model_dirty - model_clean
-        model_accr_per100 = 100.0 * (model_accr / face)
-
-        # Market sheet dirty/clean (per 100)
         mkt_dirty = float(row["preciosucio"])
         mkt_clean = float(row["preciolimpio"])
         if mkt_dirty == 0:
             continue
 
-        # Running coupon (find the period containing eval_date or settlement)
-        running_coupon_model = np.nan
-        dias_transcurridos = np.nan
-        if ql_bond.cashflows():
-            ref_for_days = ql_bond.settlementDate() if COUNT_FROM_SETTLEMENT else qld(eval_date)
-            for cf in ql_bond.cashflows():
-                if isinstance(ql_bond, ql.FloatingRateBond):
-                    cpn = ql.as_floating_rate_coupon(cf)
-                else:
-                    cpn = ql.as_fixed_rate_coupon(cf)
-                if cpn is None:
-                    continue
-                if cpn.accrualStartDate() <= ref_for_days < cpn.accrualEndDate():
-                    running_coupon_model = 100.0 * float(cpn.rate())
-                    dc_inst = bond.day_count
-                    dias_transcurridos = int(dc_inst.dayCount(cpn.accrualStartDate(), ref_for_days))
-                    break
-
-        # Future coupons
-        future_cpn_count = count_future_coupons(
-            ql_bond,
+        expected_count = (
+            int(row["cuponesxcobrar"]) if not pd.isna(row.get("cuponesxcobrar")) else None
+        )
+        market_current_coupon = (
+            float(row["cuponactual"]) if not pd.isna(row.get("cuponactual")) else None
+        )
+        comparison = compare_bond_to_market_quote(
+            bond,
+            market_dirty_price=mkt_dirty,
+            market_clean_price=mkt_clean,
+            market_current_coupon=market_current_coupon,
+            expected_future_coupon_count=expected_count,
+            yield_to_maturity=float(row["tasaderendimiento"]) / 100.0,
+            face_value=face,
+            valuation_date=eval_date,
+            price_tolerance_bp=price_tol_bp,
             from_settlement=COUNT_FROM_SETTLEMENT,
             include_ref_date_events=INCLUDE_REF_DATE_EVENTS,
         )
-
-        expected_count = (
-            int(row["cuponesxcobrar"]) if not pd.isna(row.get("cuponesxcobrar")) else np.nan
-        )
-
-        # df=bond.get_cashflows_df()
-        # Diffs
-        price_diff_bp = 100.0 * (model_dirty - mkt_dirty) / mkt_dirty
-        coupon_diff_bp = (
-            (running_coupon_model - float(row["cuponactual"])) * 100.0
-            if not np.isnan(running_coupon_model)
-            else np.nan
-        )
-        pass_price = abs(price_diff_bp) <= price_tol_bp
-        pass_cpn_count = np.isnan(expected_count) or (future_cpn_count == expected_count)
 
         instrument_hash = bond.content_hash()
         results.append(
@@ -964,22 +892,24 @@ def run_price_check(
                 if SPREAD_IS_PERCENT and not pd.isna(row["sobretasa"])
                 else float(row["sobretasa"] or 0.0),
                 "CUPON ACTUAL (sheet) %": float(row["cuponactual"]),
-                "CUPON ACTUAL (model) %": running_coupon_model,
-                "coupon_diff_bp": coupon_diff_bp,
+                "CUPON ACTUAL (model) %": comparison["model_current_coupon"],
+                "coupon_diff_bp": comparison["coupon_diff_bp"],
                 "PRECIO SUCIO (sheet)": mkt_dirty,
-                "PRECIO SUCIO (model)": model_dirty,
-                "price_diff_bp": price_diff_bp,
+                "PRECIO SUCIO (model)": comparison["model_dirty_price"],
+                "price_diff_bp": comparison["price_diff_bp"],
                 "PRECIO LIMPIO (sheet)": mkt_clean,
-                "PRECIO LIMPIO (model)": model_clean,
-                "accrued_per_100 (model)": model_accr_per100,
-                "CUPONES X COBRAR (sheet)": expected_count,
-                "CUPONES FUTUROS (model)": future_cpn_count,
-                "pass_price": pass_price,
-                "pass_coupon_count": pass_cpn_count,
+                "PRECIO LIMPIO (model)": comparison["model_clean_price"],
+                "accrued_per_100 (model)": comparison["model_accrued_per_100"],
+                "CUPONES X COBRAR (sheet)": expected_count
+                if expected_count is not None
+                else np.nan,
+                "CUPONES FUTUROS (model)": comparison["future_coupon_count"],
+                "pass_price": comparison["pass_price"],
+                "pass_coupon_count": comparison["pass_coupon_count"],
                 "DIAS TRANSC. CPN (sheet)": int(row["diastransccpn"])
                 if pd.notna(row.get("diastransccpn"))
                 else np.nan,
-                "DIAS TRANSC. CPN (model)": dias_transcurridos,
+                "DIAS TRANSC. CPN (model)": comparison["elapsed_coupon_days"],
             }
         )
 

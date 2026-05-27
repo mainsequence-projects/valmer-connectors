@@ -13,10 +13,13 @@ certifi==2026.5.20
     # via requests
 charset-normalizer==3.4.7
     # via requests
+click==8.4.1
+    # via mainsequence
 cloudpickle==3.1.2
     # via mainsequence
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
+    #   click
     #   tqdm
     #   typer
 concurrent-log-handler==0.9.29
@@ -31,7 +34,7 @@ grpcio==1.80.0
     # via opentelemetry-exporter-otlp-proto-grpc
 idna==3.16
     # via requests
-mainsequence==4.0.11
+mainsequence==4.0.12
     # via
     #   ms-markets
     #   valmer-connectors
@@ -39,7 +42,7 @@ markdown-it-py==4.2.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
-ms-markets==0.0.7
+ms-markets==0.0.10
     # via valmer-connectors
 numpy==2.4.6
     # via

@@ -1,15 +1,19 @@
 import io
+import os
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import pytz
+import QuantLib as ql
 import requests
 import structlog
+from msm_pricing.api.instruments import persist_current_pricing_details
+from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
 from tqdm import tqdm
 
 import mainsequence.client as msc
@@ -22,12 +26,6 @@ from src.instruments.vector_to_asset import (
 )
 
 UTC = pytz.UTC
-import base64
-import gzip
-import json
-import os
-
-import QuantLib as ql
 
 
 @dataclass(frozen=True)
@@ -662,57 +660,6 @@ class MexDerTIIE28Zero(DataNode):
         - Columns: cleaned from the CSV (lowercase, <=63 chars, no datetime columns)
     """
 
-    @staticmethod
-    def compress_curve_to_string(curve_dict: Dict[Any, Any]) -> str:
-        """
-        Serializes, compresses, and encodes a curve dictionary into a single,
-        transport-safe text string.
-
-        Pipeline: Dict -> JSON -> Gzip (binary) -> Base64 (text)
-
-        Args:
-            curve_dict: The Python dictionary representing the curve.
-
-        Returns:
-            A Base64-encoded string of the Gzipped JSON.
-        """
-        # 1. Serialize the dictionary to a compact JSON string, then encode to bytes
-        json_bytes = json.dumps(curve_dict, separators=(",", ":")).encode("utf-8")
-
-        # 2. Compress the JSON bytes using the universal Gzip standard
-        compressed_bytes = gzip.compress(json_bytes)
-
-        # 3. Encode the compressed binary data into a text-safe Base64 string
-        base64_bytes = base64.b64encode(compressed_bytes)
-
-        # 4. Decode the Base64 bytes into a final ASCII string for storage/transport
-        return base64_bytes.decode("ascii")
-
-    @staticmethod
-    def decompress_string_to_curve(b64_string: str) -> Dict[Any, Any]:
-        """
-        Decodes, decompresses, and deserializes a string back into a curve dictionary.
-
-        Pipeline: Base64 (text) -> Gzip (binary) -> JSON -> Dict
-
-        Args:
-            b64_string: The Base64-encoded string from the database or API.
-
-        Returns:
-            The reconstructed Python dictionary.
-        """
-        # 1. Encode the ASCII string back into Base64 bytes
-        base64_bytes = b64_string.encode("ascii")
-
-        # 2. Decode the Base64 to get the compressed Gzip bytes
-        compressed_bytes = base64.b64decode(base64_bytes)
-
-        # 3. Decompress the Gzip bytes to get the original JSON bytes
-        json_bytes = gzip.decompress(compressed_bytes)
-
-        # 4. Decode the JSON bytes to a string and parse back into a dictionary
-        return json.loads(json_bytes.decode("utf-8"))
-
     def dependencies(self):
         return {}
 
@@ -766,8 +713,7 @@ class MexDerTIIE28Zero(DataNode):
             .reset_index()
         )
 
-        #    Apply the new compression and encoding function to the 'curve' column.
-        grouped["curve"] = grouped["curve"].apply(self.compress_curve_to_string)
+        grouped["curve"] = grouped["curve"].apply(compress_curve_to_string)
 
         # 3. Final index and structure (your original code)
         grouped = grouped.set_index(["time_index", "unique_identifier"])
@@ -829,7 +775,6 @@ class ImportValmer(DataNode):
         Reads all artifacts from the bucket, normalizes columns, and concatenates them into a single DataFrame.
         Optionally filters for new artifacts based on the 'process_all_files' flag.
         """
-        import os
         from pathlib import Path
 
         debug_artifact_path = os.environ.get("DEBUG_ARTIFACT_PATH", None)
@@ -1130,8 +1075,6 @@ class ImportValmer(DataNode):
         force_update: bool = False,
     ) -> list:
         """One orchestrator for both paths (full vector or last vector)."""
-        import os
-
         # pull existing assets once
         per_page_assets = int(os.environ.get("VALMER_PER_PAGE", 5000))
         existing_assets_list = msc.Asset.query(
@@ -1215,8 +1158,13 @@ class ImportValmer(DataNode):
 
             for uid, asset in assets_for_update.items():
                 try:
-                    asset.add_instrument_pricing_details_from_ms_instrument(
-                        **instrument_pricing_detail_map[uid]
+                    pricing_details = instrument_pricing_detail_map[uid]
+                    persist_current_pricing_details(
+                        asset=asset,
+                        instrument=pricing_details["instrument"],
+                        pricing_details_date=pricing_details["pricing_details_date"],
+                        source="valmer",
+                        metadata_json={"valmer_unique_identifier": uid},
                     )
                 except Exception as e:
                     self.logger.error(f"Failed to update pricing details for {uid}: {e}")

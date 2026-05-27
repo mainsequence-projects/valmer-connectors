@@ -11,6 +11,9 @@ This is the authoritative MkDocs-compatible documentation root for
 - [Instruments](instruments.md)
 - [Dashboards](dashboards.md)
 - [Deployment](deployment.md)
+- ADRs:
+  - [ADR 0000: Core Pricing Library Boundary](adr/0000-core-pricing-library-boundary.md)
+  - [ADR 0001: Asset Registration Identity Migration](adr/0001-asset-registration-identity-migration.md)
 
 ## Operational Files
 
