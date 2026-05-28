@@ -7,6 +7,9 @@ import pandas as pd
 import streamlit as st
 
 import mainsequence.client as msc
+from msm.api.base import operation_result_rows
+from msm.repositories.crud import search_model
+from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from mainsequence.client.models_tdag import DataNodeStorage
 from mainsequence.dashboards.streamlit.components import (
     sidebar_asset_single_select,
@@ -19,6 +22,8 @@ from src.instruments.bootstrap import (
     REQUIRED_CURVE_CONSTS,
     REQUIRED_INDEX_CONSTS,
 )
+from src.instruments.asset_identity import resolve_valmer_assets
+from src.meta_tables.valmer_asset_details import resolve_valmer_asset_details
 
 VECTOR_NODE_IDENTIFIER = "vector_de_precios_valmer"
 STANDALONE_CURVE_NODE_IDENTIFIER = "valmer_mexder_tiie28_zero_curve"
@@ -39,11 +44,19 @@ NUMERIC_VECTOR_COLUMNS = (
     "macaulay_duration",
     "convexity",
     "adjusted_face_value",
+    "issued_amount",
+    "amount_outstanding",
+    "issue_term",
+    "face_value",
+    "placement_yield",
+    "placement_spread",
+    "coupon_rate",
 )
 
 DATETIME_VECTOR_COLUMNS = (
     "time_index",
     "valuation_date",
+    "details_asof",
     "issue_date",
     "maturity_date",
     "uh_date",
@@ -237,7 +250,14 @@ def _query_node_by_identifier(
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_vector_history(lookback_days: int = 14) -> QueryResult:
-    return _query_node_by_identifier(VECTOR_NODE_IDENTIFIER, lookback_days=lookback_days)
+    result = _query_node_by_identifier(VECTOR_NODE_IDENTIFIER, lookback_days=lookback_days)
+    if result.error or result.data.empty:
+        return result
+    return QueryResult(
+        data=enrich_valmer_vector_with_details(result.data),
+        error=result.error,
+        storage_hash=result.storage_hash,
+    )
 
 
 def latest_vector_snapshot(frame: pd.DataFrame) -> pd.DataFrame:
@@ -245,6 +265,23 @@ def latest_vector_snapshot(frame: pd.DataFrame) -> pd.DataFrame:
         return frame.copy()
     latest_idx = frame.groupby("unique_identifier")["time_index"].idxmax()
     return frame.loc[latest_idx].sort_values("time_index", ascending=False).reset_index(drop=True)
+
+
+def enrich_valmer_vector_with_details(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty or "unique_identifier" not in frame.columns:
+        return frame
+
+    unique_identifiers = frame["unique_identifier"].dropna().astype("string").unique().tolist()
+    if not unique_identifiers:
+        return frame
+
+    try:
+        assets = _query_assets(unique_identifiers)
+        details = _query_valmer_asset_details(assets)
+    except Exception:
+        return frame
+
+    return _merge_valmer_asset_details(frame, details)
 
 
 def render_sidebar_context(
@@ -303,14 +340,62 @@ def render_sidebar_context(
 def _query_assets(unique_identifiers: list[str]) -> dict[str, object]:
     if not unique_identifiers:
         return {}
+    return resolve_valmer_assets(unique_identifiers, batch_size=250)
 
-    assets: dict[str, object] = {}
-    batch_size = 250
-    for start in range(0, len(unique_identifiers), batch_size):
-        batch = unique_identifiers[start : start + batch_size]
-        batch_assets = msc.Asset.query(unique_identifier__in=batch, per_page=batch_size)
-        assets.update({asset.unique_identifier: asset for asset in batch_assets})
-    return assets
+
+def _query_current_pricing_details(
+    assets: dict[str, object],
+) -> dict[str, AssetCurrentPricingDetails]:
+    if not assets:
+        return {}
+
+    asset_uid_to_valmer_uid = {str(asset.uid): uid for uid, asset in assets.items()}
+    asset_uids = [asset.uid for asset in assets.values()]
+    result = search_model(
+        AssetCurrentPricingDetails._active_context(),
+        model=AssetCurrentPricingDetails.__table__,
+        in_filters={"asset_uid": asset_uids},
+        limit=len(asset_uids),
+    )
+
+    pricing_details: dict[str, AssetCurrentPricingDetails] = {}
+    for row in operation_result_rows(result):
+        detail = AssetCurrentPricingDetails.model_validate(row)
+        valmer_uid = asset_uid_to_valmer_uid.get(str(detail.asset_uid))
+        if valmer_uid is not None:
+            pricing_details[valmer_uid] = detail
+    return pricing_details
+
+
+def _query_valmer_asset_details(assets: dict[str, object]) -> dict[str, dict[str, object]]:
+    if not assets:
+        return {}
+    return resolve_valmer_asset_details([asset.uid for asset in assets.values()], batch_size=250)
+
+
+def _merge_valmer_asset_details(
+    frame: pd.DataFrame,
+    details: dict[str, dict[str, object]],
+) -> pd.DataFrame:
+    if frame.empty or not details:
+        return frame
+
+    details_frame = pd.DataFrame(details.values())
+    if details_frame.empty or "valmer_unique_identifier" not in details_frame.columns:
+        return frame
+
+    details_frame = details_frame.rename(
+        columns={"valmer_unique_identifier": "unique_identifier"}
+    )
+    details_frame["unique_identifier"] = details_frame["unique_identifier"].astype("string")
+    drop_detail_columns = [
+        column
+        for column in details_frame.columns
+        if column in frame.columns and column != "unique_identifier"
+    ]
+    base_frame = frame.drop(columns=drop_detail_columns)
+    enriched = base_frame.merge(details_frame, on="unique_identifier", how="left")
+    return _prepare_vector_frame(enriched)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -323,15 +408,28 @@ def load_pricing_health(lookback_days: int = 14) -> dict[str, object]:
     if latest.empty:
         return {"latest": latest, "target": latest, "missing_pricing": []}
 
-    target = ImportValmer._get_target_bonds(latest.copy())
-    target_uids = target["unique_identifier"].dropna().astype("string").unique().tolist()
-    assets = _query_assets(target_uids)
+    try:
+        latest_uids = latest["unique_identifier"].dropna().astype("string").unique().tolist()
+        assets = _query_assets(latest_uids)
+        details = _query_valmer_asset_details(assets)
+        latest = _merge_valmer_asset_details(latest, details)
+        target = ImportValmer._get_target_bonds(latest.copy())
+        target_uids = target["unique_identifier"].dropna().astype("string").unique().tolist()
+        target_assets = {uid: assets[uid] for uid in target_uids if uid in assets}
+        pricing_details = _query_current_pricing_details(target_assets)
+    except Exception as exc:
+        return {
+            "latest": latest,
+            "target": latest.iloc[0:0].copy(),
+            "missing_pricing": [],
+            "error": str(exc),
+        }
 
     missing_pricing: list[str] = []
     for uid in target_uids:
         asset = assets.get(uid)
-        pricing_detail = getattr(asset, "current_pricing_detail", None) if asset else None
-        if pricing_detail is None or getattr(pricing_detail, "instrument_dump", None) is None:
+        pricing_detail = pricing_details.get(uid) if asset else None
+        if pricing_detail is None or pricing_detail.instrument_dump is None:
             missing_pricing.append(uid)
 
     return {

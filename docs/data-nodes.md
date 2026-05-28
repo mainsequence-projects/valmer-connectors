@@ -25,21 +25,32 @@ The stored columns are:
 
 - derived OHLC fields from `dirty_price`: `open`, `high`, `low`, `close`
 - derived execution fields: `volume`, `open_time`
-- the full 60-column Valmer source schema translated to English column names
+- time-varying Valmer price, yield, spread, risk, and liquidity fields
 
-Key translated source columns include:
+Static repeated asset-descriptor fields no longer live in the DataNode. They
+are stored in the 1:1 `ValmerAssetDetailsTable` keyed by `asset_uid`.
 
-- `valuation_date`, `security_type`, `issuer`, `series`
+Key DataNode columns include:
+
+- `valuation_date`
 - `clean_price`, `dirty_price`, `accrued_interest`
-- `issue_date`, `maturity_date`, `issue_currency`, `underlying`
-- `coupon_frequency`, `coupon_rate`, `coupon_rule`
+- `current_coupon`, `spread`
+- `theoretical_price`, `posted_bid`, `posted_ask`
+- `bid_yield`, `ask_yield`, `bid_spread`, `ask_spread`
+- `liquidity`, `daily_change_pct`, `weekly_change_pct`
 - `duration`, `monetary_duration`, `macaulay_duration`, `convexity`
-- `fitch_rating`, `moodys_rating`, `sp_rating`, `hr_rating`
+- `value_at_risk`, `standard_deviation`, `sensitivity`, `yield_rate`
+- changing vendor state such as ratings, outstanding amount, adjusted face
+  value, marketability, and suspension status
 
 The translation contract is defined in `src/data_nodes/nodes.py` from the
 sample workbook schema and is persisted with explicit English metadata and
 typed casts for numeric, percentage, integer-count, and datetime fields. The
 node uses `DataFrequency.one_d` to match the effective update cadence.
+
+`ValmerAssetDetailsTable` stores static asset-level Valmer fields such as
+`security_type`, `issuer`, `series`, `full_name`, `sector`, issue terms,
+currency, underlying, and coupon terms.
 
 ## Operational Guidance
 
@@ -48,8 +59,9 @@ For large data volumes:
 - test first in a test namespace
 - limit the time range before running a full update or backfill
 
-`ImportValmer.get_asset_list()` also registers or reuses assets and updates
-pricing details for the target bond subset selected by `_get_target_bonds(...)`.
+`ImportValmer.get_asset_list()` also registers or reuses assets, upserts
+`ValmerAssetDetailsTable`, and updates pricing details for the target bond
+subset selected by `_get_target_bonds(...)`.
 
 ## Standalone Curve Node: `MexDerTIIE28Zero`
 

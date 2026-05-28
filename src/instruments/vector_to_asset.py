@@ -20,6 +20,7 @@ import mainsequence.instruments as msi
 from mainsequence.instruments.instruments import Position
 from msm_pricing.pricing_engine.bond_analytics import compare_bond_to_market_quote
 from msm_pricing.pricing_engine.coupon_schedules import compute_coupon_schedule_force_match
+from src.instruments.asset_identity import resolve_valmer_assets
 from src.settings import SUBYACENTE_TO_INDEX_MAP
 
 # =============================================================================
@@ -957,10 +958,11 @@ def build_position_from_sheet(
     df_out, instrument_map = run_price_check(all_floating)
     pd.set_option("display.float_format", lambda x: f"{x:,.6f}")
 
-    ms_assets_map = msc.Asset.filter(unique_identifier__in=df_out["UID"].to_list())
-    ms_assets_map = {k.unique_identifier: k.id for k in ms_assets_map}
+    ms_assets_map = resolve_valmer_assets(df_out["UID"].to_list())
+    ms_assets_map = {uid: str(asset.uid) for uid, asset in ms_assets_map.items()}
 
-    df_out["asset_id"] = df_out["UID"].map(ms_assets_map)
+    df_out["asset_uid"] = df_out["UID"].map(ms_assets_map)
+    df_out["asset_id"] = df_out["asset_uid"]
 
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".csv", delete=True) as temp_csv:
         temp_file_path = temp_csv.name

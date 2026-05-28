@@ -12,7 +12,12 @@ import pytz
 import QuantLib as ql
 import requests
 import structlog
+from msm.api.base import operation_result_rows
+from msm.api.assets import Asset as MarketsAsset
+from msm.constants import ASSET_TYPE_BOND
+from msm.repositories.crud import search_model
 from msm_pricing.api.instruments import persist_current_pricing_details
+from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
 from tqdm import tqdm
 
@@ -23,6 +28,15 @@ from src.instruments.vector_to_asset import (
     build_qll_bond_from_row,
     get_instrument_conventions,
     normalize_column_name,
+)
+from src.instruments.asset_identity import (
+    add_valmer_unique_identifier,
+    resolve_valmer_assets,
+    upsert_valmer_assets,
+)
+from src.meta_tables.valmer_asset_details import (
+    VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
+    upsert_valmer_asset_details,
 )
 
 UTC = pytz.UTC
@@ -78,6 +92,17 @@ def _coerce_valmer_series(series: pd.Series, transform: str) -> pd.Series:
         return pd.to_datetime(series.astype("string"), format="%Y%m%d", errors="coerce", utc=True)
 
     raise ValueError(f"Unsupported Valmer transform: {transform}")
+
+
+def _pricing_detail_face_value(instrument_dump: dict) -> object:
+    if not isinstance(instrument_dump, dict):
+        return None
+    if "face_value" in instrument_dump:
+        return instrument_dump.get("face_value")
+    wrapped_instrument = instrument_dump.get("instrument")
+    if isinstance(wrapped_instrument, dict):
+        return wrapped_instrument.get("face_value")
+    return None
 
 
 def _build_open_time_series(time_index: pd.Series) -> pd.Series:
@@ -150,30 +175,6 @@ VALMER_SOURCE_COLUMN_SPECS = (
         description="Source FECHA value normalized to a UTC date.",
     ),
     ValmerColumnSpec(
-        source_name="tipovalor",
-        column_name="security_type",
-        dtype="string",
-        transform="string",
-        label="Security Type",
-        description="Security type code from TIPO VALOR.",
-    ),
-    ValmerColumnSpec(
-        source_name="emisora",
-        column_name="issuer",
-        dtype="string",
-        transform="string",
-        label="Issuer",
-        description="Issuer code from EMISORA.",
-    ),
-    ValmerColumnSpec(
-        source_name="serie",
-        column_name="series",
-        dtype="string",
-        transform="string",
-        label="Series",
-        description="Series code from SERIE.",
-    ),
-    ValmerColumnSpec(
         source_name="preciolimpio",
         column_name="clean_price",
         dtype="float",
@@ -214,30 +215,6 @@ VALMER_SOURCE_COLUMN_SPECS = (
         description="Spread from SOBRETASA.",
     ),
     ValmerColumnSpec(
-        source_name="nombrecompleto",
-        column_name="full_name",
-        dtype="string",
-        transform="string",
-        label="Full Name",
-        description="Full instrument name from NOMBRE COMPLETO.",
-    ),
-    ValmerColumnSpec(
-        source_name="sector",
-        column_name="sector",
-        dtype="string",
-        transform="string",
-        label="Sector",
-        description="Sector from SECTOR.",
-    ),
-    ValmerColumnSpec(
-        source_name="montoemitido",
-        column_name="issued_amount",
-        dtype="float",
-        transform="float",
-        label="Issued Amount",
-        description="Issued amount from MONTO EMITIDO.",
-    ),
-    ValmerColumnSpec(
         source_name="montoencirculacion",
         column_name="amount_outstanding",
         dtype="float",
@@ -246,108 +223,12 @@ VALMER_SOURCE_COLUMN_SPECS = (
         description="Outstanding amount from MONTO EN CIRCULACION.",
     ),
     ValmerColumnSpec(
-        source_name="fechaemision",
-        column_name="issue_date",
-        dtype="datetime",
-        transform="datetime",
-        label="Issue Date",
-        description="Issue date from FECHA EMISION.",
-    ),
-    ValmerColumnSpec(
-        source_name="plazoemision",
-        column_name="issue_term",
-        dtype="float",
-        transform="float",
-        label="Issue Term",
-        description="Issue term from PLAZO EMISION.",
-    ),
-    ValmerColumnSpec(
-        source_name="fechavcto",
-        column_name="maturity_date",
-        dtype="datetime",
-        transform="datetime",
-        label="Maturity Date",
-        description="Maturity date from FECHA VCTO.",
-    ),
-    ValmerColumnSpec(
-        source_name="valornominal",
-        column_name="face_value",
-        dtype="float",
-        transform="float",
-        label="Face Value",
-        description="Face value from VALOR NOMINAL.",
-    ),
-    ValmerColumnSpec(
-        source_name="monedaemision",
-        column_name="issue_currency",
-        dtype="string",
-        transform="string",
-        label="Issue Currency",
-        description="Issue currency from MONEDA EMISION.",
-    ),
-    ValmerColumnSpec(
-        source_name="subyacente",
-        column_name="underlying",
-        dtype="string",
-        transform="string",
-        label="Underlying",
-        description="Underlying reference from SUBYACENTE.",
-    ),
-    ValmerColumnSpec(
-        source_name="rendcolocacion",
-        column_name="placement_yield",
-        dtype="float",
-        transform="float",
-        label="Placement Yield",
-        description="Placement yield from REND. COLOCACION.",
-    ),
-    ValmerColumnSpec(
-        source_name="stcolocacion",
-        column_name="placement_spread",
-        dtype="float",
-        transform="float",
-        label="Placement Spread",
-        description="Placement spread from STCOLOCACION.",
-    ),
-    ValmerColumnSpec(
-        source_name="freccpn",
-        column_name="coupon_frequency",
-        dtype="string",
-        transform="string",
-        label="Coupon Frequency",
-        description="Coupon frequency from FREC. CPN.",
-    ),
-    ValmerColumnSpec(
-        source_name="tasacupon",
-        column_name="coupon_rate",
-        dtype="float",
-        transform="float",
-        label="Coupon Rate",
-        description="Coupon rate from TASA CUPON.",
-    ),
-    ValmerColumnSpec(
         source_name="diastransccpn",
         column_name="days_since_coupon",
         dtype="int",
         transform="int",
         label="Days Since Coupon",
         description="Days since coupon from DIAS TRANSC. CPN.",
-    ),
-    ValmerColumnSpec(
-        source_name="reglacupon",
-        column_name="coupon_rule",
-        dtype="string",
-        transform="string",
-        label="Coupon Rule",
-        description="Coupon rule from REGLA CUPON.",
-    ),
-    ValmerColumnSpec(
-        source_name="cuponesemision",
-        column_name="coupons_at_issue",
-        dtype="int",
-        transform="int",
-        label="Coupons At Issue",
-        description="Coupon count at issuance from CUPONES EMISION.",
     ),
     ValmerColumnSpec(
         source_name="cuponesxcobrar",
@@ -624,10 +505,20 @@ VALMER_SOURCE_COLUMN_SPECS = (
 )
 
 
-VALMER_VECTOR_COLUMN_SPECS = VALMER_DERIVED_COLUMN_SPECS + VALMER_SOURCE_COLUMN_SPECS
+VALMER_TIMESERIES_SOURCE_COLUMN_SPECS = VALMER_SOURCE_COLUMN_SPECS
+VALMER_VECTOR_COLUMN_SPECS = VALMER_DERIVED_COLUMN_SPECS + VALMER_TIMESERIES_SOURCE_COLUMN_SPECS
 
 VALMER_REQUIRED_SOURCE_COLUMNS = tuple(
-    spec.source_name for spec in VALMER_SOURCE_COLUMN_SPECS if spec.source_name is not None
+    dict.fromkeys(
+        [
+            *[
+                spec.source_name
+                for spec in VALMER_SOURCE_COLUMN_SPECS
+                if spec.source_name is not None
+            ],
+            *sorted(VALMER_ASSET_DETAIL_SOURCE_COLUMNS),
+        ]
+    )
 )
 
 PERSISTED_VECTOR_TO_SOURCE_COLUMNS = {
@@ -893,69 +784,78 @@ class ImportValmer(DataNode):
         return all_target_bonds
 
     @staticmethod
-    def _get_uids_to_update(
+    def _get_missing_asset_uids(
         unique_identifiers: List[str],
-        existing_assets: Dict[str, "msc.Asset"],
+        existing_assets: Dict[str, MarketsAsset],
+    ) -> List[str]:
+        return [u for u in unique_identifiers if u not in existing_assets]
+
+    @staticmethod
+    def _get_current_pricing_details_by_uid(
+        existing_assets: Dict[str, MarketsAsset],
+    ) -> Dict[str, AssetCurrentPricingDetails]:
+        if not existing_assets:
+            return {}
+
+        asset_uid_to_valmer_uid = {str(asset.uid): uid for uid, asset in existing_assets.items()}
+        asset_uids = [asset.uid for asset in existing_assets.values()]
+        result = search_model(
+            AssetCurrentPricingDetails._active_context(),
+            model=AssetCurrentPricingDetails.__table__,
+            in_filters={"asset_uid": asset_uids},
+            limit=len(asset_uid_to_valmer_uid),
+        )
+
+        pricing_details: Dict[str, AssetCurrentPricingDetails] = {}
+        for row in operation_result_rows(result):
+            detail = AssetCurrentPricingDetails.model_validate(row)
+            valmer_uid = asset_uid_to_valmer_uid.get(str(detail.asset_uid))
+            if valmer_uid is not None:
+                pricing_details[valmer_uid] = detail
+        return pricing_details
+
+    @staticmethod
+    def _get_pricing_refresh_uids(
+        unique_identifiers: List[str],
+        existing_assets: Dict[str, MarketsAsset],
+        current_pricing_details: Dict[str, AssetCurrentPricingDetails],
         all_target_bonds: pd.DataFrame,
         *,
         force_update: bool = False,
-    ) -> Tuple[List[str], List[str]]:
+    ) -> List[str]:
         """
-        Decide which UIDs need (a) asset registration and/or (b) pricing-detail update.
-
-        Returns:
-            missing_assets: list[str]   -> assets not in existing_assets (register )
-            pricing_updates: list[str]  -> assets (existing or newly-created) that need pricing-detail update
-
-        Behavior:
-            - Pricing updates are only considered for *target bonds* (present in all_target_bonds).
-            - If force_update=True, every existing target bond goes to pricing_updates.
+        Decide which target UIDs need a pricing-detail refresh.
         """
         if all_target_bonds.empty:
-            return [], []
+            return []
 
         target_rows = all_target_bonds.drop_duplicates("unique_identifier", keep="last").set_index(
             "unique_identifier"
         )
         target_uids = set(target_rows.index)
 
-        missing_assets: List[str] = []
         pricing_updates: List[str] = []
 
-        # If you're only updating pricing, limit the iteration to target UIDs
-        candidates = unique_identifiers
-
-        for u in candidates:
-            in_targets = u in target_uids
+        for u in unique_identifiers:
+            if u not in target_uids:
+                continue
             asset = existing_assets.get(u)
 
             if asset is None:
-                missing_assets.append(u)
-                # Newly-created assets also need pricing details *if* they are target bonds.
-                if in_targets:
-                    pricing_updates.append(u)
-
-                continue
-
-            # Existing asset
-            if not in_targets:
-                # Not a target bond => no pricing update requested.
+                pricing_updates.append(u)
                 continue
 
             if force_update:
                 pricing_updates.append(u)
                 continue
 
-            cpd = getattr(asset, "current_pricing_detail", None)
-            if not cpd or getattr(cpd, "instrument_dump", None) is None:
+            cpd = current_pricing_details.get(u)
+            instrument_dump = getattr(cpd, "instrument_dump", None)
+            if not cpd or instrument_dump is None:
                 pricing_updates.append(u)
                 continue
 
-            old_face_value = None
-            try:
-                old_face_value = cpd.instrument_dump.get("instrument", {}).get("face_value")
-            except Exception:
-                old_face_value = None
+            old_face_value = _pricing_detail_face_value(instrument_dump)
 
             # Compare against latest nominal value in targets
             row = target_rows.loc[u]
@@ -967,7 +867,7 @@ class ImportValmer(DataNode):
         def _dedup(seq: List[str]) -> List[str]:
             return list(dict.fromkeys(seq))
 
-        return _dedup(missing_assets), _dedup(pricing_updates)
+        return _dedup(pricing_updates)
 
     @staticmethod
     def _get_artifacts(logger, bucket_name):
@@ -1023,13 +923,7 @@ class ImportValmer(DataNode):
             # Check for required columns for instrument identifier
             required_cols = {"tipovalor", "emisora", "serie"}
             if required_cols.issubset(df.columns):
-                # Build unique_identifier while keeping all other columns
-                df["unique_identifier"] = (
-                    df["tipovalor"]
-                    .astype("string")
-                    .str.cat(df["emisora"].astype("string"), sep="_")
-                    .str.cat(df["serie"].astype("string"), sep="_")
-                )
+                df = add_valmer_unique_identifier(df)
             else:
                 logger.warning(
                     f"Skipping unique_identifier creation for {artifact.name} due to missing columns."
@@ -1075,15 +969,19 @@ class ImportValmer(DataNode):
         force_update: bool = False,
     ) -> list:
         """One orchestrator for both paths (full vector or last vector)."""
-        # pull existing assets once
         per_page_assets = int(os.environ.get("VALMER_PER_PAGE", 5000))
-        existing_assets_list = msc.Asset.query(
-            unique_identifier__in=unique_identifiers, per_page=per_page_assets
+        existing_assets = resolve_valmer_assets(
+            unique_identifiers,
+            batch_size=per_page_assets,
         )
-        existing_assets = {a.unique_identifier: a for a in existing_assets_list}
-
-        missing_assets, pricing_updates = self._get_uids_to_update(
-            unique_identifiers, existing_assets, all_target_bonds, force_update=force_update
+        current_pricing_details = self._get_current_pricing_details_by_uid(existing_assets)
+        missing_assets = self._get_missing_asset_uids(unique_identifiers, existing_assets)
+        pricing_updates = self._get_pricing_refresh_uids(
+            unique_identifiers,
+            existing_assets,
+            current_pricing_details,
+            all_target_bonds,
+            force_update=force_update,
         )
 
         df_latest_idx = df_latest.drop_duplicates("unique_identifier", keep="last").set_index(
@@ -1091,27 +989,24 @@ class ImportValmer(DataNode):
         )
         target_uids = set(all_target_bonds["unique_identifier"].unique())
 
-        # --- register missing assets ---
-        registered_assets = []
-        newly_registered_map: Dict[str, "msc.Asset"] = {}
-        if missing_assets:
-            for i in range(0, len(missing_assets), per_page_assets):
-                batch = missing_assets[i : i + per_page_assets]
-                assets_payload = [
-                    {"unique_identifier": uid, "snapshot": {"name": uid, "ticker": uid}}
-                    for uid in batch
-                ]
-                self.logger.info(
-                    f"Getting or registering assets in batch {i // per_page_assets + 1}/"
-                    f"{(len(missing_assets) + per_page_assets - 1) // per_page_assets}..."
-                )
-                try:
-                    assets = msc.Asset.batch_get_or_register_custom_assets(assets_payload)
-                    registered_assets.extend(assets)
-                    newly_registered_map.update({a.unique_identifier: a for a in assets})
-                except Exception as e:
-                    self.logger.error(f"Failed to process asset batch: {e}")
-                    raise
+        assets_needing_type_update = [
+            uid
+            for uid, asset in existing_assets.items()
+            if getattr(asset, "asset_type", None) != ASSET_TYPE_BOND
+        ]
+        assets_to_upsert = list(dict.fromkeys([*missing_assets, *assets_needing_type_update]))
+        if assets_to_upsert:
+            self.logger.info(
+                f"Upserting {len(assets_to_upsert)} Valmer assets as {ASSET_TYPE_BOND!r}."
+            )
+            upserted_assets = upsert_valmer_assets(
+                assets_to_upsert,
+                batch_size=per_page_assets,
+            )
+            existing_assets.update(upserted_assets)
+
+        detail_rows = upsert_valmer_asset_details(df_latest, existing_assets)
+        self.logger.info(f"Upserted {len(detail_rows)} Valmer asset detail rows.")
 
         # --- decide pricing recipients ---
         uids_needing_pricing = set(pricing_updates)
@@ -1140,21 +1035,11 @@ class ImportValmer(DataNode):
                 }
 
             # target the correct asset objects (newly registered + existing)
-            assets_for_update: Dict[str, "msc.Asset"] = {}
-            assets_for_update.update(
-                {
-                    u: newly_registered_map[u]
-                    for u in newly_registered_map.keys()
-                    if u in instrument_pricing_detail_map
-                }
-            )
-            assets_for_update.update(
-                {
-                    u: existing_assets[u]
-                    for u in pricing_updates
-                    if u in existing_assets and u in instrument_pricing_detail_map
-                }
-            )
+            assets_for_update: Dict[str, MarketsAsset] = {
+                u: existing_assets[u]
+                for u in uids_needing_pricing
+                if u in existing_assets and u in instrument_pricing_detail_map
+            }
 
             for uid, asset in assets_for_update.items():
                 try:
@@ -1169,7 +1054,7 @@ class ImportValmer(DataNode):
                 except Exception as e:
                     self.logger.error(f"Failed to update pricing details for {uid}: {e}")
 
-        return registered_assets + list(existing_assets.values())
+        return list(existing_assets.values())
 
     def update_pricing_details_from_last_vector(self, force_update=False):
         artifacts, artifact_dates = self._get_artifacts(self.logger, self.bucket_name)
@@ -1239,7 +1124,7 @@ class ImportValmer(DataNode):
             )
 
         vector_df = pd.DataFrame(index=source_data.index)
-        for spec in VALMER_SOURCE_COLUMN_SPECS:
+        for spec in VALMER_TIMESERIES_SOURCE_COLUMN_SPECS:
             assert spec.source_name is not None
             vector_df[spec.column_name] = _coerce_valmer_series(
                 source_data[spec.source_name], spec.transform
@@ -1269,7 +1154,10 @@ class ImportValmer(DataNode):
         TS_ID = "vector_de_precios_valmer"
         meta = msc.TableMetaData(
             identifier=TS_ID,
-            description="Valmer price vector with translated source columns and derived OHLC bars.",
+            description=(
+                "Valmer price vector with time-varying pricing columns and derived OHLC bars. "
+                "Repeated asset descriptors live in ValmerAssetDetailsTable."
+            ),
             data_frequency_id=msc.DataFrequency.one_d,
         )
         return meta
