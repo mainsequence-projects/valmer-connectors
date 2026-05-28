@@ -290,9 +290,9 @@ It should not reference:
 
 ## Implementation Tasks
 
-- [ ] Add a curve/index pricing bootstrap module for Valmer, likely
+- [x] Add a curve/index pricing bootstrap module for Valmer, likely
   `src/instruments/curve_bootstrap.py`.
-- [ ] Upsert required `Index` rows for TIIE and CETE reference indexes.
+- [x] Upsert required `Index` rows for TIIE and CETE reference indexes.
 - [ ] Upsert `IndexConventionDetails` rows for each supported reference index.
 - [ ] Upsert `Curve` row `VALMER_TIIE_28` with interpolation, compounding,
   source, and metadata.
