@@ -3,8 +3,8 @@
 `valmer-connectors` extends `mainsequence` with Valmer market data for Mexican
 fixed income. The repository ingests Valmer vector artifacts from MainSequence
 artifact storage, registers or reuses Valmer bond assets, attaches pricing
-details through `mainsequence.instruments`, and builds a Valmer TIIE 28
-discount-curve input from the public Valmer MexDer benchmark CSV.
+details through `msm_pricing`, and publishes a Valmer TIIE 28 curve from the
+public Valmer MexDer benchmark CSV.
 
 ## What The Project Does
 
@@ -12,11 +12,12 @@ discount-curve input from the public Valmer MexDer benchmark CSV.
   publishes them as `vector_de_precios_valmer`.
 - Builds or reuses MainSequence `Asset` objects keyed as
   `tipovalor_emisora_serie`.
-- Attaches `mainsequence.instruments` pricing details for the supported Mexican
-  bond universe.
-- Registers `ZERO_CURVE__VALMER_TIIE_28` into the discount-curve ETL registry
-  and wires pricing-runtime `IndexSpec` registrations through
-  `src/instruments/bootstrap.py`.
+- Attaches `msm_pricing` pricing details for the supported Mexican bond
+  universe.
+- Registers Mexican TIIE/CETE index identities, pricing conventions, and the
+  `VALMER_TIIE_28` curve identity through `src/instruments/bootstrap.py`.
+- Publishes the Valmer TIIE curve through the canonical
+  `msm_pricing.data_nodes.DiscountCurvesNode` path.
 - Includes a project-specific multipage Streamlit dashboard under
   `dashboards/valmer_monitor/`.
 
@@ -34,8 +35,8 @@ At a high level, the flow is:
 3. `get_instrument_conventions(...)` chooses the market conventions and
    `build_qll_bond_from_row(...)` converts the Valmer row into a
    `mainsequence.instruments` bond object.
-4. Missing assets are registered and supported rows receive pricing details via
-   `asset.add_instrument_pricing_details_from_ms_instrument(...)`.
+4. Missing assets are registered and supported rows receive current pricing
+   details through `msm_pricing.api.instruments.persist_current_pricing_details(...)`.
 
 The important consequence is that not every row in the source vector becomes a
 priced asset. The source table is broader than the supported instrument-mapping
@@ -102,9 +103,9 @@ for MkDocs through `mkdocs.yml`.
   README
 - `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up
 - `docs/data-nodes.md`: Valmer DataNode definitions and stored fields
-- `docs/markets.md`: MainSequence assets, constants, and other market-side objects
-- `docs/instruments.md`: vector-to-asset flow, `mainsequence.instruments`
-  bootstrap, and extension points
+- `docs/markets.md`: MainSequence assets and market-side pricing reference data
+- `docs/instruments.md`: vector-to-asset flow, `msm_pricing` bootstrap, and
+  extension points
 - `docs/dashboards.md`: dashboards currently shipped by the project
 - `astro/tasks.md`: current open tasks only
 - `astro/journal.md`: historical implementation and failure log
@@ -130,10 +131,10 @@ For deployment verification and current backend follow-up, see
 
 - `scripts/update_vector_valmer.py`: artifact-backed Valmer vector refresh
 - `scripts/update_tiie_zero_curve.py`: TIIE 28 discount-curve refresh
-- `scripts/validate_runtime.py`: runtime smoke test for curve loading and pricing
+- `scripts/validate_runtime.py`: runtime smoke test for pricing MetaTable rows
 - `src/data_nodes/nodes.py`: Valmer source nodes
 - `src/instruments/vector_to_asset.py`: instrument mapping and pricing-detail construction
-- `src/instruments/bootstrap.py`: constant seeding plus ETL and pricing-runtime registration
+- `src/instruments/bootstrap.py`: current ms-markets pricing bootstrap
 - `src/instruments/rates_curves.py`: Valmer TIIE curve builder
 - `dashboards/valmer_monitor/app.py`: dashboard overview entry point
 - `scheduled_jobs.yaml`: canonical job schedule definitions for the two ETL runners

@@ -1,4 +1,4 @@
-__all__ = ["DEFAULT_CONSTANTS", "register_all", "seed_defaults"]
+__all__ = ["register_all", "seed_defaults"]
 
 
 def __getattr__(name: str):

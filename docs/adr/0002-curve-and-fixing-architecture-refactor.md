@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted / Implemented
 
 ## Date
 
@@ -17,23 +17,30 @@ system.
 
 The implementation that follows this ADR must:
 
-- model reference-rate identities as `msm.api.indices.Index` rows
+- model reference-rate classification as `msm.api.indices.IndexType` rows
+- model reference-rate identities as `msm.api.indices.Index` rows with
+  `index_type=INDEX_TYPE_INTEREST_RATE`
 - model pricing conventions as `IndexConventionDetails` rows keyed by
   `index_uid`
 - model curve identities as `Curve` rows keyed by `curve_unique_identifier`
+- register the current pricing schema graph, including
+  `PricingMarketDataBindingTable`
 - publish curve observations through `msm_pricing.data_nodes.DiscountCurvesNode`
 - publish real fixing observations through `msm_pricing.data_nodes.FixingRatesNode`
   only when a real fixing source exists
 - keep Valmer CSV download and vendor parsing in this connector
 - remove the old standalone asset-indexed curve path
 
-This ADR only creates the refactor plan. It does not execute the refactor.
+This ADR is the refactor plan and implementation checklist. Checked tasks
+document work already completed; unchecked tasks are still required before the
+curve refactor is complete.
 
 ## Context
 
 The repository currently has two curve concepts mixed together:
 
-- a legacy standalone Valmer curve DataNode in `src/data_nodes/nodes.py`
+- a legacy standalone Valmer curve DataNode that previously lived in
+  `src/data_nodes/nodes.py`
 - a standard discount-curve runner in `scripts/update_tiie_zero_curve.py`
 - Valmer curve parsing in `src/instruments/rates_curves.py`
 - constant and runtime registry setup in `src/instruments/bootstrap.py`
@@ -53,15 +60,24 @@ That is no longer the right architecture.
 The current `ms-markets` pricing architecture separates static identities from
 time-varying observations:
 
+- `msm.api.indices.IndexType` / `msm.models.IndexTypeTable`
+  define the canonical index classification keys. TIIE and CETE reference
+  rates must use the built-in `INDEX_TYPE_INTEREST_RATE` classification.
 - `msm.api.indices.Index` / `msm.models.IndexTable`
   define canonical reference index identities such as TIIE 28D, TIIE 91D,
-  TIIE 182D, TIIE overnight, and CETE tenors.
+  TIIE 182D, TIIE overnight, and CETE tenors. The current API requires
+  `unique_identifier`, `index_type`, and `display_name`.
 - `msm_pricing.api.index_convention_details.IndexConventionDetails` /
   `IndexConventionDetailsTable`
   store pricing conventions keyed 1:1 by `index_uid`.
 - `msm_pricing.api.curves.Curve` / `CurveTable`
   store curve identities keyed by `unique_identifier` and linked by foreign key
   to `IndexConventionDetailsTable.index_uid`.
+- `msm_pricing.bootstrap.create_pricing_schemas(...)`
+  registers the pricing MetaTable dependency graph in order:
+  `AssetTable`, `IndexTypeTable`, `IndexTable`,
+  `IndexConventionDetailsTable`, `CurveTable`,
+  `AssetCurrentPricingDetailsTable`, and `PricingMarketDataBindingTable`.
 - `msm.data_nodes.indices.IndexTimestampedDataNode`
   is the base for timestamped index facts keyed by
   `INDEX_UNIQUE_IDENTIFIER_DIMENSION`.
@@ -78,11 +94,12 @@ time-varying observations:
 
 Refactor the Valmer curve path to the current pricing architecture:
 
-1. Use `Index` for reference-rate identity.
-2. Use `IndexConventionDetails` for pricing convention payloads.
-3. Use `Curve` for static curve identity and interpolation policy.
-4. Use `DiscountCurvesNode` for Valmer TIIE zero-curve observations.
-5. Use `FixingRatesNode` only for real fixing observations.
+1. Use `IndexType` to ensure the built-in `interest_rate` type exists.
+2. Use `Index` for Mexican reference-rate identity.
+3. Use `IndexConventionDetails` for pricing convention payloads.
+4. Use `Curve` for static curve identity and interpolation policy.
+5. Use `DiscountCurvesNode` for Valmer TIIE zero-curve observations.
+6. Use `FixingRatesNode` only for real fixing observations.
 
 The Valmer connector should not register TIIE, CETE, or curves as `Asset`
 rows. Curves and fixings are not asset-indexed data in this architecture.
@@ -97,7 +114,13 @@ stored in MetaTables.
 
 ### Reference Indexes
 
-Create or upsert `Index` rows for the reference rates this connector needs:
+Create or upsert the built-in interest-rate `IndexType` before creating
+reference index rows:
+
+- `IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())`
+
+Create or upsert `Index` rows for the Mexican reference rates this connector
+needs:
 
 - `TIIE_OVERNIGHT`
 - `TIIE_28`
@@ -110,10 +133,18 @@ Create or upsert `Index` rows for the reference rates this connector needs:
 Each row should include:
 
 - `unique_identifier`
+- `index_type`: `INDEX_TYPE_INTEREST_RATE`
 - `display_name`
-- `provider`, when useful
-- `metadata_json`, for Valmer/Mexico labels that should not become model
-  columns
+- `description`, when useful
+- `provider`, only when the row is provider-owned
+- `metadata_json`, only for stable non-pricing labels that are not already
+  model columns
+
+The TIIE and CETE rows are Mexican reference-rate identities, not Valmer
+identities. Do not persist Valmer source details, tenor, calendar,
+business-day convention, day-count convention, settlement days, or other
+pricing mechanics on the `Index` row. Those belong in
+`IndexConventionDetails`.
 
 ### Index Convention Details
 
@@ -141,9 +172,9 @@ Create or upsert a `Curve` row for the Valmer TIIE curve:
 
 - `unique_identifier`: `VALMER_TIIE_28`
 - `display_name`: `Valmer TIIE 28 zero curve`
-- `curve_type`: `zero`
-- `index_uid`: the `IndexConventionDetails.index_uid` for the relevant TIIE
-  index
+- `curve_type`: `discount`
+- `index_uid`: the `Index.uid` for the relevant TIIE index, which must already
+  have a matching `IndexConventionDetails.index_uid`
 - `interpolation_method`: the chosen core-supported interpolation identifier
 - `compounding`: the chosen core-supported compounding identifier
 - `source`: `valmer`
@@ -202,10 +233,15 @@ claim it owns fixing publication.
 
 ### Remove Or Deprecate Legacy Standalone Curve Node
 
-`src/data_nodes/nodes.py` currently contains `MexDerTIIE28Zero`.
+`src/data_nodes/nodes.py` previously contained `MexDerTIIE28Zero`.
 
-That class should be removed or left as a temporary compatibility wrapper only
-after the dashboard and scripts have moved to `DiscountCurvesNode`.
+Handle it in this order:
+
+1. Move real Valmer TIIE curve publication to `DiscountCurvesNode`.
+2. After the runner and dashboard use `DiscountCurvesNode`, either delete
+   `MexDerTIIE28Zero` or leave it only as a temporary compatibility wrapper
+   with an explicit deprecation note.
+3. Do not add new callers of `MexDerTIIE28Zero` after this refactor starts.
 
 Reasons:
 
@@ -249,6 +285,7 @@ It should not:
 Replace this with a pricing-bootstrap module that:
 
 - ensures pricing schemas through `msm_pricing.bootstrap.create_pricing_schemas`
+- upserts the built-in `interest_rate` `IndexType`
 - upserts `Index` rows
 - upserts `IndexConventionDetails` rows
 - upserts `Curve` rows
@@ -271,7 +308,7 @@ It should import from `msm_pricing.data_nodes`:
 
 It should:
 
-- bootstrap `Index`, `IndexConventionDetails`, and `Curve` rows
+- bootstrap `IndexType`, `Index`, `IndexConventionDetails`, and `Curve` rows
 - instantiate `CurveConfig(curve_unique_identifier="VALMER_TIIE_28")`
 - attach `build_tiie_valmer` through `DiscountCurvesNode.set_curve_builder(...)`
 - execute the node through the normal DataNode update path
@@ -290,25 +327,30 @@ It should not reference:
 
 ## Implementation Tasks
 
-- [x] Add a curve/index pricing bootstrap module for Valmer, likely
+- [x] Add a curve/index pricing bootstrap module used by Valmer, likely
   `src/instruments/curve_bootstrap.py`.
-- [x] Upsert required `Index` rows for TIIE and CETE reference indexes.
-- [ ] Upsert `IndexConventionDetails` rows for each supported reference index.
-- [ ] Upsert `Curve` row `VALMER_TIIE_28` with interpolation, compounding,
+- [x] Upsert the built-in `interest_rate` `IndexType` through
+  `INDEX_TYPE_INTEREST_RATE_DEFINITION`.
+- [x] Upsert required `Index` rows for TIIE and CETE reference indexes with
+  `index_type=INDEX_TYPE_INTEREST_RATE`.
+- [x] Upsert `IndexConventionDetails` rows for each supported reference index.
+- [x] Upsert `Curve` row `VALMER_TIIE_28` with interpolation, compounding,
   source, and metadata.
-- [ ] Refactor `build_tiie_valmer(...)` to implement the
+- [x] Refactor `build_tiie_valmer(...)` to implement the
   `DiscountCurveBuilder` contract and return uncompressed curve dictionaries.
-- [ ] Replace `scripts/update_tiie_zero_curve.py` with the new
+- [x] Replace `scripts/update_tiie_zero_curve.py` with the new
   `msm_pricing.data_nodes.DiscountCurvesNode` import path and configuration.
-- [ ] Remove `register_etl_builders(...)` and old
+- [x] Remove `register_etl_builders(...)` and old
   `mainsequence.instruments.pricing_models` index-spec registration from
   `src/instruments/bootstrap.py`.
-- [ ] Remove or explicitly deprecate `MexDerTIIE28Zero`.
-- [ ] Update dashboard curve health to read the canonical discount-curve
+- [x] After the runner/dashboard moved to `DiscountCurvesNode`, delete
+  `MexDerTIIE28Zero` or leave it only as an explicitly deprecated temporary
+  wrapper.
+- [x] Update dashboard curve health to read the canonical discount-curve
   DataNode and decode through core `curve_codec`.
-- [ ] Add a real `FixingRatesNode` builder only if a source of actual fixing
-  observations is introduced.
-- [ ] Update documentation in `docs/data-nodes.md`, `docs/instruments.md`, and
+- [x] Do not add a `FixingRatesNode` builder because this repository still has
+  no source of actual fixing observations.
+- [x] Update documentation in `docs/data-nodes.md`, `docs/instruments.md`, and
   dashboard docs to describe Curve and Index MetaTable identities instead of
   constants and asset-indexed curve rows.
 
@@ -341,15 +383,21 @@ Dashboard, script, and validation code must be updated accordingly.
 Reference-rate lookup changes from:
 
 - old: Main Sequence constants and old pricing registry
-- new: `Index`, `IndexConventionDetails`, and `Curve` MetaTables
+- new: `IndexType`, `Index`, `IndexConventionDetails`, and `Curve`
+  MetaTables
 
 ## Verification Plan
 
 Do not mark the implementation complete until these checks pass:
 
-- pricing schemas register or attach with `IndexTable`,
-  `IndexConventionDetailsTable`, and `CurveTable`
+- pricing schemas register or attach with `IndexTypeTable`, `IndexTable`,
+  `IndexConventionDetailsTable`, `CurveTable`, and
+  `PricingMarketDataBindingTable`
+- `IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())`
+  returns or preserves an `interest_rate` row
 - `Index` rows exist for supported TIIE and CETE reference indexes
+- every supported TIIE and CETE `Index` row has
+  `index_type=INDEX_TYPE_INTEREST_RATE`
 - `IndexConventionDetails` rows exist for supported pricing indexes
 - `Curve.get_by_unique_identifier("VALMER_TIIE_28")` returns a curve row
 - the Valmer TIIE builder returns a frame with `time_index`,

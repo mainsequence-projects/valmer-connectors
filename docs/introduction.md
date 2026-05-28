@@ -10,10 +10,12 @@ fixed income.
 - Builds or reuses MainSequence `Asset` objects keyed as
   `tipovalor_emisora_serie`.
 - Attaches pricing details for the supported Mexican bond universe through
-  `asset.add_instrument_pricing_details_from_ms_instrument(...)`.
-- Registers `ZERO_CURVE__VALMER_TIIE_28` into the discount-curve ETL registry.
-- Registers pricing-runtime `IndexSpec` wiring through
+  `msm_pricing.api.instruments.persist_current_pricing_details(...)`.
+- Registers Mexican TIIE/CETE `Index` and `IndexConventionDetails` rows plus
+  the Valmer `VALMER_TIIE_28` `Curve` row through
   `src/instruments/bootstrap.py`.
+- Publishes the Valmer TIIE curve through
+  `msm_pricing.data_nodes.DiscountCurvesNode`.
 - Ships a multipage Streamlit dashboard for source coverage, pricing hydration,
   and curve-health monitoring.
 

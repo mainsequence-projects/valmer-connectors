@@ -1,4 +1,3 @@
-import io
 import os
 import re
 from collections.abc import Iterable
@@ -10,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pytz
 import QuantLib as ql
-import requests
 import structlog
 from msm.api.base import operation_result_rows
 from msm.api.assets import Asset as MarketsAsset
@@ -18,7 +16,6 @@ from msm.constants import ASSET_TYPE_BOND
 from msm.repositories.crud import search_model
 from msm_pricing.api.instruments import persist_current_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
-from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
 from tqdm import tqdm
 
 import mainsequence.client as msc
@@ -541,98 +538,6 @@ def _prepare_frame_for_target_bond_rules(df: pd.DataFrame) -> pd.DataFrame:
     if not rename_map:
         return df.copy()
     return df.rename(columns=rename_map).copy()
-
-
-class MexDerTIIE28Zero(DataNode):
-    """Download and return daily MEXDERSWAP_IRSTIIEPR swap rates from valmer.com.mx
-
-    Output:
-        - Index: DatetimeIndex named 'time_index' (UTC)
-        - Columns: cleaned from the CSV (lowercase, <=63 chars, no datetime columns)
-    """
-
-    def dependencies(self):
-        return {}
-
-    def get_asset_list(self):
-        tiie_asset = msc.Asset.get(unique_identifier="TIIE_28")
-        self.tiie_asset = tiie_asset
-        return [tiie_asset]
-
-    def update(self):
-        # Download CSV from source
-        url = "https://valmer.com.mx/VAL/Web_Benchmarks/MEXDERSWAP_IRSTIIEPR.csv"
-        response = requests.get(url)
-        response.raise_for_status()
-
-        # Load CSV directly from bytes, using correct encoding
-        names = ["id", "curve_name", "asof_yyMMdd", "idx", "zero_rate"]
-        # STRICT: comma-separated, headerless, exactly these six columns
-        df = pd.read_csv(
-            io.BytesIO(response.content),
-            header=None,
-            names=names,
-            sep=",",
-            engine="c",
-            encoding="latin1",
-            dtype=str,
-        )
-        # pick a rate column
-
-        df["asof_yyMMdd"] = pd.to_datetime(df["asof_yyMMdd"], format="%y%m%d")
-        df["asof_yyMMdd"] = df["asof_yyMMdd"].dt.tz_localize("UTC")
-
-        base_dt = df["asof_yyMMdd"].iloc[0] - timedelta(days=1)
-
-        if (
-            self.update_statistics.asset_time_statistics[self.tiie_asset.unique_identifier]
-            >= base_dt
-        ):
-            return pd.DataFrame()
-
-        df["idx"] = df["idx"].astype(int)
-        df["days_to_maturity"] = (df["asof_yyMMdd"] - base_dt).dt.days
-        df["zero_rate"] = df["zero_rate"].astype(float) / 100
-
-        df["time_index"] = base_dt
-        df["unique_identifier"] = self.tiie_asset.unique_identifier
-
-        grouped = (
-            df.groupby(["time_index", "unique_identifier"])
-            .apply(lambda g: g.set_index("days_to_maturity")["zero_rate"].to_dict())
-            .rename("curve")
-            .reset_index()
-        )
-
-        grouped["curve"] = grouped["curve"].apply(compress_curve_to_string)
-
-        # 3. Final index and structure (your original code)
-        grouped = grouped.set_index(["time_index", "unique_identifier"])
-
-        return grouped
-
-    def get_table_metadata(self) -> msc.TableMetaData:
-        return msc.TableMetaData(
-            identifier="valmer_mexder_tiie28_zero_curve",
-            data_frequency_id=msc.DataFrequency.one_d,
-            description="Benchmark swap rates (MEXDERSWAP_IRSTIIEPR) from Valmer (valmer.com.mx)",
-        )
-
-    def get_column_metadata(self) -> list[msc.ColumnMetaData]:
-        return _build_column_metadata(
-            (
-                ValmerColumnSpec(
-                    source_name=None,
-                    column_name="curve",
-                    dtype="string",
-                    transform="string",
-                    label="Curve Payload",
-                    description=(
-                        "Base64-encoded gzip payload containing the zero-curve dictionary."
-                    ),
-                ),
-            )
-        )
 
 
 class ImportValmer(DataNode):

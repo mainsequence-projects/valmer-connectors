@@ -1,19 +1,17 @@
-from mainsequence.instruments.interest_rates.etl.nodes import CurveConfig, DiscountCurvesNode
-from src.instruments.bootstrap import register_all
+from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
+
+from src.instruments.curve_bootstrap import (
+    VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    bootstrap_valmer_curve_pricing,
+)
+from src.instruments.rates_curves import build_tiie_valmer
 
 
 def main() -> None:
-    register_all()
-    configs = [
-        CurveConfig(
-            curve_const="ZERO_CURVE__VALMER_TIIE_28",
-            name="Discount Curve TIIE 28 Mexder Valmer",
-        ),
-    ]
-
-    for cfg in configs:
-        node = DiscountCurvesNode(curve_config=cfg)
-        node.run(force_update=True)
+    bootstrap_valmer_curve_pricing()
+    cfg = CurveConfig(curve_unique_identifier=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER)
+    node = DiscountCurvesNode(curve_config=cfg).set_curve_builder(build_tiie_valmer)
+    node.run(force_update=True)
 
 
 if __name__ == "__main__":

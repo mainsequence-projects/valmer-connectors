@@ -7,7 +7,8 @@ This repository interacts with MainSequence in these ways:
 - reads Valmer source artifacts from a bucket
 - registers or reuses custom `Asset` objects
 - attaches pricing details to target bond assets
-- refreshes a Valmer TIIE 28 discount curve
+- refreshes a Valmer TIIE 28 curve through the canonical `discount_curves`
+  DataNode
 
 ## Assets
 
@@ -21,24 +22,24 @@ New assets are registered with the same value for:
 - `snapshot.name`
 - `snapshot.ticker`
 
-## Constants
+## Pricing Reference Data
 
-The bootstrap module seeds or resolves these constants:
+The bootstrap module upserts these Mexican reference-rate `Index` rows with
+`index_type=interest_rate`:
 
-- `REFERENCE_RATE__TIIE_OVERNIGHT`
-- `REFERENCE_RATE__TIIE_28`
-- `REFERENCE_RATE__TIIE_91`
-- `REFERENCE_RATE__TIIE_182`
-- `REFERENCE_RATE__CETE_28`
-- `REFERENCE_RATE__CETE_91`
-- `REFERENCE_RATE__CETE_182`
-- `ZERO_CURVE__VALMER_TIIE_28`
+- `TIIE_OVERNIGHT`
+- `TIIE_28`
+- `TIIE_91`
+- `TIIE_182`
+- `CETE_28`
+- `CETE_91`
+- `CETE_182`
 
-The CETE pricing registration can also use:
+Pricing conventions are stored in `IndexConventionDetails`, and the Valmer
+curve identity is stored as `Curve.unique_identifier = "VALMER_TIIE_28"`.
 
-- `ZERO_CURVE__BANXICO_M_BONOS_OTR`
-
-when that external curve constant already exists in the runtime.
+The project no longer uses Main Sequence constants as the durable identity
+layer for reference rates or curves.
 
 ## Objects Not Created
 

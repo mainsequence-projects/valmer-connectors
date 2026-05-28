@@ -9,6 +9,13 @@ import streamlit as st
 import mainsequence.client as msc
 from msm.api.base import operation_result_rows
 from msm.repositories.crud import search_model
+from msm_pricing.data_interface.data_interface import dimension_range_for_identity
+from msm_pricing.data_nodes.curve_codec import decompress_string_to_curve
+from msm_pricing.data_nodes.curves import CURVE_UNIQUE_IDENTIFIER_DIMENSION
+from msm_pricing.settings import (
+    PRICING_CONCEPT_DISCOUNT_CURVES,
+    default_pricing_market_data_identifier,
+)
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from mainsequence.client.models_tdag import DataNodeStorage
 from mainsequence.dashboards.streamlit.components import (
@@ -16,18 +23,15 @@ from mainsequence.dashboards.streamlit.components import (
     sidebar_logged_user_username,
 )
 from mainsequence.tdag import APIDataNode
-from src.data_nodes.nodes import ImportValmer, MexDerTIIE28Zero
-from src.instruments.bootstrap import (
-    OPTIONAL_EXTERNAL_CURVE_CONST,
-    REQUIRED_CURVE_CONSTS,
-    REQUIRED_INDEX_CONSTS,
-)
+from src.data_nodes.nodes import ImportValmer
+from src.instruments.curve_bootstrap import VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER
 from src.instruments.asset_identity import resolve_valmer_assets
 from src.meta_tables.valmer_asset_details import resolve_valmer_asset_details
 
 VECTOR_NODE_IDENTIFIER = "vector_de_precios_valmer"
-STANDALONE_CURVE_NODE_IDENTIFIER = "valmer_mexder_tiie28_zero_curve"
-CURVE_CONST_NAME = REQUIRED_CURVE_CONSTS[0]
+DISCOUNT_CURVE_NODE_IDENTIFIER = default_pricing_market_data_identifier(
+    PRICING_CONCEPT_DISCOUNT_CURVES
+)
 
 NUMERIC_VECTOR_COLUMNS = (
     "open",
@@ -439,22 +443,20 @@ def load_pricing_health(lookback_days: int = 14) -> dict[str, object]:
     }
 
 
-def _load_standard_curve_history(lookback_days: int = 30) -> QueryResult:
+def _load_discount_curve_history(lookback_days: int = 30) -> QueryResult:
     try:
-        instrument_configuration = msc.InstrumentsConfiguration.filter()[0]
-        if instrument_configuration.discount_curves_storage_node is None:
-            raise RuntimeError("Instruments configuration is missing discount_curves_storage_node.")
-        curve_uid = msc.Constant.get_value(name=CURVE_CONST_NAME)
-        node = APIDataNode.build_from_table_id(table_id=instrument_configuration.discount_curves_storage_node)
-        frame = node.get_ranged_data_per_asset(
-            range_descriptor={
-                curve_uid: {
+        node = APIDataNode.build_from_identifier(identifier=DISCOUNT_CURVE_NODE_IDENTIFIER)
+        frame = node.get_df_between_dates(
+            dimension_range_map=dimension_range_for_identity(
+                identity_dimension=CURVE_UNIQUE_IDENTIFIER_DIMENSION,
+                identity=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+                date_info={
                     "start_date": utc_now() - timedelta(days=lookback_days),
                     "start_date_operand": ">=",
                     "end_date": utc_now(),
                     "end_date_operand": "<=",
-                }
-            }
+                },
+            )
         ).reset_index()
         if "time_index" in frame.columns:
             frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True, errors="coerce")
@@ -466,11 +468,7 @@ def _load_standard_curve_history(lookback_days: int = 30) -> QueryResult:
 @st.cache_data(ttl=300, show_spinner=False)
 def load_curve_health(lookback_days: int = 30) -> dict[str, QueryResult]:
     return {
-        "standard": _load_standard_curve_history(lookback_days=lookback_days),
-        "standalone": _query_node_by_identifier(
-            STANDALONE_CURVE_NODE_IDENTIFIER,
-            lookback_days=lookback_days,
-        ),
+        "discount_curves": _load_discount_curve_history(lookback_days=lookback_days),
     }
 
 
@@ -483,7 +481,7 @@ def latest_curve_points(frame: pd.DataFrame) -> pd.DataFrame:
     if isinstance(payload, dict):
         points = payload
     else:
-        points = MexDerTIIE28Zero.decompress_string_to_curve(payload)
+        points = decompress_string_to_curve(payload)
     points_frame = (
         pd.Series(points, name="zero_rate")
         .rename_axis("days_to_maturity")
@@ -561,9 +559,8 @@ def selected_asset_snapshot(frame: pd.DataFrame, unique_identifier: str | None) 
 
 
 def runtime_notes() -> list[str]:
-    notes = [f"Curve constant wired locally: {', '.join(REQUIRED_CURVE_CONSTS)}."]
-    notes.append(f"Pricing index specs wired locally: {', '.join(REQUIRED_INDEX_CONSTS)}.")
-    notes.append(
-        f"CETE pricing registrations are enabled only when `{OPTIONAL_EXTERNAL_CURVE_CONST}` exists in the runtime."
-    )
-    return notes
+    return [
+        f"Discount curve DataNode identifier: `{DISCOUNT_CURVE_NODE_IDENTIFIER}`.",
+        f"Valmer curve unique identifier: `{VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER}`.",
+        "TIIE and CETE identities are core `Index` rows with `index_type=interest_rate`.",
+    ]

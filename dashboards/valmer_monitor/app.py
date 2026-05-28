@@ -54,7 +54,8 @@ curve_health = load_curve_health()
 latest_vector = (
     latest_vector_snapshot(vector_history.data) if vector_history.data is not None else pd.DataFrame()
 )
-standard_curve_points = latest_curve_points(curve_health["standard"].data)
+discount_curve_result = curve_health["discount_curves"]
+standard_curve_points = latest_curve_points(discount_curve_result.data)
 selected_uid = render_sidebar_context(latest_vector)
 target_bonds = pricing_health.get("target", pd.DataFrame())
 
@@ -85,7 +86,9 @@ render_kpi_cards(
         (
             "Curve Points",
             str(len(standard_curve_points.index)) if not standard_curve_points.empty else "0",
-            curve_health["standard"].storage_hash or curve_health["standard"].error or "Standard curve path unavailable.",
+            discount_curve_result.storage_hash
+            or discount_curve_result.error
+            or "Discount curve path unavailable.",
         ),
     ]
 )

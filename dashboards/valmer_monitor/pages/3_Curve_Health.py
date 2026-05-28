@@ -34,7 +34,7 @@ run_page(
 
 render_title(
     "Curve Health",
-    "Monitor the wired standard discount-curve path and, when present, inspect the standalone Valmer curve table.",
+    "Monitor the canonical discount-curves DataNode for the Valmer TIIE curve.",
 )
 
 lookback_days = st.slider("Lookback days", min_value=1, max_value=90, value=30)

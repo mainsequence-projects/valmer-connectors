@@ -11,8 +11,8 @@ The dashboard now exposes:
 - `pages/1_Source_Data.py`: recent `vector_de_precios_valmer` coverage plus
   source exploration for a focused asset
 - `pages/2_Pricing_Hydration.py`: asset pricing-detail hydration status
-- `pages/3_Curve_Health.py`: standard curve checks plus optional visibility into
-  the standalone curve table when it already exists
+- `pages/3_Curve_Health.py`: canonical `discount_curves` DataNode checks for
+  the Valmer TIIE curve
 
 The app reuses MainSequence Streamlit scaffolding and sidebar components for
 logged-user context and asset search.

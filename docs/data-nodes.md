@@ -63,25 +63,14 @@ For large data volumes:
 `ValmerAssetDetailsTable`, and updates pricing details for the target bond
 subset selected by `_get_target_bonds(...)`.
 
-## Standalone Curve Node: `MexDerTIIE28Zero`
-
-The repository also contains a standalone curve node:
-
-- `valmer_mexder_tiie28_zero_curve`
-
-Its metadata is now stable and describes the stored compressed curve payload as
-text instead of deriving metadata by executing a live update.
-
-## Execution Note
+## Curve Node
 
 This repo only wires one curve execution path:
 
-- the standard `DiscountCurvesNode` flow wired through
+- the canonical `msm_pricing.data_nodes.DiscountCurvesNode` flow wired through
   `scripts/update_tiie_zero_curve.py`
 
-`MexDerTIIE28Zero` is present as a standalone implementation, but there is no
-checked-in runner that instantiates or executes it.
-
-The dashboard can read `valmer_mexder_tiie28_zero_curve` if that table already
-exists in the backend, but this repository does not publish it as part of the
-checked-in job flow.
+The Valmer TIIE curve is keyed by `curve_unique_identifier`, not asset
+`unique_identifier`, and writes to the canonical `discount_curves` DataNode.
+The old standalone `valmer_mexder_tiie28_zero_curve` path has been removed from
+the codebase and should be treated as legacy backend data only.

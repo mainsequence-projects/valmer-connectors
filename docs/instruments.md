@@ -8,21 +8,24 @@ The project now keeps runtime wiring in:
 
 `register_all()` does three things explicitly:
 
-- seeds project-owned constants
-- registers the Valmer discount-curve ETL builder
-- registers pricing-runtime `IndexSpec` entries for the TIIE family
+- registers the current ms-markets pricing schema graph
+- upserts the built-in `interest_rate` `IndexType`
+- upserts Mexican TIIE/CETE `Index` and `IndexConventionDetails` rows
+- upserts the Valmer `VALMER_TIIE_28` `Curve` row
 
 ## Pricing Runtime Registration
 
-The TIIE pricing registrations use:
+The TIIE/CETE pricing registrations now use core ms-markets MetaTables:
 
-- curve constant: `ZERO_CURVE__VALMER_TIIE_28`
-- index constants: `REFERENCE_RATE__TIIE_OVERNIGHT`,
-  `REFERENCE_RATE__TIIE_28`, `REFERENCE_RATE__TIIE_91`,
-  `REFERENCE_RATE__TIIE_182`
+- `IndexType`: `interest_rate`
+- `Index`: `TIIE_OVERNIGHT`, `TIIE_28`, `TIIE_91`, `TIIE_182`,
+  `CETE_28`, `CETE_91`, `CETE_182`
+- `IndexConventionDetails`: pricing conventions keyed by `index_uid`
+- `Curve`: `VALMER_TIIE_28`
 
-If `ZERO_CURVE__BANXICO_M_BONOS_OTR` already exists in the runtime, the same
-bootstrap also registers CETE pricing indices against that external curve.
+The project no longer registers old
+`mainsequence.instruments.pricing_models` `IndexSpec` entries or old
+discount-curve ETL registry builders.
 
 ## Vector-To-Asset Flow
 
@@ -47,8 +50,8 @@ The flow is:
 5. `_register_and_update_pricing(...)` calls:
    `get_instrument_conventions(...)` to choose QuantLib conventions, then
    `build_qll_bond_from_row(...)` to build the actual bond object.
-6. The built instrument is attached to the asset with
-   `asset.add_instrument_pricing_details_from_ms_instrument(...)`.
+6. The built instrument is persisted through the current
+   `msm_pricing.api.instruments.persist_current_pricing_details(...)` path.
 
 That means the source vector ingestion and the pricing-detail hydration are
 related but not identical responsibilities. `ImportValmer.update()` publishes
@@ -157,8 +160,9 @@ Use:
 python scripts/validate_runtime.py
 ```
 
-The script registers the runtime, loads the TIIE 28 index curve without
-hydrating fixings, and prices one sample fixed-rate bond as a smoke test.
+The script bootstraps the current `IndexType`, `Index`,
+`IndexConventionDetails`, and `Curve` rows and prints the registered identifiers
+as a smoke test.
 
 ## Remaining Limitation
 
