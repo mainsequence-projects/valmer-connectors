@@ -15,7 +15,7 @@ public Valmer MexDer benchmark CSV.
 - Attaches `msm_pricing` pricing details for the supported Mexican bond
   universe.
 - Registers Mexican TIIE/CETE index identities, pricing conventions, and the
-  `VALMER_TIIE_28` curve identity through `src/instruments/bootstrap.py`.
+  `VALMER_TIIE_28` curve identity through `src/valmer_connectors/instruments/bootstrap.py`.
 - Publishes the Valmer TIIE curve through the canonical
   `msm_pricing.data_nodes.DiscountCurvesNode` path.
 - Includes a project-specific multipage Streamlit dashboard under
@@ -24,8 +24,8 @@ public Valmer MexDer benchmark CSV.
 ## How Vector Rows Become Assets
 
 The pricing-hydration path is centered on
-`src/instruments/vector_to_asset.py` and is triggered from
-`ImportValmer.get_asset_list()` in `src/data_nodes/nodes.py`.
+`src/valmer_connectors/instruments/vector_to_asset.py` and is triggered from
+`ImportValmer.get_asset_list()` in `src/valmer_connectors/data_nodes/nodes.py`.
 
 At a high level, the flow is:
 
@@ -34,7 +34,7 @@ At a high level, the flow is:
 2. The latest row per asset is filtered down to the supported bond universe.
 3. `get_instrument_conventions(...)` chooses the market conventions and
    `build_qll_bond_from_row(...)` converts the Valmer row into a
-   `mainsequence.instruments` bond object.
+   `msm_pricing.instruments` bond object.
 4. Missing assets are registered and supported rows receive current pricing
    details through `msm_pricing.api.instruments.persist_current_pricing_details(...)`.
 
@@ -47,7 +47,7 @@ surface.
 To extend the current vector-to-asset path, change the smallest layer that owns
 the behavior:
 
-- Add or correct a vendor benchmark mapping in `src/settings.py` via
+- Add or correct a vendor benchmark mapping in `src/valmer_connectors/settings.py` via
   `SUBYACENTE_TO_INDEX_MAP`.
 - Expand the set of rows that should receive pricing details in
   `ImportValmer._get_target_bonds(...)`.
@@ -132,9 +132,9 @@ For deployment verification and current backend follow-up, see
 - `scripts/update_vector_valmer.py`: artifact-backed Valmer vector refresh
 - `scripts/update_tiie_zero_curve.py`: TIIE 28 discount-curve refresh
 - `scripts/validate_runtime.py`: runtime smoke test for pricing MetaTable rows
-- `src/data_nodes/nodes.py`: Valmer source nodes
-- `src/instruments/vector_to_asset.py`: instrument mapping and pricing-detail construction
-- `src/instruments/bootstrap.py`: current ms-markets pricing bootstrap
-- `src/instruments/rates_curves.py`: Valmer TIIE curve builder
+- `src/valmer_connectors/data_nodes/nodes.py`: Valmer source nodes
+- `src/valmer_connectors/instruments/vector_to_asset.py`: instrument mapping and pricing-detail construction
+- `src/valmer_connectors/instruments/bootstrap.py`: current ms-markets pricing bootstrap
+- `src/valmer_connectors/instruments/rates_curves.py`: Valmer TIIE curve builder
 - `dashboards/valmer_monitor/app.py`: dashboard overview entry point
 - `scheduled_jobs.yaml`: canonical job schedule definitions for the two ETL runners

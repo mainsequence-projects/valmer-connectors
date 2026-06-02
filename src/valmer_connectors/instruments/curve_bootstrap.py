@@ -228,14 +228,38 @@ def mexican_reference_index_payloads(
     return tuple(definition.to_index_payload() for definition in definitions)
 
 
-def create_valmer_curve_pricing_schemas(**schema_kwargs: Any):
-    """Create the current markets and pricing schemas needed by the curve bootstrap."""
+def attach_valmer_curve_pricing_runtime(
+    *,
+    markets_models: Sequence[Any] | None = None,
+    **runtime_kwargs: Any,
+):
+    """Attach markets/pricing runtime objects needed by Valmer curve bootstrap."""
 
     import msm
     from msm_pricing.bootstrap import create_pricing_schemas
 
-    msm.start_engine(models=["AssetType", "Asset", "IndexType", "Index"], **schema_kwargs)
-    return create_pricing_schemas(**schema_kwargs)
+    models = ["AssetType", "Asset", "IndexType", "Index"]
+    if markets_models is None:
+        from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
+
+        markets_models = [ValmerAssetDetailsTable]
+    if markets_models is not None:
+        models.extend(markets_models)
+    msm.start_engine(models=models, **runtime_kwargs)
+    return create_pricing_schemas(**runtime_kwargs)
+
+
+def create_valmer_curve_pricing_schemas(
+    *,
+    markets_models: Sequence[Any] | None = None,
+    **runtime_kwargs: Any,
+):
+    """Compatibility wrapper for the old schema-oriented helper name."""
+
+    return attach_valmer_curve_pricing_runtime(
+        markets_models=markets_models,
+        **runtime_kwargs,
+    )
 
 
 def upsert_interest_rate_index_type() -> Any:
@@ -248,15 +272,18 @@ def upsert_interest_rate_index_type() -> Any:
 def upsert_mexican_reference_indexes(
     definitions: Sequence[MexicanReferenceIndexDefinition] = MEXICAN_REFERENCE_INDEX_DEFINITIONS,
     *,
-    create_schemas: bool = True,
-    **schema_kwargs: Any,
+    attach_runtime: bool = True,
+    create_schemas: bool | None = None,
+    **runtime_kwargs: Any,
 ) -> dict[str, Any]:
     """Upsert the core Index rows required by Mexican curve and fixing code."""
 
     from msm.api.indices import Index
 
-    if create_schemas:
-        create_valmer_curve_pricing_schemas(**schema_kwargs)
+    if create_schemas is not None:
+        attach_runtime = create_schemas
+    if attach_runtime:
+        attach_valmer_curve_pricing_runtime(**runtime_kwargs)
 
     upsert_interest_rate_index_type()
     upserted = {}
@@ -272,14 +299,17 @@ def upsert_mexican_index_convention_details(
     ),
     *,
     indexes: Mapping[str, Any] | None = None,
-    create_schemas: bool = True,
-    **schema_kwargs: Any,
+    attach_runtime: bool = True,
+    create_schemas: bool | None = None,
+    **runtime_kwargs: Any,
 ) -> dict[str, Any]:
     from msm_pricing.api import IndexConventionDetails
 
+    if create_schemas is not None:
+        attach_runtime = create_schemas
     resolved_indexes = indexes or upsert_mexican_reference_indexes(
-        create_schemas=create_schemas,
-        **schema_kwargs,
+        attach_runtime=attach_runtime,
+        **runtime_kwargs,
     )
     upserted = {}
     for definition in definitions:
@@ -295,18 +325,21 @@ def upsert_valmer_tiie_curve(
     definition: ValmerCurveDefinition = VALMER_TIIE_28_CURVE_DEFINITION,
     *,
     indexes: Mapping[str, Any] | None = None,
-    create_schemas: bool = True,
-    **schema_kwargs: Any,
+    attach_runtime: bool = True,
+    create_schemas: bool | None = None,
+    **runtime_kwargs: Any,
 ) -> Any:
     from msm_pricing.api import Curve
 
+    if create_schemas is not None:
+        attach_runtime = create_schemas
     resolved_indexes = indexes or upsert_mexican_reference_indexes(
-        create_schemas=create_schemas,
-        **schema_kwargs,
+        attach_runtime=attach_runtime,
+        **runtime_kwargs,
     )
     upsert_mexican_index_convention_details(
         indexes=resolved_indexes,
-        create_schemas=False,
+        attach_runtime=False,
     )
     index = resolved_indexes[definition.index_unique_identifier]
     return Curve.upsert(definition.to_curve_payload(index_uid=index.uid))
@@ -314,23 +347,30 @@ def upsert_valmer_tiie_curve(
 
 def bootstrap_valmer_curve_pricing(
     *,
-    create_schemas: bool = True,
-    **schema_kwargs: Any,
+    attach_runtime: bool = True,
+    create_schemas: bool | None = None,
+    markets_models: Sequence[Any] | None = None,
+    **runtime_kwargs: Any,
 ) -> dict[str, Any]:
     """Bootstrap the MetaTable rows required by Valmer curve publication."""
 
-    if create_schemas:
-        create_valmer_curve_pricing_schemas(**schema_kwargs)
+    if create_schemas is not None:
+        attach_runtime = create_schemas
+    if attach_runtime:
+        attach_valmer_curve_pricing_runtime(
+            markets_models=markets_models,
+            **runtime_kwargs,
+        )
 
     index_type = upsert_interest_rate_index_type()
-    indexes = upsert_mexican_reference_indexes(create_schemas=False)
+    indexes = upsert_mexican_reference_indexes(attach_runtime=False)
     conventions = upsert_mexican_index_convention_details(
         indexes=indexes,
-        create_schemas=False,
+        attach_runtime=False,
     )
     curve = upsert_valmer_tiie_curve(
         indexes=indexes,
-        create_schemas=False,
+        attach_runtime=False,
     )
     return {
         "index_type": index_type,
@@ -340,10 +380,10 @@ def bootstrap_valmer_curve_pricing(
     }
 
 
-def bootstrap_valmer_curve_indexes(**schema_kwargs: Any) -> dict[str, Any]:
+def bootstrap_valmer_curve_indexes(**runtime_kwargs: Any) -> dict[str, Any]:
     """Bootstrap the reference-index identities used by Valmer curve pricing."""
 
-    return upsert_mexican_reference_indexes(**schema_kwargs)
+    return upsert_mexican_reference_indexes(**runtime_kwargs)
 
 
 __all__ = [
@@ -364,6 +404,7 @@ __all__ = [
     "TIIE_91_INDEX_UNIQUE_IDENTIFIER",
     "TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER",
     "ValmerCurveDefinition",
+    "attach_valmer_curve_pricing_runtime",
     "bootstrap_valmer_curve_pricing",
     "bootstrap_valmer_curve_indexes",
     "create_valmer_curve_pricing_schemas",

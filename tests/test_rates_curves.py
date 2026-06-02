@@ -1,6 +1,6 @@
 import unittest
 
-from src.instruments.rates_curves import build_tiie_curve_frame_from_csv
+from valmer_connectors.instruments.rates_curves import build_tiie_curve_frame_from_csv
 
 
 class ValmerRatesCurvesTests(unittest.TestCase):

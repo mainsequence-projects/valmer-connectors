@@ -5,4 +5,4 @@ __pycache__/
 *.pyc
 .DS_Store
 *.egg-info/
-/Users/jose/mainsequence-dev/main-sequence-workbench/projects/valmer-connectors-641f78f4-637c-42d6-94ca-a59da7d92283/data/VectorAnalitico24h_sample.xls
+data/VectorAnalitico24h_sample.xls

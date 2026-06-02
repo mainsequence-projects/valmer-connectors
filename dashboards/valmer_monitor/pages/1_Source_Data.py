@@ -5,8 +5,6 @@ from pathlib import Path
 
 import streamlit as st
 
-from mainsequence.dashboards.streamlit.scaffold import PageConfig, run_page
-
 APP_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[3]
 for path in (APP_DIR, REPO_ROOT):
@@ -14,6 +12,7 @@ for path in (APP_DIR, REPO_ROOT):
     if path_str not in sys.path:
         sys.path.insert(0, path_str)
 
+from page_bootstrap import PageConfig, run_page
 from valmer_dashboard import (
     category_breakdown,
     latest_vector_snapshot,

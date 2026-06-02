@@ -12,7 +12,7 @@ Accepted
 
 Valmer rows are published and priced by `unique_identifier`, but the project has
 historically built that identifier, registered assets, and refreshed pricing
-details inside `ImportValmer` in `src/data_nodes/nodes.py`.
+details inside `ImportValmer` in `src/valmer_connectors/data_nodes/nodes.py`.
 
 Current Main Sequence and `ms-markets` behavior makes those boundaries explicit:
 
@@ -58,9 +58,9 @@ the current core bond pricing validation.
 
 This migration will introduce:
 
-- `src/instruments/asset_identity.py` for Valmer identity construction, typed
+- `src/valmer_connectors/instruments/asset_identity.py` for Valmer identity construction, typed
   asset lookup, and idempotent typed asset upsert
-- `src/meta_tables/valmer_asset_details.py` for Valmer source fields that
+- `src/valmer_connectors/meta_tables/valmer_asset_details.py` for Valmer source fields that
   describe the asset rather than a daily price observation
 - a batched typed lookup helper because `msm.api.assets.Asset.filter(...)` does
   not support the legacy `unique_identifier__in` shape
@@ -109,7 +109,7 @@ Asset detail persistence is also separate from price-vector publishing:
 
 ## Implementation Tasks
 
-- [x] Create `src/instruments/asset_identity.py`.
+- [x] Create `src/valmer_connectors/instruments/asset_identity.py`.
 - [x] Move Valmer `unique_identifier` construction out of
   `ImportValmer._concatenate_artifacts_content(...)`.
 - [x] Replace asset lookup in `ImportValmer._register_and_update_pricing(...)`
@@ -125,7 +125,7 @@ Asset detail persistence is also separate from price-vector publishing:
   Valmer asset resolver.
 - [x] Replace dashboard Valmer asset lookup and pricing-health inspection with
   typed asset lookup plus `AssetCurrentPricingDetailsTable` reads.
-- [x] Add `src/meta_tables/valmer_asset_details.py` with
+- [x] Add `src/valmer_connectors/meta_tables/valmer_asset_details.py` with
   `ValmerAssetDetailsTable`.
 - [x] Persist repeated Valmer asset descriptors into
   `ValmerAssetDetailsTable` after Asset registration.

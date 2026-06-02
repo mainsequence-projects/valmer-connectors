@@ -7,21 +7,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import msm_pricing.instruments as msi
 import numpy as np
 import pandas as pd
 
 # noinspection PyPackageRequirements
 import pytz
 import QuantLib as ql
+from mainsequence.client.models_foundry import Artifact
+from msm_pricing.instruments import Position
+from msm_pricing.pricing_engine.bond_analytics import compare_bond_to_market_quote
+from msm_pricing.pricing_engine.coupon_schedules import (
+    compute_coupon_schedule_force_match,
+)
 from tqdm import tqdm
 
-import mainsequence.client as msc
-import mainsequence.instruments as msi
-from mainsequence.instruments.instruments import Position
-from msm_pricing.pricing_engine.bond_analytics import compare_bond_to_market_quote
-from msm_pricing.pricing_engine.coupon_schedules import compute_coupon_schedule_force_match
-from src.instruments.asset_identity import resolve_valmer_assets
-from src.settings import SUBYACENTE_TO_INDEX_MAP
+from valmer_connectors.instruments.asset_identity import resolve_valmer_assets
+from valmer_connectors.settings import SUBYACENTE_TO_INDEX_MAP
 
 # =============================================================================
 # Configuration toggles for “coupon count” to match the sheet convention
@@ -941,7 +943,7 @@ def build_position_from_sheet(
     Build instruments from a vendor sheet and dump a 'position.json'-style file.
     Returns (Position, cfg_dict, position_json_path, df_out_csv_path).
     """
-    from src.settings import PROJECT_BUCKET_NAME
+    from valmer_connectors.settings import PROJECT_BUCKET_NAME
 
     sheet_path = str(sheet_path)
     df = pd.read_excel(sheet_path)
@@ -968,7 +970,7 @@ def build_position_from_sheet(
         temp_file_path = temp_csv.name
         df_out.to_csv(temp_file_path, index=False)
 
-        scrap_source_artifact = msc.Artifact.get_or_create(
+        scrap_source_artifact = Artifact.get_or_create(
             bucket_name=PROJECT_BUCKET_NAME,
             name="instrument_pricing_match",
             created_by_resource_name=__file__,

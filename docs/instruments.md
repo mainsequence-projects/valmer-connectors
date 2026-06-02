@@ -4,14 +4,23 @@
 
 The project now keeps runtime wiring in:
 
-- `src/instruments/bootstrap.py`
+- `src/valmer_connectors/instruments/bootstrap.py`
 
-`register_all()` does three things explicitly:
+`bootstrap_runtime()` is the single project bootstrap entry point. It does the
+following explicitly:
 
-- registers the current ms-markets pricing schema graph
+- attaches the canonical `msm.start_engine(...)` markets runtime
+- attaches the canonical `msm_pricing.bootstrap.create_pricing_schemas(...)`
+  pricing runtime
+- attaches the project-specific `ValmerAssetDetailsTable` and
+  `ValmerVectorPricesStorage` through the same
+  `msm.start_engine(models=[...])` model graph
 - upserts the built-in `interest_rate` `IndexType`
 - upserts Mexican TIIE/CETE `Index` and `IndexConventionDetails` rows
 - upserts the Valmer `VALMER_TIIE_28` `Curve` row
+
+The compatibility wrapper `register_all()` still exists for older scripts, but
+new code should call `bootstrap_runtime()`.
 
 ## Pricing Runtime Registration
 
@@ -31,10 +40,10 @@ discount-curve ETL registry builders.
 
 The asset-hydration path is split across two files:
 
-- `src/data_nodes/nodes.py` decides which source rows should receive pricing
+- `src/valmer_connectors/data_nodes/nodes.py` decides which source rows should receive pricing
   details and pushes those updates into MainSequence assets.
-- `src/instruments/vector_to_asset.py` converts one normalized Valmer row into
-  one `mainsequence.instruments` object.
+- `src/valmer_connectors/instruments/vector_to_asset.py` converts one normalized Valmer row into
+  one `msm_pricing.instruments` object.
 
 The flow is:
 
@@ -84,7 +93,7 @@ the behavior instead of adding ad hoc conditionals everywhere.
 If Valmer introduces a new `subyacente` label that should resolve to an
 existing MainSequence index, update:
 
-- `src/settings.py`
+- `src/valmer_connectors/settings.py`
 - `SUBYACENTE_TO_INDEX_MAP`
 
 This is the right place for label-to-index resolution. Do not hardcode those
@@ -95,7 +104,7 @@ the raw vendor label.
 
 If a row family should start receiving pricing details, update:
 
-- `ImportValmer._get_target_bonds(...)` in `src/data_nodes/nodes.py`
+- `ImportValmer._get_target_bonds(...)` in `src/valmer_connectors/data_nodes/nodes.py`
 
 This function defines the supported pricing surface. If a family is not
 selected here, it can still land in `vector_de_precios_valmer`, but it will not
@@ -150,7 +159,7 @@ selection, also update `docs/data-nodes.md` and `README.md`.
 
 The helper `build_position_from_sheet()` now imports a valid local
 `PROJECT_BUCKET_NAME` instead of referencing the removed
-`src.data_connectors.settings` module.
+`valmer_connectors.data_connectors.settings` module.
 
 ## Runtime Validation
 

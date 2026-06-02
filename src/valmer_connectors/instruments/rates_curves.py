@@ -4,7 +4,7 @@ from datetime import timedelta
 import pandas as pd
 import requests
 
-from src.instruments.curve_bootstrap import VALMER_TIIE_28_CURVE_DEFINITION
+from valmer_connectors.instruments.curve_bootstrap import VALMER_TIIE_28_CURVE_DEFINITION
 
 VALMER_TIIE_MEXDER_URL = VALMER_TIIE_28_CURVE_DEFINITION.metadata_json["source_url"]
 VALMER_TIIE_MEXDER_COLUMNS = ["id", "curve_name", "asof_yyMMdd", "idx", "zero_rate"]

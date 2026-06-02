@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 VALMER_ASSET_IDENTITY_COLUMNS = ("tipovalor", "emisora", "serie")
 
-_SCHEMAS_READY = False
+_RUNTIME_READY = False
 
 
 def build_valmer_unique_identifier(row: Mapping[str, object]) -> str:
@@ -54,20 +54,31 @@ def normalize_valmer_unique_identifiers(unique_identifiers: Sequence[object]) ->
     return normalized
 
 
-def ensure_valmer_asset_schemas() -> None:
-    """Initialize the typed markets asset schemas once per process."""
+def ensure_valmer_asset_runtime() -> None:
+    """Verify that the markets runtime is attached for Asset row operations."""
 
-    global _SCHEMAS_READY
-    if _SCHEMAS_READY:
+    global _RUNTIME_READY
+    if _RUNTIME_READY:
         return
 
-    Asset = _asset_model()
+    from msm.bootstrap import get_runtime
+    from msm.models import AssetTable
+
     try:
-        Asset.create_schemas()
-    except RuntimeError as exc:
-        if "already initialized this process" not in str(exc):
-            raise
-    _SCHEMAS_READY = True
+        get_runtime().table(AssetTable)
+    except Exception as exc:
+        raise RuntimeError(
+            "Valmer asset row operations require the project bootstrap entry point. "
+            "Run valmer_connectors.instruments.bootstrap.bootstrap_runtime() once during "
+            "application initialization before resolving or upserting Valmer assets."
+        ) from exc
+    _RUNTIME_READY = True
+
+
+def ensure_valmer_asset_schemas() -> None:
+    """Compatibility wrapper for the old schema-oriented helper name."""
+
+    ensure_valmer_asset_runtime()
 
 
 def resolve_valmer_assets(
@@ -82,7 +93,7 @@ def resolve_valmer_assets(
     if not identifiers:
         return {}
     if ensure_schemas:
-        ensure_valmer_asset_schemas()
+        ensure_valmer_asset_runtime()
 
     from msm.api.base import operation_result_rows
     from msm.repositories.crud import search_model
@@ -115,7 +126,7 @@ def upsert_valmer_assets(
     if not identifiers:
         return {}
     if ensure_schemas:
-        ensure_valmer_asset_schemas()
+        ensure_valmer_asset_runtime()
 
     from msm.repositories.crud import upsert_model
 
@@ -166,6 +177,7 @@ __all__ = [
     "VALMER_ASSET_IDENTITY_COLUMNS",
     "add_valmer_unique_identifier",
     "build_valmer_unique_identifier",
+    "ensure_valmer_asset_runtime",
     "ensure_valmer_asset_schemas",
     "normalize_valmer_unique_identifiers",
     "resolve_valmer_assets",

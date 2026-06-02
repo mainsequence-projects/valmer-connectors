@@ -43,7 +43,7 @@ Key DataNode columns include:
 - changing vendor state such as ratings, outstanding amount, adjusted face
   value, marketability, and suspension status
 
-The translation contract is defined in `src/data_nodes/nodes.py` from the
+The translation contract is defined in `src/valmer_connectors/data_nodes/nodes.py` from the
 sample workbook schema and is persisted with explicit English metadata and
 typed casts for numeric, percentage, integer-count, and datetime fields. The
 node uses `DataFrequency.one_d` to match the effective update cadence.

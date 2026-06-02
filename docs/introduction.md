@@ -13,7 +13,7 @@ fixed income.
   `msm_pricing.api.instruments.persist_current_pricing_details(...)`.
 - Registers Mexican TIIE/CETE `Index` and `IndexConventionDetails` rows plus
   the Valmer `VALMER_TIIE_28` `Curve` row through
-  `src/instruments/bootstrap.py`.
+  `src/valmer_connectors/instruments/bootstrap.py`.
 - Publishes the Valmer TIIE curve through
   `msm_pricing.data_nodes.DiscountCurvesNode`.
 - Ships a multipage Streamlit dashboard for source coverage, pricing hydration,
@@ -24,8 +24,8 @@ fixed income.
 - `scripts/update_vector_valmer.py`
 - `scripts/update_tiie_zero_curve.py`
 - `scripts/validate_runtime.py`
-- `src/data_nodes/nodes.py`
-- `src/instruments/bootstrap.py`
+- `src/valmer_connectors/data_nodes/nodes.py`
+- `src/valmer_connectors/instruments/bootstrap.py`
 - `dashboards/valmer_monitor/app.py`
 
 ## What The Project Does Not Create

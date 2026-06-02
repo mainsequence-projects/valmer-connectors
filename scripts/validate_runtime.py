@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 
-from src.instruments.curve_bootstrap import bootstrap_valmer_curve_pricing
+from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 
 
 def main() -> None:
-    result = bootstrap_valmer_curve_pricing()
+    result = bootstrap_runtime(override=True)
     payload = {
         "index_type": result["index_type"].index_type,
         "indexes": sorted(result["indexes"]),

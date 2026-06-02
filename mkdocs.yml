@@ -4,6 +4,7 @@ nav:
   - Home: index.md
   - Introduction: introduction.md
   - DataNodes: data-nodes.md
+  - New Version Migration: new-version-migration.md
   - Markets: markets.md
   - Instruments: instruments.md
   - Dashboards: dashboards.md
@@ -11,3 +12,5 @@ nav:
   - ADRs:
       - Core Pricing Library Boundary: adr/0000-core-pricing-library-boundary.md
       - Asset Registration Identity Migration: adr/0001-asset-registration-identity-migration.md
+      - Curve and Fixing Architecture Refactor: adr/0002-curve-and-fixing-architecture-refactor.md
+      - Migration-First MetaTable Lifecycle: adr/0003-migration-first-metatable-lifecycle.md

@@ -1,4 +1,4 @@
-__all__ = ["register_all", "seed_defaults"]
+__all__ = ["bootstrap_runtime", "register_all", "seed_defaults", "seed_static_defaults"]
 
 
 def __getattr__(name: str):

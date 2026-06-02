@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pandas as pd
 import streamlit as st
-
-import mainsequence.client as msc
+from mainsequence.meta_tables import APIDataNode
 from msm.api.base import operation_result_rows
 from msm.repositories.crud import search_model
+from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from msm_pricing.data_interface.data_interface import dimension_range_for_identity
 from msm_pricing.data_nodes.curve_codec import decompress_string_to_curve
 from msm_pricing.data_nodes.curves import CURVE_UNIQUE_IDENTIFIER_DIMENSION
@@ -16,17 +17,11 @@ from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     default_pricing_market_data_identifier,
 )
-from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
-from mainsequence.client.models_tdag import DataNodeStorage
-from mainsequence.dashboards.streamlit.components import (
-    sidebar_asset_single_select,
-    sidebar_logged_user_username,
-)
-from mainsequence.tdag import APIDataNode
-from src.data_nodes.nodes import ImportValmer
-from src.instruments.curve_bootstrap import VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER
-from src.instruments.asset_identity import resolve_valmer_assets
-from src.meta_tables.valmer_asset_details import resolve_valmer_asset_details
+
+from valmer_connectors.data_nodes.nodes import ImportValmer
+from valmer_connectors.instruments.asset_identity import resolve_valmer_assets
+from valmer_connectors.instruments.curve_bootstrap import VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER
+from valmer_connectors.meta_tables.valmer_asset_details import resolve_valmer_asset_details
 
 VECTOR_NODE_IDENTIFIER = "vector_de_precios_valmer"
 DISCOUNT_CURVE_NODE_IDENTIFIER = default_pricing_market_data_identifier(
@@ -235,18 +230,21 @@ def _query_node_by_identifier(
 ) -> QueryResult:
     start_date = utc_now() - timedelta(days=lookback_days)
     try:
-        frame, storage = DataNodeStorage.get_data_between_dates_from_node_identifier(
-            node_identifier=node_identifier,
+        node = APIDataNode.build_from_identifier(identifier=node_identifier)
+        dimension_filters = None
+        if unique_identifier_list:
+            dimension_filters = {"unique_identifier": unique_identifier_list}
+        frame = node.get_df_between_dates(
             start_date=start_date,
             end_date=utc_now(),
             great_or_equal=True,
             less_or_equal=True,
-            unique_identifier_list=unique_identifier_list,
+            dimension_filters=dimension_filters,
             columns=columns,
         )
         return QueryResult(
             data=_prepare_vector_frame(frame),
-            storage_hash=getattr(storage, "storage_hash", None),
+            storage_hash=getattr(node, "storage_hash", None),
         )
     except Exception as exc:
         return QueryResult(data=pd.DataFrame(), error=str(exc))
@@ -295,26 +293,13 @@ def render_sidebar_context(
 ) -> str | None:
     selected_uid: str | None = None
 
-    try:
-        sidebar_logged_user_username(
-            label="Authenticated user",
-            show_organization=True,
-        )
-    except Exception as exc:
-        with st.sidebar:
-            st.caption(f"User lookup unavailable: {exc}")
-
     if allow_asset_lookup:
-        try:
-            asset = sidebar_asset_single_select(
-                title="Find MainSequence asset",
-                key_prefix="valmer_asset",
-            )
-            if asset is not None:
-                selected_uid = getattr(asset, "unique_identifier", None)
-        except Exception as exc:
-            with st.sidebar:
-                st.caption(f"Asset selector unavailable: {exc}")
+        asset = _sidebar_asset_single_select(
+            title="Find MainSequence asset",
+            key_prefix="valmer_asset",
+        )
+        if asset is not None:
+            selected_uid = getattr(asset, "unique_identifier", None)
 
     with st.sidebar:
         if selected_uid and st.session_state.get("valmer_focus_uid") in (None, ""):
@@ -339,6 +324,17 @@ def render_sidebar_context(
                     st.info(f"{selected_uid} is not present in the current snapshot.")
 
     return selected_uid
+
+
+def _sidebar_asset_single_select(title: str, key_prefix: str) -> SimpleNamespace | None:
+    with st.sidebar:
+        unique_identifier = st.text_input(
+            title,
+            key=f"{key_prefix}_unique_identifier",
+        ).strip()
+    if not unique_identifier:
+        return None
+    return SimpleNamespace(unique_identifier=unique_identifier)
 
 
 def _query_assets(unique_identifiers: list[str]) -> dict[str, object]:

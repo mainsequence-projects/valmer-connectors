@@ -67,23 +67,23 @@ References:
 These paths are Valmer-vendor ingestion and should stay in this repository:
 
 - Valmer source column model:
-  `src/data_nodes/nodes.py:145-632`
+  `src/valmer_connectors/data_nodes/nodes.py:145-632`
 - Valmer artifact discovery and file concatenation:
-  `src/data_nodes/nodes.py:1027-1098`
+  `src/valmer_connectors/data_nodes/nodes.py:1027-1098`
 - Valmer identity derivation from source fields:
-  `src/data_nodes/nodes.py:1075-1087`
+  `src/valmer_connectors/data_nodes/nodes.py:1075-1087`
 - Valmer vector output construction:
-  `src/data_nodes/nodes.py:1279-1318`
+  `src/valmer_connectors/data_nodes/nodes.py:1279-1318`
 - Valmer source table metadata:
-  `src/data_nodes/nodes.py:1320-1327`
+  `src/valmer_connectors/data_nodes/nodes.py:1320-1327`
 - Valmer header normalization:
-  `src/instruments/vector_to_asset.py:994-1000`
+  `src/valmer_connectors/instruments/vector_to_asset.py:994-1000`
 - Valmer target-universe selection:
-  `src/data_nodes/nodes.py:901-948`
+  `src/valmer_connectors/data_nodes/nodes.py:901-948`
 - Valmer label to reference-index mapping:
-  `src/settings.py:5-24`
+  `src/valmer_connectors/settings.py:5-24`
 - Valmer MexDer curve download and CSV parsing:
-  `src/instruments/rates_curves.py:8-52`
+  `src/valmer_connectors/instruments/rates_curves.py:8-52`
 
 The Valmer project should keep adapter-level mapping code such as
 `SUBYACENTE_TO_INDEX_MAP`. The core library should not import Valmer Spanish
@@ -95,11 +95,11 @@ Valmer/Mexico-specific alias taxonomy.
 Current locations:
 
 - QuantLib date and schedule helpers:
-  `src/instruments/vector_to_asset.py:45-136`
+  `src/valmer_connectors/instruments/vector_to_asset.py:45-136`
 - Vendor-sheet schedule reconciliation:
-  `src/instruments/vector_to_asset.py:142-314`
+  `src/valmer_connectors/instruments/vector_to_asset.py:142-314`
 - Coupon counting, cashflow table diagnostics, and schedule auto-fix logic:
-  `src/instruments/vector_to_asset.py:317-580`
+  `src/valmer_connectors/instruments/vector_to_asset.py:317-580`
 
 Target core responsibility:
 
@@ -124,15 +124,15 @@ Valmer-specific handling that should stay here:
 Current locations:
 
 - Valmer row to instrument builder:
-  `src/instruments/vector_to_asset.py:586-747`
+  `src/valmer_connectors/instruments/vector_to_asset.py:586-747`
 - Future cashflow extraction:
-  `src/instruments/vector_to_asset.py:753-786`
+  `src/valmer_connectors/instruments/vector_to_asset.py:753-786`
 - Valmer/Mexico-specific convention resolver:
-  `src/instruments/vector_to_asset.py:794-858`
+  `src/valmer_connectors/instruments/vector_to_asset.py:794-858`
 - Vendor price check loop:
-  `src/instruments/vector_to_asset.py:860-991`
+  `src/valmer_connectors/instruments/vector_to_asset.py:860-991`
 - Position-building demo or validation helper:
-  `src/instruments/vector_to_asset.py:1003-1044`
+  `src/valmer_connectors/instruments/vector_to_asset.py:1003-1044`
 
 Target core responsibility:
 
@@ -170,17 +170,17 @@ Valmer-only bond factory.
 Current locations:
 
 - Duplicate curve compression and decompression:
-  `src/data_nodes/nodes.py:665-714`
+  `src/valmer_connectors/data_nodes/nodes.py:665-714`
 - Valmer standalone TIIE curve DataNode:
-  `src/data_nodes/nodes.py:719-782`
+  `src/valmer_connectors/data_nodes/nodes.py:719-782`
 - Valmer curve builder:
-  `src/instruments/rates_curves.py:8-52`
+  `src/valmer_connectors/instruments/rates_curves.py:8-52`
 - Curve and rate constants:
-  `src/instruments/bootstrap.py:9-27`
+  `src/valmer_connectors/instruments/bootstrap.py:9-27`
 - Discount-curve builder registration:
-  `src/instruments/bootstrap.py:51-61`
+  `src/valmer_connectors/instruments/bootstrap.py:51-61`
 - Mexican TIIE and CETE index spec registration:
-  `src/instruments/bootstrap.py:64-148`
+  `src/valmer_connectors/instruments/bootstrap.py:64-148`
 - Dashboard curve decoding:
   `dashboards/valmer_monitor/valmer_dashboard.py:344-389`
 
@@ -222,13 +222,13 @@ curve construction and pricing engines, not inside the Valmer adapter.
 Current location:
 
 - mixed registration and pricing orchestration:
-  `src/data_nodes/nodes.py:1124-1224`
+  `src/valmer_connectors/data_nodes/nodes.py:1124-1224`
 - pricing decision logic:
-  `src/data_nodes/nodes.py:950-1025`
+  `src/valmer_connectors/data_nodes/nodes.py:950-1025`
 - current instrument payload build:
-  `src/data_nodes/nodes.py:1177-1197`
+  `src/valmer_connectors/data_nodes/nodes.py:1177-1197`
 - current legacy asset pricing-detail write:
-  `src/data_nodes/nodes.py:1216-1220`
+  `src/valmer_connectors/data_nodes/nodes.py:1216-1220`
 
 This path is not asset registration. It is pricing-detail hydration. It should
 be replaced by a core `ms-markets` service that accepts:
@@ -370,7 +370,7 @@ is not required for moving Valmer pricing behavior out of this connector.
 5. Add or select a core service wrapper around the existing
    `AssetCurrentPricingDetails` API if Valmer needs one place to attach source
    diagnostics before writing current asset pricing details.
-6. Refactor `src/instruments/vector_to_asset.py` so it becomes a Valmer row
+6. Refactor `src/valmer_connectors/instruments/vector_to_asset.py` so it becomes a Valmer row
    mapper and validation adapter, not a bond pricing library.
 7. Refactor `ImportValmer._register_and_update_pricing(...)` into two separate
    calls:
@@ -396,31 +396,31 @@ refactor.
   `IndexConventionDetailsTable`, `IndexTimestampedDataNode`, and
   `FixingRatesNode`.
 - [x] In core `msm_pricing`, expose provider-neutral schedule reconciliation
-  currently implemented in `src/instruments/vector_to_asset.py:142-580`.
+  currently implemented in `src/valmer_connectors/instruments/vector_to_asset.py:142-580`.
   Implemented by
   `msm_pricing.pricing_engine.coupon_schedules.compute_coupon_schedule_force_match(...)`
   in the sibling `ms-markets` checkout; this project now keeps
   `compute_sheet_schedule_force_match(...)` as a Valmer row adapter.
 - [x] In core `msm_pricing`, expose provider-neutral cashflow extraction and
   price-check analytics currently implemented in
-  `src/instruments/vector_to_asset.py:753-991`. Implemented by
+  `src/valmer_connectors/instruments/vector_to_asset.py:753-991`. Implemented by
   `msm_pricing.pricing_engine.bond_analytics.compare_bond_to_market_quote(...)`
   in the sibling `ms-markets` checkout; this project now maps Valmer row fields
   into that core comparison helper.
 - [x] Keep Mexican fixed-income convention helpers in this project. Do not move
   Valmer/Mexico-specific convention selection from
-  `src/instruments/vector_to_asset.py` or `src/instruments/bootstrap.py` into
+  `src/valmer_connectors/instruments/vector_to_asset.py` or `src/valmer_connectors/instruments/bootstrap.py` into
   core `msm_pricing`; those rules are adapter policy, not base pricing-library
   behavior.
 - [x] In this project, convert Valmer source rows into normalized core pricing
   payloads before constructing instruments. Implemented in
-  `src/instruments/vector_to_asset.py` with `CoreBondPricingPayload`,
+  `src/valmer_connectors/instruments/vector_to_asset.py` with `CoreBondPricingPayload`,
   `valmer_row_to_core_bond_pricing_payload(...)`, and
   `build_instrument_from_core_bond_pricing_payload(...)`; Valmer-specific
   convention and alias policy stays in this project.
 - [x] In this project, replace direct calls to
   `asset.add_instrument_pricing_details_from_ms_instrument(...)` at
-  `src/data_nodes/nodes.py:1216-1220` with the core pricing-definition
+  `src/valmer_connectors/data_nodes/nodes.py:1216-1220` with the core pricing-definition
   service. Implemented with
   `msm_pricing.api.instruments.persist_current_pricing_details(...)`.
 - [x] In this project, keep `SUBYACENTE_TO_INDEX_MAP` as a Valmer/Mexico

@@ -40,10 +40,10 @@ curve refactor is complete.
 The repository currently has two curve concepts mixed together:
 
 - a legacy standalone Valmer curve DataNode that previously lived in
-  `src/data_nodes/nodes.py`
+  `src/valmer_connectors/data_nodes/nodes.py`
 - a standard discount-curve runner in `scripts/update_tiie_zero_curve.py`
-- Valmer curve parsing in `src/instruments/rates_curves.py`
-- constant and runtime registry setup in `src/instruments/bootstrap.py`
+- Valmer curve parsing in `src/valmer_connectors/instruments/rates_curves.py`
+- constant and runtime registry setup in `src/valmer_connectors/instruments/bootstrap.py`
 - dashboard curve reads in `dashboards/valmer_monitor/valmer_dashboard.py`
 
 The legacy path treats the TIIE curve like an asset-indexed DataNode:
@@ -233,7 +233,7 @@ claim it owns fixing publication.
 
 ### Remove Or Deprecate Legacy Standalone Curve Node
 
-`src/data_nodes/nodes.py` previously contained `MexDerTIIE28Zero`.
+`src/valmer_connectors/data_nodes/nodes.py` previously contained `MexDerTIIE28Zero`.
 
 Handle it in this order:
 
@@ -248,12 +248,12 @@ Reasons:
 - it uses `msc.Asset.get(unique_identifier="TIIE_28")`
 - it publishes by asset `unique_identifier`
 - it duplicates Valmer CSV parsing already present in
-  `src/instruments/rates_curves.py`
+  `src/valmer_connectors/instruments/rates_curves.py`
 - it owns curve compression that belongs in `msm_pricing.data_nodes.curve_codec`
 
 ### Refactor Valmer Curve Builder
 
-`src/instruments/rates_curves.py::build_tiie_valmer(...)` should become the
+`src/valmer_connectors/instruments/rates_curves.py::build_tiie_valmer(...)` should become the
 only Valmer provider parser for the MexDer TIIE curve.
 
 It should:
@@ -275,7 +275,7 @@ It should not:
 
 ### Replace Legacy Bootstrap
 
-`src/instruments/bootstrap.py` currently owns:
+`src/valmer_connectors/instruments/bootstrap.py` currently owns:
 
 - Main Sequence constants for reference-rate and curve identity
 - `DISCOUNT_CURVE_BUILDERS` registration
@@ -328,7 +328,7 @@ It should not reference:
 ## Implementation Tasks
 
 - [x] Add a curve/index pricing bootstrap module used by Valmer, likely
-  `src/instruments/curve_bootstrap.py`.
+  `src/valmer_connectors/instruments/curve_bootstrap.py`.
 - [x] Upsert the built-in `interest_rate` `IndexType` through
   `INDEX_TYPE_INTEREST_RATE_DEFINITION`.
 - [x] Upsert required `Index` rows for TIIE and CETE reference indexes with
@@ -342,7 +342,7 @@ It should not reference:
   `msm_pricing.data_nodes.DiscountCurvesNode` import path and configuration.
 - [x] Remove `register_etl_builders(...)` and old
   `mainsequence.instruments.pricing_models` index-spec registration from
-  `src/instruments/bootstrap.py`.
+  `src/valmer_connectors/instruments/bootstrap.py`.
 - [x] After the runner/dashboard moved to `DiscountCurvesNode`, delete
   `MexDerTIIE28Zero` or leave it only as an explicitly deprecated temporary
   wrapper.

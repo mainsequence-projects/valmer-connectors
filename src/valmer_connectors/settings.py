@@ -1,4 +1,4 @@
-from src.instruments.curve_bootstrap import (
+from valmer_connectors.instruments.curve_bootstrap import (
     CETE_182_INDEX_UNIQUE_IDENTIFIER,
     CETE_28_INDEX_UNIQUE_IDENTIFIER,
     CETE_91_INDEX_UNIQUE_IDENTIFIER,

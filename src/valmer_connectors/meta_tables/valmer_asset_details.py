@@ -6,18 +6,17 @@ from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.types import Uuid
-
+from mainsequence.meta_tables import MetaTableForeignKey
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_fk_name,
     markets_index_name,
     markets_table_args,
 )
 from msm.models.assets import AssetTable
+from sqlalchemy import Date, DateTime, Float, Index, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import Uuid
 
 VALMER_ASSET_DETAIL_VECTOR_COLUMNS = frozenset(
     {
@@ -91,9 +90,9 @@ class ValmerAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
+        MetaTableForeignKey(
+            AssetTable,
+            column="uid",
             ondelete="CASCADE",
         ),
         primary_key=True,
@@ -124,44 +123,49 @@ class ValmerAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     coupons_at_issue: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
-def ensure_valmer_asset_detail_schemas(*, timeout: int | float | tuple[float, float] | None = None):
-    """Register the Valmer detail MetaTable and return its operation context."""
+def ensure_valmer_asset_detail_runtime(
+    *,
+    timeout: int | float | tuple[float, float] | None = None,
+):
+    """Verify the Valmer detail table is attached in the active markets runtime."""
 
     global _VALMER_ASSET_DETAILS_CONTEXT
     if _VALMER_ASSET_DETAILS_CONTEXT is not None:
         return _VALMER_ASSET_DETAILS_CONTEXT
 
-    from msm.api.assets import Asset
     from msm.bootstrap import get_runtime
-    from msm.models.registration import register_markets_meta_tables
     from msm.repositories.base import MarketsRepositoryContext
 
     try:
-        asset_runtime = Asset.create_schemas(timeout=timeout)
+        markets_runtime = get_runtime()
     except RuntimeError as exc:
-        if "already initialized this process" not in str(exc):
-            raise
-        asset_runtime = get_runtime()
-
-    asset_table_fullname = str(AssetTable.__table__.fullname)
-    if asset_table_fullname not in asset_runtime.target_meta_table_uid_by_fullname:
         raise RuntimeError(
-            "ValmerAssetDetailsTable requires AssetTable to be registered before "
-            "the project Valmer detail table."
-        )
-
-    registration = register_markets_meta_tables(
-        target_meta_table_uid_by_fullname=asset_runtime.target_meta_table_uid_by_fullname,
-        labels=["valmer"],
-        timeout=timeout,
-        models=[ValmerAssetDetailsTable],
-    )
+            "ValmerAssetDetailsTable requires the project bootstrap entry point. "
+            "Run valmer_connectors.instruments.bootstrap.bootstrap_runtime() once during "
+            "application initialization before Valmer detail row operations."
+        ) from exc
+    try:
+        markets_runtime.table(ValmerAssetDetailsTable).meta_table_uid
+    except ValueError as exc:
+        raise RuntimeError(
+            "ValmerAssetDetailsTable is not present in the active markets runtime. "
+            "Attach it through valmer_connectors.instruments.bootstrap.bootstrap_runtime(); row "
+            "operations must not register MetaTables implicitly."
+        ) from exc
     _VALMER_ASSET_DETAILS_CONTEXT = MarketsRepositoryContext(
-        target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
         timeout=timeout,
-        namespace=asset_runtime.namespace,
+        namespace=markets_runtime.namespace,
     )
     return _VALMER_ASSET_DETAILS_CONTEXT
+
+
+def ensure_valmer_asset_detail_schemas(
+    *,
+    timeout: int | float | tuple[float, float] | None = None,
+):
+    """Compatibility wrapper for the old schema-oriented helper name."""
+
+    return ensure_valmer_asset_detail_runtime(timeout=timeout)
 
 
 def resolve_valmer_asset_details(
@@ -179,7 +183,7 @@ def resolve_valmer_asset_details(
     from msm.api.base import operation_result_rows
     from msm.repositories.crud import search_model
 
-    context = ensure_valmer_asset_detail_schemas(timeout=timeout)
+    context = ensure_valmer_asset_detail_runtime(timeout=timeout)
     details: dict[str, dict[str, Any]] = {}
     for batch in _batches(normalized_asset_uids, batch_size):
         result = search_model(
@@ -209,7 +213,7 @@ def upsert_valmer_asset_details(
     from msm.api.base import operation_result_rows
     from msm.repositories.crud import upsert_model
 
-    context = ensure_valmer_asset_detail_schemas(timeout=timeout)
+    context = ensure_valmer_asset_detail_runtime(timeout=timeout)
     latest_rows = (
         df_latest[df_latest["unique_identifier"].notna()]
         .drop_duplicates("unique_identifier", keep="last")
@@ -334,6 +338,7 @@ __all__ = [
     "VALMER_ASSET_DETAIL_SOURCE_COLUMNS",
     "ValmerAssetDetailsTable",
     "build_valmer_asset_detail_values",
+    "ensure_valmer_asset_detail_runtime",
     "ensure_valmer_asset_detail_schemas",
     "resolve_valmer_asset_details",
     "upsert_valmer_asset_details",

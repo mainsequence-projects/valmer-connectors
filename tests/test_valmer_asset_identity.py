@@ -1,11 +1,13 @@
 import unittest
+from unittest.mock import Mock, patch
 
 import pandas as pd
 from msm.constants import ASSET_TYPE_BOND, ASSET_TYPE_BOND_DEFINITION
 
-from src.instruments.asset_identity import (
+from valmer_connectors.instruments.asset_identity import (
     add_valmer_unique_identifier,
     build_valmer_unique_identifier,
+    ensure_valmer_asset_runtime,
     normalize_valmer_unique_identifiers,
 )
 
@@ -46,6 +48,20 @@ class ValmerAssetIdentityTests(unittest.TestCase):
 
     def test_valmer_assets_are_registered_as_core_bonds(self):
         self.assertEqual(ASSET_TYPE_BOND, ASSET_TYPE_BOND_DEFINITION.asset_type)
+
+    def test_asset_schema_guard_uses_existing_markets_runtime(self):
+        fake_runtime = Mock()
+
+        with patch("msm.bootstrap.get_runtime", return_value=fake_runtime):
+            ensure_valmer_asset_runtime()
+
+        fake_runtime.table.assert_called_once()
+
+    def test_asset_schema_guard_requires_project_bootstrap(self):
+        with patch("valmer_connectors.instruments.asset_identity._RUNTIME_READY", False):
+            with patch("msm.bootstrap.get_runtime", side_effect=RuntimeError("missing")):
+                with self.assertRaisesRegex(RuntimeError, "bootstrap_runtime"):
+                    ensure_valmer_asset_runtime()
 
 
 if __name__ == "__main__":

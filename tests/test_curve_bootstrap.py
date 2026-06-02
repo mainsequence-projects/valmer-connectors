@@ -1,14 +1,20 @@
 import unittest
+from unittest.mock import Mock, patch
 
 from msm.constants import INDEX_TYPE_INTEREST_RATE
 
-from src.instruments.curve_bootstrap import (
+from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
+from valmer_connectors.instruments.bootstrap import seed_static_defaults
+from valmer_connectors.instruments.curve_bootstrap import (
     MEXICAN_INDEX_CONVENTION_DEFINITIONS,
     MEXICAN_REFERENCE_INDEX_DEFINITIONS,
     TIIE_28_INDEX_UNIQUE_IDENTIFIER,
     VALMER_TIIE_28_CURVE_DEFINITION,
+    attach_valmer_curve_pricing_runtime,
+    create_valmer_curve_pricing_schemas,
     mexican_reference_index_payloads,
 )
+from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 
 
 class ValmerCurveBootstrapTests(unittest.TestCase):
@@ -64,6 +70,67 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
         self.assertEqual(payload["curve_type"], "discount")
         self.assertEqual(payload["source"], "valmer")
         self.assertEqual(payload["index_uid"], "fake-index-uid")
+
+    def test_curve_runtime_attach_includes_valmer_details_by_default(self):
+        with (
+            patch("msm.start_engine") as start_engine,
+            patch("msm_pricing.bootstrap.create_pricing_schemas", return_value="pricing-runtime")
+            as pricing_bootstrap,
+        ):
+            result = attach_valmer_curve_pricing_runtime(timeout=15)
+
+        models = start_engine.call_args.kwargs["models"]
+        self.assertIn(ValmerAssetDetailsTable, models)
+        pricing_bootstrap.assert_called_once_with(timeout=15)
+        self.assertEqual(result, "pricing-runtime")
+
+    def test_old_curve_schema_helper_forwards_to_runtime_attach(self):
+        with patch(
+            "valmer_connectors.instruments.curve_bootstrap.attach_valmer_curve_pricing_runtime",
+            return_value="pricing-runtime",
+        ) as attach_runtime:
+            result = create_valmer_curve_pricing_schemas(timeout=15)
+
+        attach_runtime.assert_called_once_with(markets_models=None, timeout=15)
+        self.assertEqual(result, "pricing-runtime")
+
+    def test_project_bootstrap_attaches_valmer_extension_tables(self):
+        with (
+            patch(
+                "valmer_connectors.instruments.bootstrap.bootstrap_valmer_curve_pricing",
+                return_value={"curves": {}},
+            ) as core_bootstrap,
+            patch(
+                "valmer_connectors.meta_tables.valmer_asset_details.ensure_valmer_asset_detail_runtime",
+                return_value="details-context",
+            ) as details_bootstrap,
+        ):
+            result = seed_static_defaults(timeout=15, attach_runtime=True)
+
+        core_bootstrap.assert_called_once_with(
+            markets_models=[ValmerAssetDetailsTable, ValmerVectorPricesStorage],
+            timeout=15,
+            attach_runtime=True,
+        )
+        details_bootstrap.assert_called_once_with(timeout=15)
+        self.assertEqual(result["valmer_asset_details_context"], "details-context")
+
+    def test_project_bootstrap_does_not_directly_register_extension_tables(self):
+        with (
+            patch(
+                "valmer_connectors.instruments.bootstrap.bootstrap_valmer_curve_pricing",
+                return_value={"curves": {}},
+            ),
+            patch(
+                "valmer_connectors.meta_tables.valmer_asset_details.ensure_valmer_asset_detail_runtime",
+                return_value="details-context",
+            ),
+            patch.object(ValmerAssetDetailsTable, "register", Mock(side_effect=AssertionError)),
+            patch.object(ValmerVectorPricesStorage, "register", Mock(side_effect=AssertionError)),
+        ):
+            result = seed_static_defaults(timeout=15, attach_runtime=True)
+
+        self.assertEqual(result["valmer_asset_details_context"], "details-context")
 
 
 if __name__ == "__main__":

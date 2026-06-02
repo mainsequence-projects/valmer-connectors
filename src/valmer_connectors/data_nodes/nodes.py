@@ -1,42 +1,37 @@
 import os
 import re
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Dict, List, Tuple, Union
+from typing import List, Union
 
-import numpy as np
 import pandas as pd
-import pytz
-import QuantLib as ql
 import structlog
-from msm.api.base import operation_result_rows
+from mainsequence.client.models_foundry import Artifact
 from msm.api.assets import Asset as MarketsAsset
+from msm.api.base import operation_result_rows
 from msm.constants import ASSET_TYPE_BOND
+from msm.data_nodes import AssetIndexedDataNode, AssetIndexedDataNodeConfiguration
 from msm.repositories.crud import search_model
 from msm_pricing.api.instruments import persist_current_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
+from pydantic import Field
 from tqdm import tqdm
 
-import mainsequence.client as msc
-from mainsequence.client.models_tdag import Artifact
-from mainsequence.tdag import DataNode
-from src.instruments.vector_to_asset import (
-    build_qll_bond_from_row,
-    get_instrument_conventions,
-    normalize_column_name,
-)
-from src.instruments.asset_identity import (
+from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
+from valmer_connectors.instruments.asset_identity import (
     add_valmer_unique_identifier,
     resolve_valmer_assets,
     upsert_valmer_assets,
 )
-from src.meta_tables.valmer_asset_details import (
+from valmer_connectors.instruments.vector_to_asset import (
+    build_qll_bond_from_row,
+    get_instrument_conventions,
+    normalize_column_name,
+)
+from valmer_connectors.meta_tables.valmer_asset_details import (
     VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
     upsert_valmer_asset_details,
 )
-
-UTC = pytz.UTC
 
 
 @dataclass(frozen=True)
@@ -47,20 +42,6 @@ class ValmerColumnSpec:
     transform: str
     label: str
     description: str
-
-
-def _build_column_metadata(
-    specs: Iterable[ValmerColumnSpec],
-) -> list[msc.ColumnMetaData]:
-    return [
-        msc.ColumnMetaData(
-            column_name=spec.column_name,
-            dtype=spec.dtype,
-            label=spec.label,
-            description=spec.description,
-        )
-        for spec in specs
-    ]
 
 
 def _coerce_valmer_series(series: pd.Series, transform: str) -> pd.Series:
@@ -540,19 +521,30 @@ def _prepare_frame_for_target_bond_rules(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns=rename_map).copy()
 
 
-class ImportValmer(DataNode):
-    def __init__(self, bucket_name: str, *args, **kwargs):
+class ImportValmerConfig(AssetIndexedDataNodeConfiguration):
+    bucket_name: str = Field(
+        ...,
+        description="Valmer artifact bucket used by this updater.",
+        examples=["Hitorical Valmer Vector Analytico"],
+    )
+
+
+class ImportValmer(AssetIndexedDataNode):
+    def __init__(self, config: ImportValmerConfig, **kwargs):
         """
         Initializes the ImportValmer DataNode.
 
         Args:
-            bucket_name (str): The name of the bucket containing the source files.
+            config: DataNode configuration including the source artifact bucket.
         """
-        self.bucket_name = bucket_name
+        self.bucket_name = config.bucket_name
         self.artifact_data = None
-        super().__init__(*args, **kwargs)
+        self.source_data = None
+        super().__init__(config=config, **kwargs)
 
-    _ARGS_IGNORE_IN_STORAGE_HASH = ["bucket_name"]
+    @classmethod
+    def _required_storage_table(cls):
+        return ValmerVectorPricesStorage
 
     def maximum_forward_fill(self):
         return timedelta(days=1) - pd.Timedelta("5ms")
@@ -602,13 +594,20 @@ class ImportValmer(DataNode):
 
             base = Path(debug_artifact_path)
             sorted_artifacts = [read_artifact(p) for p in sorted(base.rglob("*.xls*"))]
-            latest_date = self.local_persist_manager.get_update_statistics_for_table().get_max_time_in_update_statistics()
+            latest_date = (
+                self.local_persist_manager.get_update_statistics_for_table()
+                .get_max_time_in_update_statistics()
+            )
         else:
             if self.artifact_data is not None:
                 return None
 
             artifacts, artifact_dates = self._get_artifacts(self.logger, self.bucket_name)
-            latest_date = self.local_persist_manager.get_update_statistics_for_table().get_max_time_in_update_statistics()
+            latest_date = (
+                self.local_persist_manager.get_update_statistics_for_table()
+                .get_max_time_in_update_statistics()
+            )
+            sorted_artifacts = artifacts
             if latest_date:
                 self.logger.info(f"Filtering artifacts newer than {latest_date}.")
                 sorted_artifacts = [
@@ -634,8 +633,7 @@ class ImportValmer(DataNode):
             f"Combined all artifacts into a single DataFrame with {len(self.artifact_data)} rows."
         )
 
-
-    def dependencies(self) -> Dict[str, Union["DataNode", "APIDataNode"]]:
+    def dependencies(self) -> dict:
         return {}
 
     # ------- Helpers for bond and vector filter -------#
@@ -691,14 +689,14 @@ class ImportValmer(DataNode):
     @staticmethod
     def _get_missing_asset_uids(
         unique_identifiers: List[str],
-        existing_assets: Dict[str, MarketsAsset],
+        existing_assets: dict[str, MarketsAsset],
     ) -> List[str]:
         return [u for u in unique_identifiers if u not in existing_assets]
 
     @staticmethod
     def _get_current_pricing_details_by_uid(
-        existing_assets: Dict[str, MarketsAsset],
-    ) -> Dict[str, AssetCurrentPricingDetails]:
+        existing_assets: dict[str, MarketsAsset],
+    ) -> dict[str, AssetCurrentPricingDetails]:
         if not existing_assets:
             return {}
 
@@ -711,7 +709,7 @@ class ImportValmer(DataNode):
             limit=len(asset_uid_to_valmer_uid),
         )
 
-        pricing_details: Dict[str, AssetCurrentPricingDetails] = {}
+        pricing_details: dict[str, AssetCurrentPricingDetails] = {}
         for row in operation_result_rows(result):
             detail = AssetCurrentPricingDetails.model_validate(row)
             valmer_uid = asset_uid_to_valmer_uid.get(str(detail.asset_uid))
@@ -722,8 +720,8 @@ class ImportValmer(DataNode):
     @staticmethod
     def _get_pricing_refresh_uids(
         unique_identifiers: List[str],
-        existing_assets: Dict[str, MarketsAsset],
-        current_pricing_details: Dict[str, AssetCurrentPricingDetails],
+        existing_assets: dict[str, MarketsAsset],
+        current_pricing_details: dict[str, AssetCurrentPricingDetails],
         all_target_bonds: pd.DataFrame,
         *,
         force_update: bool = False,
@@ -798,7 +796,7 @@ class ImportValmer(DataNode):
     def _concatenate_artifacts_content(sorted_artifacts, logger):
         frames = []
         for artifact in tqdm(sorted_artifacts):
-            if isinstance(artifact, msc.Artifact):
+            if isinstance(artifact, Artifact):
                 name_l = artifact.name.lower()
                 content = artifact.content
                 buf = content
@@ -918,7 +916,7 @@ class ImportValmer(DataNode):
         uids_needing_pricing.update(u for u in missing_assets if u in target_uids)
 
         if uids_needing_pricing:
-            instrument_pricing_detail_map: Dict[str, dict] = {}
+            instrument_pricing_detail_map: dict[str, dict] = {}
             for uid in uids_needing_pricing:
                 if uid not in df_latest_idx.index:
                     continue
@@ -940,7 +938,7 @@ class ImportValmer(DataNode):
                 }
 
             # target the correct asset objects (newly registered + existing)
-            assets_for_update: Dict[str, MarketsAsset] = {
+            assets_for_update: dict[str, MarketsAsset] = {
                 u: existing_assets[u]
                 for u in uids_needing_pricing
                 if u in existing_assets and u in instrument_pricing_detail_map
@@ -1011,9 +1009,6 @@ class ImportValmer(DataNode):
             unique_identifiers, df_latest, all_target_bonds, force_update=False
         )
 
-    def get_column_metadata(self) -> list[msc.ColumnMetaData]:
-        return _build_column_metadata(VALMER_VECTOR_COLUMN_SPECS)
-
     def update(self):
         source_data = self.source_data
         assert source_data is not None, "Source data is not available"
@@ -1054,15 +1049,3 @@ class ImportValmer(DataNode):
         vector_df = self.update_statistics.filter_df_by_latest_value(vector_df)
 
         return vector_df
-
-    def get_table_metadata(self) -> msc.TableMetaData:
-        TS_ID = "vector_de_precios_valmer"
-        meta = msc.TableMetaData(
-            identifier=TS_ID,
-            description=(
-                "Valmer price vector with time-varying pricing columns and derived OHLC bars. "
-                "Repeated asset descriptors live in ValmerAssetDetailsTable."
-            ),
-            data_frequency_id=msc.DataFrequency.one_d,
-        )
-        return meta
