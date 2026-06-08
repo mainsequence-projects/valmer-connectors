@@ -1,6 +1,6 @@
 ---
 name: mainsequence-markets-asset-indexed-data-nodes
-description: Use this skill when creating, extending, reviewing, or documenting ms-markets AssetIndexedDataNode implementations, especially timestamped market tables keyed by (time_index, unique_identifier). This skill owns ms-markets asset identity conventions, AssetTable foreign keys, namespace behavior, storage metadata, and frame insertion patterns. It does not own the full Main Sequence DataNode lifecycle, orchestration, hashing theory, scheduling, or generic DataNode API behavior.
+description: Use this skill when creating, extending, reviewing, or documenting ms-markets AssetIndexedDataNode implementations, especially timestamped market tables keyed by (time_index, asset_identifier). This skill owns ms-markets asset identity conventions, AssetTable foreign keys, namespace behavior, storage metadata, and frame insertion patterns. It does not own the full Main Sequence DataNode lifecycle, orchestration, hashing theory, scheduling, or generic DataNode API behavior.
 ---
 
 # Main Sequence Markets Asset-Indexed DataNodes
@@ -34,15 +34,15 @@ Use the asset model extension skill instead when the task is about `AssetTable`,
 
 ## This Skill Owns
 
-- Defining asset-indexed DataNodes where `unique_identifier` means
+- Defining asset-indexed DataNodes where `asset_identifier` stores
   `msm.api.assets.Asset.unique_identifier`.
-- Requiring `ASSET_UNIQUE_IDENTIFIER_DIMENSION` from `msm.settings`; do not
+- Requiring `ASSET_IDENTIFIER_DIMENSION` from `msm.settings`; do not
   hardcode competing asset identity column constants.
 - Keeping `asset_list` as updater scope, not published table meaning.
-- Declaring `PlatformTimeIndexMetaData` storage classes as the canonical output
+- Declaring `PlatformTimeIndexMetaTable` storage classes as the canonical output
   schema.
 - Declaring a SQLAlchemy `ForeignKey` from the storage table
-  `unique_identifier` column to `AssetTable.unique_identifier`.
+  `asset_identifier` column to `AssetTable.unique_identifier`.
 - Keeping schema details on storage classes: `__time_index_name__`,
   `__index_names__`, mapped columns, dtypes, nullability, and source-table
   foreign keys.
@@ -51,7 +51,7 @@ Use the asset model extension skill instead when the task is about `AssetTable`,
 - Deriving validation from `_required_storage_table()` and the instance's bound
   `storage_table`.
 - Returning validated `datetime64[ns, UTC]` frames with a
-  `["time_index", "unique_identifier"]` index for timestamped asset facts.
+  `["time_index", "asset_identifier"]` index for timestamped asset facts.
 - Designing insertion methods that belong on the DataNode class, such as
   `AssetSnapshot.build_frame(...)` and `AssetSnapshot().set_snapshots(...)`.
 
@@ -92,16 +92,16 @@ Default asset-indexed time series tables use this shape:
 ```text
 +-----------------------------+      source-table FK       +-----------------------------+
 | AssetIndexedDataNode table  |--------------------------->| AssetTable                  |
-|-----------------------------| unique_identifier          |-----------------------------|
+|-----------------------------| asset_identifier           |-----------------------------|
 | time_index           index  |                            | uid                         |
-| unique_identifier    index  |                            | unique_identifier unique    |
+| asset_identifier     index  |                            | unique_identifier unique    |
 | value columns               |                            | asset_type                  |
 +-----------------------------+                            +-----------------------------+
 ```
 
 Rules:
 
-- `unique_identifier` is the canonical `Asset.unique_identifier`, not a raw
+- `asset_identifier` stores the canonical `Asset.unique_identifier`, not a raw
   provider ticker, FIGI, ISIN, or venue symbol.
 - Provider identifiers belong in provider detail MetaTables or explicit
   provider-fact DataNode columns.
@@ -109,7 +109,7 @@ Rules:
 - Timestamped asset rows must carry their own `time_index`; do not pass one
   global timestamp into a bulk snapshot builder.
 - Dtypes must be stable. For time indexes, normalize to `datetime64[ns, UTC]`.
-- Duplicate `(time_index, unique_identifier)` rows are invalid.
+- Duplicate `(time_index, asset_identifier)` rows are invalid.
 
 ## Storage And Configuration Pattern
 
@@ -132,14 +132,22 @@ storage metadata from the markets catalog. Do not manually bind a UID,
 reconstruct a generic `MetaTable`, call storage `.register()` from runtime
 startup, or use manual bind helpers as an authoring step.
 
+Project-local storage classes may set `__markets_storage_app__` to use a
+project-owned SQLAlchemy table-name app segment instead of the library default
+`ms_markets`. This is useful for extension storage such as provider bars or
+account facts. It only changes physical table naming; the globally unique
+`__metatable_identifier__` remains the logical catalog/runtime identity.
+Changing the storage app after migration/catalog finalization is a physical
+table-name rotation and must go through the normal SDK migration and
+registration path.
+
 Minimal storage-first pattern:
 
 ```python
 import datetime
 
 import pandas as pd
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import DateTime, Float, String
+from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
@@ -151,28 +159,25 @@ from msm.models.assets.core import AssetTable
 
 
 class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    __markets_base_identifier__ = "example_asset_metrics"
+    __markets_storage_app__ = "my_project_markets"
+    __metatable_identifier__ = "ExampleAssetMetricsTS"
     __metatable_description__ = (
-        "Timestamped asset metric observations keyed by asset unique identifier "
+        "Timestamped asset metric observations keyed by asset identifier "
         "for market analytics and portfolio workflows."
     )
     __time_index_name__ = "time_index"
-    __index_names__ = ["time_index", "unique_identifier"]
+    __index_names__ = ["time_index", "asset_identifier"]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         info={"label": "Time Index", "description": "UTC observation timestamp."},
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String(255),
-        MetaTableForeignKey(
-            AssetTable,
-            column="unique_identifier",
-            ondelete="RESTRICT",
-        ),
+        ForeignKey(f"{AssetTable.__table__.fullname}.unique_identifier", ondelete="RESTRICT"),
         nullable=False,
-        info={"label": "Asset", "description": "Asset unique identifier from AssetTable."},
+        info={"label": "Asset", "description": "AssetTable.unique_identifier value."},
     )
     metric_value: Mapped[float | None] = mapped_column(
         Float,
@@ -200,7 +205,7 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
         return self.set_frame(self.build_frame(rows))
 ```
 
-The `unique_identifier` foreign key belongs on the storage class. Do not recreate
+The `asset_identifier` foreign key belongs on the storage class. Do not recreate
 the old DataNode-side foreign-key or records pattern.
 
 ## DataNode Class Pattern
@@ -308,7 +313,7 @@ class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
         ),
         examples=["us_equities"],
     )
-    reference_dimension: ClassVar[str] = "unique_identifier"
+    reference_dimension: ClassVar[str] = "asset_identifier"
 ```
 
 `asset_list` and `asset_category_unique_identifier` are fields because they
@@ -325,7 +330,7 @@ config field.
 Acceptable scope item shapes:
 
 - string asset unique identifiers
-- mappings with `unique_identifier`
+- mappings with `asset_identifier`
 - objects with `.unique_identifier`
 
 Use the inherited helpers:
@@ -376,7 +381,7 @@ representations of an asset.
 - Do not add `_required_column_dtypes_map()`, `_required_index_names()`, or
   `_required_time_index_name()` overrides to mirror storage state.
 - Do not add `__data_node_identifier__`; use the storage table's
-  `__markets_base_identifier__`.
+  `__metatable_identifier__`.
 
 ## Validation Checklist
 
@@ -385,18 +390,18 @@ Before marking work complete:
 - Timestamped asset fact nodes subclass `AssetTimestampedDataNode`; lower-level
   custom nodes subclass `AssetIndexedDataNode` only when they genuinely need a
   non-stamped update path.
-- The storage table subclasses `PlatformTimeIndexMetaData` through
+- The storage table subclasses `PlatformTimeIndexMetaTable` through
   `MarketsTimeIndexMetaTableMixin`.
 - The storage table has an intention-rich `__metatable_description__`.
 - The config subclasses `AssetIndexedDataNodeConfiguration` or
   `AssetDataNodeConfiguration`.
-- The storage table declares `time_index`, `unique_identifier`, and all value
+- The storage table declares `time_index`, `asset_identifier`, and all value
   columns.
 - The storage time index is timezone-aware and frames normalize to
   `datetime64[ns, UTC]`.
-- The storage `unique_identifier` column is the
-  `ASSET_UNIQUE_IDENTIFIER_DIMENSION`.
-- The storage table declares the canonical `unique_identifier ->
+- The storage `asset_identifier` column is the
+  `ASSET_IDENTIFIER_DIMENSION`.
+- The storage table declares the canonical `asset_identifier ->
   AssetTable.unique_identifier` SQLAlchemy `ForeignKey`.
 - The storage table is migrated, registered, and cataloged by the SDK migration
   provider before writes.

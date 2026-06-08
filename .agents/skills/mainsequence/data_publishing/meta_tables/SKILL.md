@@ -17,7 +17,7 @@ This skill is for schema-driven application tables registered through TS Manager
 - choose `platform_managed` or `external_registered` management mode
 - register platform-managed tables through the model class API
 - build registration requests from resolved SQLAlchemy metadata when inspection is useful
-- define indexes and foreign keys in the table contract
+- define indexes and foreign keys in SQLAlchemy metadata for Alembic-owned DDL
 - design governed compiled SQL read and write operations
 - design provider-based Alembic contract evolution for MetaTables
 - run the documented `mainsequence migrations ...` lifecycle for Alembic-backed MetaTable changes
@@ -95,24 +95,58 @@ For every non-trivial task, decide:
 
 ## Build Rules
 
+### 0. Creation And Deletion Are SDK-Managed
+
+Do not build custom migrations for creating or deleting MetaTables.
+
+MetaTable creation and deletion are handled through `mainsequence-sdk` and the
+Main Sequence CLI. Assistants should define the SQLAlchemy MetaTable model,
+select the SDK migration provider when schema evolution is needed, and use the
+documented `mainsequence migrations ...` commands.
+
+Do not hand-author create/delete migration files, backend migration payloads,
+manifest rows, registry rows, or low-level SDK migration requests for MetaTable
+creation or deletion.
+
+The only migration workflow to recommend is the Main Sequence CLI lifecycle:
+
+```bash
+mainsequence migrations current --provider mainsequence_migrations:migration
+mainsequence migrations revision --provider mainsequence_migrations:migration
+mainsequence migrations upgrade --provider mainsequence_migrations:migration head
+```
+
 ### 1. SQLAlchemy metadata is the authoring source
 
 Keep the application table model as the authoring source for the neutral table contract.
 
 Do not hand-build contract fragments when the SQLAlchemy helper can derive them.
 
-### 2. Use storage-hash physical names for backend-managed tables
+### 2. Use explicit project-prefixed table names
 
 For `platform_managed`, inherit from `PlatformManagedMetaTable`.
 
-The mixin derives the SQLAlchemy physical table name from storage-relevant configuration and table shape. Do not hand-write `__tablename__` for normal backend-managed tables.
+Declare an explicit project-prefixed SQLAlchemy `__tablename__`. Use
+`schema_table_name(project_or_app, concept)` from `mainsequence.meta_tables` to
+generate that name. The mixin derives only the logical `storage_hash` from
+storage-relevant configuration and table shape; it must not use that hash as the
+SQLAlchemy table name.
 
 When a platform-managed table must support in-place contract migrations from its
 first version, use Alembic. Keep the SDK model as a normal
-`PlatformManagedMetaTable` or `PlatformTimeIndexMetaData` catalog contract, and
+`PlatformManagedMetaTable` or `PlatformTimeIndexMetaTable` catalog contract, and
 apply physical schema changes through the Alembic migration workflow.
 
-Schema must come from SQLAlchemy table metadata, usually `__table_args__ = {"schema": "public"}` or the tuple form ending in `{"schema": ...}`. Do not add a separate MetaTable-specific schema attribute.
+For `PlatformTimeIndexMetaTable`, declare `__cadence__` whenever the table has a
+known stable observation interval, for example `1m`, `5m`, `1h`, `1d`, `1w`,
+`1mo`, `1q`, or `1y`. Cadence is table metadata and belongs on the storage
+model when possible.
+
+Default-schema tables must leave SQLAlchemy `Table.schema` unset; do not write
+`__table_args__ = {"schema": "public"}` for the default PostgreSQL schema. Set
+schema metadata only for non-default schemas, using `__table_args__ = {"schema":
+"custom_schema"}` or the tuple form ending in `{"schema": ...}`. Do not add a
+separate MetaTable-specific schema attribute.
 
 Always declare `__metatable_description__` on the model. The description must
 explain the table's business intention, row grain, and expected use, not only
@@ -131,12 +165,26 @@ table. Do not use it for labels, descriptions, runtime options, test isolation,
 backend UIDs, data-source UIDs, or updater scope. Use `hash_namespace` for test
 or experiment isolation.
 
+Prefix explicit table identifiers, explicit physical table names, and Alembic
+version table names with the project or package name. Bare names such as
+`Account`, `Asset`, or `alembic_version` can collide across projects sharing an
+organization or database schema. Prefer `schema_table_name(...)` over
+hand-built f-strings so project/app prefixes, bounded length, and separators are
+consistent.
+
 Register through the class API:
 
 ```python
+from mainsequence.meta_tables import PlatformManagedMetaTable, schema_table_name
+
+PROJECT_NAME = "sdk_examples"
+ACCOUNT_TABLE_NAME = schema_table_name(PROJECT_NAME, "account")
+
+
 class Account(PlatformManagedMetaTable, Base):
+    __tablename__ = ACCOUNT_TABLE_NAME
     __metatable_namespace__ = "sdk-examples"
-    __metatable_identifier__ = "Account"
+    __metatable_identifier__ = "sdk_examples.Account"
     __metatable_extra_hash_components__ = {"storage_name": "account"}
     __metatable_description__ = (
         "Customer account master records used to scope balances, holdings, and "
@@ -166,8 +214,8 @@ class Account(PlatformManagedMetaTable, Base):
 Registration metadata belongs on the class. Do not call `Account.register()`
 directly for platform-managed models. Add platform-managed models to the
 selected `AlembicMetaTableMigration.metatable_models` list and let
-`mainsequence migrations upgrade --provider ... --to head` resolve/register and
-bind them.
+`mainsequence migrations upgrade --provider ... head` reserve, migrate, refresh,
+and bind them.
 
 For platform-managed migration registration, the data source is resolved from
 the active Main Sequence project/session, the same way DataNode does. Do not
@@ -189,29 +237,25 @@ Do not add generic labels such as `"meta-table"` or `"platform-managed"` to exam
 Do not add a `MAINSEQUENCE_META_TABLE_REGISTER` toggle in platform-managed
 examples. Platform-managed examples should be migration-first.
 
-### 3. Register parent tables before child tables
+### 3. Keep foreign keys in SQLAlchemy/Alembic metadata
 
-Foreign-key contracts reference the target `MetaTable` UID.
+For `PlatformManagedMetaTable`, define foreign keys with normal SQLAlchemy
+`ForeignKey(...)` / `ForeignKeyConstraint(...)` metadata. Do not write explicit
+target `MetaTable.uid` maps in the platform-managed path. Migration is the
+lifecycle path: the SDK reserves provider MetaTable rows, Alembic renders and
+applies FK/index DDL from SQLAlchemy metadata, and finalization refreshes the
+catalog after upgrade.
 
-For `PlatformManagedMetaTable`, define foreign keys with
-`MetaTableForeignKey(TargetModel, column=...)`. Do not write raw SQLAlchemy
-table fullnames, `Parent.__table__.c.<column>` targets, or explicit target UID
-maps in the platform-managed path. Migration is the lifecycle path. Migration
-tooling resolves/registers unresolved target model classes, stores each
-returned `MetaTable` in a local process registry keyed by `storage_hash`, and
-uses the target `MetaTable.uid` in the child FK contract.
-
-Do not require users to provide foreign-key names. `MetaTableForeignKey(...)`
-accepts `name=...` only as an override; when omitted, the SDK derives a stable
-PostgreSQL-safe contract name from the child table and source column after the
-column is attached to the SQLAlchemy table.
+Prefer project-prefixed SQLAlchemy table names for explicit FK string targets.
+Alembic, SQLAlchemy, and the database own physical FK/index names unless the
+project explicitly names them in SQLAlchemy.
 
 Use this pattern:
 
 ```python
 account_uid: Mapped[uuid.UUID] = mapped_column(
     Uuid,
-    MetaTableForeignKey(Account, column="uid", ondelete="RESTRICT"),
+    ForeignKey("sdk_examples__account.uid", ondelete="RESTRICT"),
     nullable=False,
 )
 ```
@@ -228,21 +272,19 @@ migration = AlembicMetaTableMigration(
 )
 ```
 
-Migration tooling registers `Account` first if `Asset` depends on it and it has
-not already been bound in the current process. The local registry prevents
-duplicate backend registration attempts for the same `storage_hash` and raises
-a clear error for recursive registration cycles.
+Migration tooling reserves provider MetaTable rows in the provider-declared
+model order. Include related parent and child models in the same selected
+provider when Alembic must create or evolve their FK DDL.
 
-For `external_registered`, there is no platform-managed parent lookup. Register
-the parent first, then build the child registration request with
-`target_meta_tables={Account: account_meta_table}`:
+For `external_registered`, register each external table contract directly. Do
+not encode FK target MetaTable UIDs in the child registration request; FKs are
+database DDL/introspection metadata, not SDK registration contract fields:
 
 ```python
 account_meta_table = MetaTable.register(account_request)
 asset_request = external_registered_registration_request_from_sqlalchemy_model(
     Asset,
     data_source_uid=data_source_uid,
-    target_meta_tables={Account: account_meta_table},
 )
 asset_meta_table = MetaTable.register(asset_request)
 ```
@@ -259,6 +301,12 @@ SQLAlchemy class and calling normal registration again. Shape-addressed
 foreign keys, or constraints change, so new code cannot reliably recover the
 previous shape-derived table.
 
+Do not modify Alembic revision files that have already been implemented/applied.
+MetaTable migrations are database-backed history: once a revision may exist in a
+database `alembic_version` table, changing that file corrupts the relationship
+between source history and deployed state. For any follow-up schema change,
+create a new Alembic revision on top of the current head.
+
 For contract evolution, define or update one selected
 `AlembicMetaTableMigration` provider:
 
@@ -267,18 +315,19 @@ For contract evolution, define or update one selected
 - set `package`, `migration_namespace`, `script_location`, and `target_metadata`
 - set `alembic_registry` to an `AlembicVersionMetaTable` subclass
 - list the post-apply catalog scope in `metatable_models`
-- generate, render, dry-run, apply, and refresh catalog bindings
+- generate revisions, apply migrations, and refresh catalog bindings
   through `mainsequence migrations ...` commands
 
 `alembic_version_meta_table_uid` is the UID of the catalog binding for Alembic's
 version table. It is not the UID of the table being migrated.
 
-Application MetaTable catalog sync resolves existing rows by exact
-`identifier`. If a model declares `__metatable_identifier__`, that value is the
-global identity. If it does not, the SDK derives the identifier from
-`[project].name` in `pyproject.toml` plus
-`<model.__module__>.<model.__qualname__>`. Pin an explicit identifier when a
-class is renamed or moved but must keep the same platform identity.
+Application MetaTable catalog sync resolves existing rows by the authored
+SQLAlchemy table name used by the provider model. Keep that table name stable
+when a class is renamed or moved but must keep the same platform identity.
+When declaring an explicit identifier, explicit physical table name, or Alembic
+version table name, prefix it with the project or package name rather than using
+a bare table name. Use `schema_table_name(project_or_app, concept)` for the
+physical table and Alembic version table names.
 
 Do not ask users to construct backend migration payloads, call low-level
 migration request models, or use SDK helper functions directly. The backend
@@ -287,13 +336,11 @@ request shape is reference material in the tutorial; the user-facing path is:
 ```bash
 mainsequence migrations current --provider mainsequence_migrations:migration
 mainsequence migrations revision --provider mainsequence_migrations:migration
-mainsequence migrations render --provider mainsequence_migrations:migration --to head
-mainsequence migrations upgrade --provider mainsequence_migrations:migration --to head --dry-run
-mainsequence migrations upgrade --provider mainsequence_migrations:migration --to head
+mainsequence migrations upgrade --provider mainsequence_migrations:migration head
 ```
 
-`current` and `upgrade` automatically register the provider's
-`AlembicVersionMetaTable` binding when backend migration state is needed.
+All migration commands prepare the provider, reserve provider-scoped
+platform-managed MetaTables, bind backend names, and call Alembic directly.
 `revision` accepts optional `-m/--message`; if omitted, the CLI uses
 `migration`. `revision --autogenerate` is optional and requires an explicit
 `--sqlalchemy-url` for the baseline database.
@@ -333,9 +380,8 @@ When reviewing an existing MetaTable workflow, look for:
 - backend-managed examples that use namespace environment variables instead of a plain `sdk-examples` namespace
 - duplicate schema sources outside SQLAlchemy table metadata
 - external tables registered with unstable physical names
-- platform-managed examples that manually sequence parent registration instead
-  of relying on `MetaTableForeignKey(...)` recursive registration
-- external child registrations that do not map foreign-key targets to registered parent `MetaTable.uid` values
+- platform-managed examples that try to sequence parent registration through FK metadata
+- external child registrations that try to encode FK target MetaTable UIDs in registration contracts
 - contract changes attempted through normal registration instead of an Alembic migration
 - migration work that asks users to define backend payloads, artifact rows, or SDK request objects
 - compiled SQL operations without complete table scope
@@ -350,9 +396,9 @@ Do not claim success until you have checked:
 - the table has an intention-rich `__metatable_description__`
 - every mapped column has an intention-rich `info.description`
 - indexes are intentional
-- foreign keys resolve to the correct dependency targets
+- foreign keys are present in SQLAlchemy metadata for Alembic when required
 - management mode is correct
-- backend-managed physical names match the storage hash
+- authored physical names are explicit, project-prefixed SQLAlchemy table names
 - registration returns a `MetaTable.uid`
 - compiled SQL operations declare table scope
 - migrations use Alembic-rendered SQL
@@ -365,9 +411,8 @@ Do not claim success until you have checked:
 For related tables, also check:
 
 - aliases are readable
-- platform-managed child registration recursively resolves parent
-  `MetaTableForeignKey(...)` targets
-- external child registration requests map FK targets to the registered parent UIDs
+- platform-managed child tables and parent tables are included in the selected migration provider
+- FK target strings use stable project-prefixed SQLAlchemy table names where explicit strings are authored
 - query results still match the expected response contract
 
 ## This Skill Must Stop And Escalate When

@@ -1,6 +1,9 @@
 import unittest
 
 import pandas as pd
+from msm.base import markets_table_name
+from msm.models.assets import AssetTable
+from msm.settings import markets_auto_register_namespace
 
 from valmer_connectors.data_nodes.nodes import (
     VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
@@ -10,6 +13,7 @@ from valmer_connectors.data_nodes.nodes import (
     ImportValmerConfig,
 )
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
+from valmer_connectors.markets import VALMER_MARKETS_STORAGE_APP
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 
 
@@ -30,25 +34,74 @@ class ValmerVectorStorageTest(unittest.TestCase):
 
         self.assertEqual(storage_columns, expected_columns)
         self.assertEqual(
-            ValmerVectorPricesStorage.__markets_base_identifier__,
+            ValmerVectorPricesStorage.__metatable_identifier__,
             "vector_de_precios_valmer",
         )
+        self.assertEqual(
+            ValmerVectorPricesStorage.__table__.name,
+            markets_table_name(
+                VALMER_MARKETS_STORAGE_APP,
+                ValmerVectorPricesStorage.__metatable_identifier__,
+                suffix=markets_auto_register_namespace(),
+            ),
+        )
+        self.assertEqual(
+            ValmerVectorPricesStorage.__markets_storage_app__,
+            VALMER_MARKETS_STORAGE_APP,
+        )
+        self.assertEqual(
+            ValmerVectorPricesStorage.__table__.info["markets_storage_app"],
+            VALMER_MARKETS_STORAGE_APP,
+        )
+        self.assertIsNone(ValmerVectorPricesStorage.__table__.schema)
         self.assertEqual(
             ValmerVectorPricesStorage.__index_names__,
             ["time_index", "unique_identifier"],
         )
 
     def test_vector_storage_links_to_asset_unique_identifier(self):
-        foreign_keys = list(ValmerVectorPricesStorage.__table__.c.unique_identifier.foreign_keys)
+        foreign_keys = list(
+            ValmerVectorPricesStorage.__table__.c.unique_identifier.foreign_keys
+        )
 
         self.assertEqual(len(foreign_keys), 1)
         self.assertEqual(foreign_keys[0].column.name, "unique_identifier")
+        self.assertEqual(
+            foreign_keys[0].column.table.fullname, AssetTable.__table__.fullname
+        )
 
     def test_valmer_asset_details_uses_asset_uid_foreign_key(self):
+        self.assertEqual(
+            ValmerAssetDetailsTable.__table__.name,
+            markets_table_name(
+                VALMER_MARKETS_STORAGE_APP,
+                ValmerAssetDetailsTable.__metatable_identifier__,
+                suffix=markets_auto_register_namespace(),
+            ),
+        )
+        self.assertEqual(
+            ValmerAssetDetailsTable.__markets_storage_app__,
+            VALMER_MARKETS_STORAGE_APP,
+        )
+        self.assertEqual(
+            ValmerAssetDetailsTable.__table__.info["markets_storage_app"],
+            VALMER_MARKETS_STORAGE_APP,
+        )
+
         foreign_keys = list(ValmerAssetDetailsTable.__table__.c.asset_uid.foreign_keys)
 
         self.assertEqual(len(foreign_keys), 1)
         self.assertEqual(foreign_keys[0].column.name, "uid")
+        self.assertEqual(
+            foreign_keys[0].column.table.fullname, AssetTable.__table__.fullname
+        )
+        self.assertIsNone(ValmerAssetDetailsTable.__table__.schema)
+
+    def test_valmer_asset_details_columns_have_metadata(self):
+        for column in ValmerAssetDetailsTable.__table__.columns:
+            with self.subTest(column=column.name):
+                self.assertIn("label", column.info)
+                self.assertIn("description", column.info)
 
     def test_bucket_name_is_typed_node_configuration(self):
         config = ImportValmerConfig(bucket_name="Hitorical Valmer Vector Analytico")
@@ -88,7 +141,9 @@ class ValmerVectorStorageTest(unittest.TestCase):
             set(result.reset_index().columns),
             set(ValmerVectorPricesStorage.__table__.columns.keys()),
         )
-        self.assertEqual(result.reset_index()["unique_identifier"].iloc[0], "M_BONOS_241205")
+        self.assertEqual(
+            result.reset_index()["unique_identifier"].iloc[0], "M_BONOS_241205"
+        )
 
 
 if __name__ == "__main__":

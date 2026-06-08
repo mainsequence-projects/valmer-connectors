@@ -1,13 +1,14 @@
 ---
 name: mainsequence-markets-account-workflow
-description: Use this skill when creating, extending, reviewing, or documenting ms-markets account workflows, including Account, AccountGroup, AccountModelPortfolio, AccountTargetPortfolio, PositionSet, AccountHoldings, TargetPositionsStorage, account holdings examples, and account position pretty-printing.
+description: Use this skill when creating, extending, reviewing, or documenting ms-markets account workflows, including Account, AccountGroup, AccountModelPortfolio, AccountTargetPortfolio, PositionSet, AccountHoldings, portfolio-aware TargetPositionsStorage, account holdings examples, and account position pretty-printing.
 ---
 
 # Main Sequence Markets Account Workflow
 
 Use this skill for account machinery in `msm`: account registry rows, account
-groups, model portfolio tracking, account-owned target portfolio links, target
-position snapshots, and account holdings publication.
+groups, model portfolio tracking, account-owned target portfolio links,
+PositionSet snapshots, and account holdings publication. Portfolio-aware target
+exposure rows belong to `msm_portfolios`.
 
 ## Route First
 
@@ -21,6 +22,8 @@ Use these adjacent skills when the task crosses their boundary:
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
 - Asset-indexed DataNode conventions:
   `.agents/skills/ms_markets/assets/asset_indexed_data_nodes/SKILL.md`
+- Portfolio examples and portfolio-owned target exposure:
+  `.agents/skills/ms_markets/portfolios/portfolio_workflow/SKILL.md`
 - Bootstrap/catalog registration:
   `.agents/skills/ms_markets/platform/bootstrap_registration/SKILL.md`
 
@@ -34,9 +37,10 @@ Before changing account code, inspect:
 4. `src/msm/data_nodes/accounts.py`
 5. `src/msm/data_nodes/storage.py`
 6. `src/msm/services/holdings.py`
-7. `src/msm/services/target_positions.py`
-8. `examples/msm/accounts/account_workflow.py`
-9. `docs/knowledge/msm/accounts/index.md`
+7. `src/msm_portfolios/data_nodes/target_positions.py`
+8. `src/msm_portfolios/services/target_positions.py`
+9. `examples/msm/accounts/account_workflow.py`
+10. `docs/knowledge/msm/accounts/index.md`
 
 ## Core Relationships
 
@@ -58,8 +62,13 @@ PositionSetTable
   <- TargetPositionsStorage.position_set_uid
 
 AssetTable.unique_identifier
-  <- AccountHoldingsStorage.unique_identifier
-  <- TargetPositionsStorage.unique_identifier
+  <- AccountHoldingsStorage.asset_identifier
+
+AssetTable.uid
+  <- TargetPositionsStorage.asset_uid
+
+PortfolioTable.uid
+  <- TargetPositionsStorage.portfolio_uid
 ```
 
 Rules:
@@ -73,12 +82,19 @@ Rules:
   accounts.
 - `PositionSet` is a UTC timestamped target snapshot owned by one
   `AccountTargetPortfolio`.
-- `TargetPositionsStorage` stores the actual exposure rows for a `PositionSet`.
-  Exactly one exposure field must be present per row:
+- `TargetPositionsStorage` is owned by `msm_portfolios` and stores actual
+  target exposure rows for a `PositionSet`. Each row uses exactly one concrete
+  target reference: `asset_uid` or `portfolio_uid`. `target_uid` must match the
+  selected concrete UID. Exactly one exposure field must be present per row:
   `weight_notional_exposure`, `constant_notional_exposure`, or
   `single_asset_quantity`.
 - `AccountHoldingsStorage` stores real holdings rows keyed by
-  `(time_index, account_uid, unique_identifier)`.
+  `(time_index, account_uid, asset_identifier)`.
+- Account holdings use positive `quantity` plus `direction` (`1` long, `-1`
+  short). Do not encode short exposure with negative quantities.
+- `AccountHoldingsStorage.holdings_set_uid` must reference a real
+  `AccountHoldingsSet` row. Do not invent anonymous holdings set UUIDs inside
+  examples.
 - DataNodes do not fabricate bootstrap rows. Attach a real frame or implement a
   real source-specific `update()`.
 
@@ -89,25 +105,54 @@ and cataloged the required MetaTables. Application startup then attaches the
 markets runtime before row operations or DataNode writes:
 
 ```python
-import msm
+import msm_portfolios
 
-msm.start_engine(
+msm_portfolios.start_engine(
     models=[
         "AssetType",
         "Asset",
+        "Calendar",
+        "CalendarDate",
+        "CalendarSession",
+        "IndexType",
+        "Index",
+        "AssetSnapshotsStorage",
         "AccountModelPortfolio",
         "AccountGroup",
         "Account",
+        "AccountHoldingsSet",
         "AccountTargetPortfolio",
         "PositionSet",
         "AccountHoldingsStorage",
+        "Portfolio",
+        "VirtualFund",
+        "VirtualFundHoldingsSet",
+        "VirtualFundHoldingsStorage",
+        "SignalMetadata",
+        "RebalanceStrategyMetadata",
+        "PortfolioWeightsStorage",
+        "SignalWeightsStorage",
+        "PortfoliosStorage",
         "TargetPositionsStorage",
     ],
 )
 ```
 
-Create or upsert asset rows before holdings or target rows reference their
-`unique_identifier`.
+Create or upsert asset rows before holdings rows reference their
+`unique_identifier`, and create or upsert portfolio rows before target rows
+reference `portfolio_uid`. When an account example needs display fields, publish
+`AssetSnapshot` rows with canonical `ticker` and `name` metadata instead of
+only putting display data in holdings `extra_details`.
+
+The full account example is intentionally chainable. By default,
+`examples/msm/accounts/account_workflow.py` chains the equal-weight portfolio
+workflow, reuses the resulting `Portfolio` row, and assigns that portfolio UID
+as one of the account target positions. Run
+`python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py`
+before that default chain so the configured portfolio interpolation storage is
+migrated. Use `run_account_workflow(use_portfolio_example=False)` or the
+example CLI flag `--standalone-target-portfolio` only when testing the account
+path without the portfolio example.
 
 ## Full Workflow Pattern
 
@@ -120,23 +165,52 @@ import pandas as pd
 from msm.api.accounts import (
     Account,
     AccountGroup,
+    AccountHoldingsSet,
     AccountModelPortfolio,
     AccountTargetPortfolio,
     PositionSet,
 )
 from msm.api.assets import Asset, AssetType
 from msm.data_nodes.accounts import AccountHoldings
-from msm.services import build_account_holdings_frame, build_target_positions_frame
+from msm.data_nodes.assets import AssetSnapshot
+from msm.services import build_account_holdings_frame
+from msm_portfolios.api.portfolios import Portfolio
+from msm_portfolios.data_nodes import TargetPositions
+from msm_portfolios.services import build_target_positions_frame
 
 workflow_time = dt.datetime.now(dt.UTC).replace(microsecond=0)
 
 asset_type = AssetType.upsert(...)
-asset = Asset.upsert(...)
+assets = [
+    Asset.upsert(unique_identifier="example-asset-btc", asset_type=asset_type.asset_type),
+    Asset.upsert(unique_identifier="example-asset-eth", asset_type=asset_type.asset_type),
+]
+
+asset_snapshot_node = AssetSnapshot().set_snapshots(
+    [
+        {
+            "time_index": workflow_time,
+            "asset_identifier": assets[0].unique_identifier,
+            "name": "Bitcoin",
+            "ticker": "BTC",
+        },
+        {
+            "time_index": workflow_time,
+            "asset_identifier": assets[1].unique_identifier,
+            "name": "Ethereum",
+            "ticker": "ETH",
+        },
+    ]
+)
+snapshot_error, snapshot_frame = asset_snapshot_node.run(debug_mode=True, force_update=True)
+if snapshot_error:
+    raise RuntimeError("AssetSnapshot update failed.")
 
 model_portfolio = AccountModelPortfolio.upsert(
     model_portfolio_name="Example Balanced Account Model",
 )
 account_group = AccountGroup.upsert(group_name="Example High Risk Accounts")
+target_sleeve = Portfolio.upsert(unique_identifier="example-target-sleeve")
 
 accounts = [
     Account.upsert(
@@ -174,25 +248,55 @@ for account in accounts:
             position_set_uid=position_set.uid,
             positions=[
                 {
-                    "unique_identifier": asset.unique_identifier,
-                    "weight_notional_exposure": 1.0,
+                    "asset_uid": assets[0].uid,
+                    "weight_notional_exposure": 0.6,
+                },
+                {
+                    "portfolio_uid": target_sleeve.uid,
+                    "weight_notional_exposure": 0.4,
                 }
             ],
         )
     )
 
 holdings_frames = []
-for account, quantity in zip(accounts, (10.0, 5.0), strict=True):
+target_positions_node = TargetPositions(config=TargetPositions.default_config())
+target_positions_node.set_frame(pd.concat(target_position_frames).sort_index())
+target_error, target_positions_frame = target_positions_node.run(
+    debug_mode=True,
+    force_update=True,
+)
+if target_error:
+    raise RuntimeError("TargetPositions update failed.")
+
+for account, quantities in zip(
+    accounts,
+    ({"btc": 10.0, "eth": 25.0}, {"btc": 5.0, "eth": 12.5}),
+    strict=True,
+):
+    holdings_set = AccountHoldingsSet.upsert(
+        account_uid=account.uid,
+        time_index=workflow_time,
+    )
     holdings_frames.append(
         build_account_holdings_frame(
             holdings_date=workflow_time,
             account_uid=account.uid,
+            holdings_set_uid=holdings_set.uid,
             positions=[
                 {
-                    "unique_identifier": asset.unique_identifier,
-                    "quantity": quantity,
+                    "asset_identifier": assets[0].unique_identifier,
+                    "quantity": quantities["btc"],
+                    "direction": 1,
                     "target_trade_time": workflow_time,
-                    "extra_details": {"ticker": "BTC"},
+                    "extra_details": {"ticker": "BTC", "name": "Bitcoin"},
+                },
+                {
+                    "asset_identifier": assets[1].unique_identifier,
+                    "quantity": quantities["eth"],
+                    "direction": 1,
+                    "target_trade_time": workflow_time,
+                    "extra_details": {"ticker": "ETH", "name": "Ethereum"},
                 }
             ],
         )
@@ -212,6 +316,12 @@ Prefer `set_account_holdings_frame(...)` only for a single-account frame. For
 multi-account examples, build frames with `build_account_holdings_frame(...)`,
 concatenate them, and call `AccountHoldings.set_frame(...)`.
 
+Target positions follow the same rule: build concrete rows with
+`build_target_positions_frame(...)`, concatenate the real frames, attach them to
+`TargetPositions.set_frame(...)`, and run the node. Do not stop at creating
+`AccountTargetPortfolio` or `PositionSet`; those rows only define the target
+relationship and snapshot identity.
+
 ## Timestamp And Dtype Rules
 
 - `position_set_time` is a timezone-aware UTC timestamp, not an `"eod"` string.
@@ -219,8 +329,10 @@ concatenate them, and call `AccountHoldings.set_frame(...)`.
 - Holdings builders normalize timestamp columns to SDK-compatible
   `datetime64[ns, UTC]`.
 - Quantities and exposure values must be numeric, not strings.
-- `unique_identifier` means `Asset.unique_identifier`, not ticker, FIGI, ISIN,
+- `asset_identifier` stores `Asset.unique_identifier`, not ticker, FIGI, ISIN,
   or a platform UID.
+- Target positions never use `asset_identifier`; they use `asset_uid` for
+  direct asset targets or `portfolio_uid` for portfolio sleeve targets.
 
 ## Pretty-Printing Positions
 
@@ -251,8 +363,8 @@ and uses `extra_details["ticker"]` when available.
 For account changes, run at least:
 
 ```bash
-uv run --extra dev ruff check src/msm/api/accounts.py src/msm/models/accounts src/msm/data_nodes/accounts.py src/msm/services/holdings.py src/msm/services/target_positions.py examples/msm/accounts
-uv run --extra dev pytest tests/msm/api/test_rows.py tests/msm/data_nodes/test_contracts.py tests/msm/models/test_metatable_models.py
+uv run --extra dev ruff check src/msm/api/accounts.py src/msm/models/accounts src/msm/data_nodes/accounts.py src/msm/services/holdings.py src/msm_portfolios/data_nodes/target_positions.py src/msm_portfolios/services/target_positions.py examples/msm/accounts
+uv run --extra dev pytest tests/msm/api/test_rows.py tests/msm/data_nodes/test_contracts.py tests/msm_portfolios/data_nodes/test_target_positions_contracts.py tests/msm/models/test_metatable_models.py
 uv run --extra dev mkdocs build --strict --site-dir /private/tmp/msmarkets-docs-site
 git diff --check
 ```

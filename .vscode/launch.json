@@ -18,6 +18,70 @@
       "justMyCode": true
     },
     {
+      "name": "Migrations: Current (Valmer)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "args": [
+        "migrations",
+        "current",
+        "--provider",
+        "migrations:migration",
+        "--verbose"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Migrations: Revision (Valmer)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "args": [
+        "migrations",
+        "revision",
+        "--provider",
+        "migrations:migration",
+        "--message",
+        "${input:migrationRevisionMessage}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Migrations: Upgrade (Valmer)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "args": [
+        "migrations",
+        "upgrade",
+        "--provider",
+        "migrations:migration",
+        "${input:migrationTargetRevision}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": true
+    },
+    {
       "name": "Example Script",
       "type": "python",
       "request": "launch",
@@ -28,6 +92,20 @@
         "PYTHONPATH": "${workspaceFolder}"
       },
       "justMyCode": true
+    }
+  ],
+  "inputs": [
+    {
+      "id": "migrationRevisionMessage",
+      "type": "promptString",
+      "description": "Alembic revision message",
+      "default": "migration"
+    },
+    {
+      "id": "migrationTargetRevision",
+      "type": "promptString",
+      "description": "Alembic target revision",
+      "default": "head"
     }
   ]
 }

@@ -9,8 +9,10 @@ from valmer_connectors.instruments.curve_bootstrap import (
     MEXICAN_INDEX_CONVENTION_DEFINITIONS,
     MEXICAN_REFERENCE_INDEX_DEFINITIONS,
     TIIE_28_INDEX_UNIQUE_IDENTIFIER,
+    VALMER_DISCOUNT_CURVES_CADENCE,
     VALMER_TIIE_28_CURVE_DEFINITION,
     attach_valmer_curve_pricing_runtime,
+    configure_valmer_discount_curves_cadence,
     create_valmer_curve_pricing_schemas,
     mexican_reference_index_payloads,
 )
@@ -83,6 +85,22 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
         self.assertIn(ValmerAssetDetailsTable, models)
         pricing_bootstrap.assert_called_once_with(timeout=15)
         self.assertEqual(result, "pricing-runtime")
+
+    def test_curve_runtime_sets_discount_curve_storage_cadence(self):
+        from msm_pricing.data_nodes import DiscountCurvesNode
+
+        storage_table = DiscountCurvesNode._required_storage_table()
+        original_cadence = getattr(storage_table, "__cadence__", None)
+        try:
+            storage_table.__cadence__ = None
+
+            configured_storage = configure_valmer_discount_curves_cadence()
+
+            self.assertIs(configured_storage, storage_table)
+            self.assertEqual(storage_table.__cadence__, VALMER_DISCOUNT_CURVES_CADENCE)
+            self.assertEqual(storage_table.__cadence__, "1d")
+        finally:
+            storage_table.__cadence__ = original_cadence
 
     def test_old_curve_schema_helper_forwards_to_runtime_attach(self):
         with patch(

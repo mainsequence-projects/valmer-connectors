@@ -24,11 +24,7 @@ import msm
 msm.start_engine(models=["AssetType", "Asset"])
 ```
 
-Do not recommend row-class schema shortcuts such as:
-
-```python
-Asset.create_schemas()
-```
+Do not recommend row-class schema shortcuts for schema creation.
 
 Typed row classes such as `Asset`, `Account`, and `Portfolio` are row-operation
 APIs. They may depend on an active runtime, but user-facing workflows should not
@@ -128,12 +124,39 @@ That call must use the same finalized catalog attach path as built-ins. Do not
 create a project-local UID map, catalog writer, table-name resolver, direct
 runtime registration flow, or row-class schema bootstrap.
 
+Project-local extension models may set `__markets_storage_app__` to use a
+project-owned SQLAlchemy table-name app segment instead of the library default
+`ms_markets`. This is only physical table naming. It does not replace the
+globally unique `__metatable_identifier__`, does not affect row API selection,
+and does not remove the need for SDK migration/provider registration before
+runtime startup.
+
+```python
+from msm.base import MarketsBase, MarketsMetaTableMixin
+
+
+class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+    __abstract__ = True
+    __markets_storage_app__ = "my_project_markets"
+
+
+class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "com.my_company.markets.MyAssetDetails"
+    __metatable_description__ = (
+        "Project-local asset details keyed one-to-one by AssetTable.uid."
+    )
+```
+
+Set `__markets_storage_app__` before SQLAlchemy maps the table. Changing it
+after migration/catalog finalization points the model at a different physical
+table name and requires the normal SDK migration and registration path.
+
 When adding a new built-in markets MetaTable model:
 
 1. Define the SQLAlchemy model with `MarketsMetaTableMixin`.
 2. Add a meaningful `__metatable_description__`.
-3. Declare platform-managed foreign keys with
-   `MetaTableForeignKey(TargetModel, column=...)`.
+3. Declare platform-managed foreign keys with normal SQLAlchemy
+   `ForeignKey(f"{TargetModel.__table__.fullname}.column", ...)`.
 4. Export the model from its package.
 5. Add it to `markets_sqlalchemy_models()` in dependency order.
 6. Add or update row APIs only after the storage model is in the graph.
@@ -141,7 +164,7 @@ When adding a new built-in markets MetaTable model:
 8. Update docs and tests so examples call `msm.start_engine(...)` only after
    migrations are already handled.
 
-When adding DataNode storage, add the `PlatformTimeIndexMetaData` storage class
+When adding DataNode storage, add the `PlatformTimeIndexMetaTable` storage class
 to the model graph and ensure SDK migration provider coverage outside this
 skill. Do not rely on constructing a DataNode to register its storage.
 
@@ -206,17 +229,15 @@ When reviewing or implementing extension support, verify the ADR 0018 target:
 
 - `msm.start_engine(models=[CustomTable])` accepts project-local
   `MarketsBase` subclasses that are not in `markets_sqlalchemy_models()`.
-- Class-based `MetaTableForeignKey(...)` targets are expanded transitively, so a
-  custom asset detail table pulls in `AssetTable` before runtime attachment and
-  runtime attachment.
+- SQLAlchemy `ForeignKey(...)` targets are expanded transitively, so a custom
+  asset detail table pulls in `AssetTable` before runtime attachment.
 - Duplicate logical identifiers fail before runtime attachment.
 - Catalog rows are finalized before runtime and runtime binding uses the same
   catalog path used by built-ins.
 - Custom row API classes remain row-operation wrappers; startup still goes
   through `msm.start_engine(...)`.
-- Catalog rows whose `meta_table_uid` no longer resolves fail runtime startup;
-  repair belongs to explicit SDK migration/platform maintenance outside runtime
-  startup.
+- Catalog rows whose `meta_table_uid` no longer resolves are invalidated during
+  startup and then repaired through the normal import/register path.
 
 ## Review Checklist
 

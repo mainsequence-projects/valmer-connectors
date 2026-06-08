@@ -14,10 +14,10 @@ This skill treats index conventions, fixings, and curves as one coupled runtime:
 IndexTable.uid
   -> IndexConventionDetails.index_uid
   -> Curve.index_uid
-  -> DiscountCurvesNode(curve_unique_identifier)
+  -> DiscountCurvesNode(curve_identifier)
 
 IndexTable.unique_identifier
-  -> FixingRatesNode(unique_identifier, rate)
+  -> FixingRatesNode(index_identifier, rate)
   -> QuantLib index hydration
 ```
 
@@ -134,11 +134,17 @@ from msm.constants import (
     INDEX_TYPE_INTEREST_RATE,
     INDEX_TYPE_INTEREST_RATE_DEFINITION,
 )
-from msm_pricing.api import Curve, IndexConventionDetails, PricingMarketDataBinding
+from msm_pricing.api import (
+    Curve,
+    IndexConventionDetails,
+    PricingMarketDataSet,
+    PricingMarketDataSetBinding,
+)
+from msm_pricing.data_nodes.storage import DiscountCurvesStorage, IndexFixingsStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    PRICING_CONTEXT_DEFAULT,
+    PRICING_MARKET_DATA_SET_DEFAULT,
 )
 
 IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())
@@ -175,15 +181,21 @@ curve = Curve.upsert(
     source="example",
 )
 
-PricingMarketDataBinding.upsert(
-    context_key=PRICING_CONTEXT_DEFAULT,
-    concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-    data_node_identifier="discount_curves",
+market_data_set = PricingMarketDataSet.upsert(
+    set_key=PRICING_MARKET_DATA_SET_DEFAULT,
+    display_name="Default pricing market data",
 )
-PricingMarketDataBinding.upsert(
-    context_key=PRICING_CONTEXT_DEFAULT,
+PricingMarketDataSetBinding.upsert(
+    market_data_set_uid=market_data_set.uid,
+    concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+    data_node_uid=DiscountCurvesStorage.get_meta_table_uid(),
+    storage_table_identifier=DiscountCurvesStorage.get_identifier(),
+)
+PricingMarketDataSetBinding.upsert(
+    market_data_set_uid=market_data_set.uid,
     concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    data_node_identifier="interest_rate_index_fixings",
+    data_node_uid=IndexFixingsStorage.get_meta_table_uid(),
+    storage_table_identifier=IndexFixingsStorage.get_identifier(),
 )
 ```
 
@@ -191,15 +203,17 @@ Rules:
 
 - Use `IndexTable.uid` for pricing relationships stored in instruments and
   convention/curve MetaTables.
-- Use `IndexTable.unique_identifier` only for index-stamped DataNode rows.
-- Use `Curve.unique_identifier` for curve DataNode rows.
+- Use `index_identifier` for index-stamped DataNode rows. It stores
+  `IndexTable.unique_identifier`.
+- Use `curve_identifier` for curve DataNode rows. It stores
+  `Curve.unique_identifier`.
 - Do not use Main Sequence Constant names as curve or index identity.
 
 ## Fixings Pattern
 
 Use `FixingRatesNode` for observed index fixings. It extends
 `IndexTimestampedDataNode`, so rows are keyed by
-`["time_index", "unique_identifier"]`, where `unique_identifier` is
+`["time_index", "index_identifier"]`, where `index_identifier` is
 `IndexTable.unique_identifier`.
 
 Subclass `FixingRatesNode` when the source is specific:
@@ -211,12 +225,12 @@ from msm_pricing.data_nodes import FixingRatesNode, IndexFixingConfiguration
 
 
 class ExampleFixingsNode(FixingRatesNode):
-    def build_fixing_frame(self, *, update_statistics, unique_identifier: str) -> pd.DataFrame:
+    def build_fixing_frame(self, *, update_statistics, index_identifier: str) -> pd.DataFrame:
         return pd.DataFrame(
             [
                 {
                     "time_index": "2026-05-27T00:00:00Z",
-                    "unique_identifier": unique_identifier,
+                    "index_identifier": index_identifier,
                     "rate": 0.0525,
                 }
             ]
@@ -241,8 +255,8 @@ Rules:
 ## Curve Pattern
 
 Use `DiscountCurvesNode` for compressed discount curves. Rows are keyed by
-`["time_index", "curve_unique_identifier"]`, where
-`curve_unique_identifier` is `Curve.unique_identifier`.
+`["time_index", "curve_identifier"]`, where `curve_identifier` is
+`Curve.unique_identifier`.
 
 Subclass `DiscountCurvesNode` when the curve source is specific:
 
@@ -257,14 +271,14 @@ class ExampleDiscountCurveNode(DiscountCurvesNode):
         self,
         *,
         update_statistics,
-        curve_unique_identifier: str,
+        curve_identifier: str,
         base_node_curve_points,
     ) -> pd.DataFrame:
         return pd.DataFrame(
             [
                 {
                     "time_index": "2026-05-27T00:00:00Z",
-                    "curve_unique_identifier": curve_unique_identifier,
+                    "curve_identifier": curve_identifier,
                     "curve": {30: 0.05, 90: 0.051, 365: 0.052},
                 }
             ]
@@ -281,7 +295,8 @@ Rules:
 
 - The builder returns a mapping from days-to-maturity to zero rates; the node
   compresses it before persistence.
-- `curve_unique_identifier` must exist as a `Curve` row before publishing.
+- The builder configuration's `curve_unique_identifier` must exist as a `Curve`
+  row before publishing; emitted storage rows use `curve_identifier`.
 - Keep interpolation and compounding metadata on `Curve`, not in ad hoc builder
   globals.
 
@@ -312,11 +327,15 @@ Resolver expectations:
 - `IndexConventionDetails` exists for the index UID.
 - Exactly one matching `Curve` exists, or the caller passes `source` or
   `curve_unique_identifier`.
-- `PricingMarketDataBinding` resolves the active `(context_key, concept_key)`
-  to the DataNode identifier for the published curve and fixing DataNodes.
+- `PricingMarketDataSetBinding` resolves the active
+  `(market_data_set_uid, concept_key)` to the backend DataNode storage table UID
+  for the published curve and fixing DataNodes.
 - Use `PRICING_CONCEPT_DISCOUNT_CURVES` and
   `PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS` instead of hard-coded DataNode
   field names.
+- When multiple market-data source sets exist in one process, select them at
+  pricing time with `bond.price(market_data_set="eod")` or
+  `swap.price(market_data_set="live")`.
 
 For instrument payloads:
 
@@ -338,8 +357,8 @@ An example should print or otherwise expose each step:
 3. Upsert `Curve`.
 4. Publish fixings.
 5. Publish discount curves.
-6. Use the seeded default pricing context or upsert named
-   `PricingMarketDataBinding` rows.
+6. Attach pricing storage tables and upsert the pricing market-data set plus
+   `PricingMarketDataSetBinding` rows explicitly.
 7. Attach/load the instrument by asset.
 8. Price and show analytics/cashflows.
 
@@ -350,8 +369,8 @@ Before finishing a change:
 - `IndexTable` remains free of Constant-name and curve fields.
 - `IndexConventionDetailsTable.index_uid` is one-to-one with `IndexTable.uid`.
 - `CurveTable.index_uid` depends on `IndexConventionDetailsTable.index_uid`.
-- Fixing DataNode rows use `time_index`, `unique_identifier`, and `rate`.
-- Curve DataNode rows use `time_index`, `curve_unique_identifier`, and `curve`.
+- Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.
+- Curve DataNode rows use `time_index`, `curve_identifier`, and `curve`.
 - Instrument payloads store backend index UUIDs and reject raw index-name
   relationship fields.
 - Tests cover payload validation, resolver selection, and DataNode frame shape

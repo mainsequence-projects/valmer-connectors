@@ -3,17 +3,17 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any, ClassVar
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.base import MarketsBase
 from msm.models import AssetTable
-from sqlalchemy import BigInteger, DateTime, Float, String
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
+from valmer_connectors.markets import ValmerMarketsTimeIndexMetaTableMixin
 
 
-class ValmerVectorPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+class ValmerVectorPricesStorage(ValmerMarketsTimeIndexMetaTableMixin, MarketsBase):
     """Valmer vector prices keyed by valuation timestamp and Asset unique identifier."""
 
-    __markets_base_identifier__: ClassVar[str] = "vector_de_precios_valmer"
+    __metatable_identifier__: ClassVar[str] = "vector_de_precios_valmer"
     __metatable_description__ = (
         "Daily Valmer vector price storage keyed by (time_index, unique_identifier). "
         "Each row is one Valmer instrument observation with time-varying price, yield, "
@@ -29,13 +29,15 @@ class ValmerVectorPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     time_index: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        info={"label": "Time Index", "description": "UTC end-of-day valuation timestamp."},
+        info={
+            "label": "Time Index",
+            "description": "UTC end-of-day valuation timestamp.",
+        },
     )
     unique_identifier: Mapped[str] = mapped_column(
         String(255),
-        MetaTableForeignKey(
-            AssetTable,
-            column="unique_identifier",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -47,37 +49,58 @@ class ValmerVectorPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     open: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Open", "description": "Synthetic OHLC open copied from dirty price."},
+        info={
+            "label": "Open",
+            "description": "Synthetic OHLC open copied from dirty price.",
+        },
     )
     high: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "High", "description": "Synthetic OHLC high copied from dirty price."},
+        info={
+            "label": "High",
+            "description": "Synthetic OHLC high copied from dirty price.",
+        },
     )
     low: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Low", "description": "Synthetic OHLC low copied from dirty price."},
+        info={
+            "label": "Low",
+            "description": "Synthetic OHLC low copied from dirty price.",
+        },
     )
     close: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Close", "description": "Synthetic OHLC close copied from dirty price."},
+        info={
+            "label": "Close",
+            "description": "Synthetic OHLC close copied from dirty price.",
+        },
     )
     volume: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,
-        info={"label": "Volume", "description": "Synthetic volume placeholder published as 0."},
+        info={
+            "label": "Volume",
+            "description": "Synthetic volume placeholder published as 0.",
+        },
     )
     open_time: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,
-        info={"label": "Open Time", "description": "Unix timestamp in seconds for the bar."},
+        info={
+            "label": "Open Time",
+            "description": "Unix timestamp in seconds for the bar.",
+        },
     )
     valuation_date: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
-        info={"label": "Valuation Date", "description": "Source FECHA normalized to UTC."},
+        info={
+            "label": "Valuation Date",
+            "description": "Source FECHA normalized to UTC.",
+        },
     )
     clean_price: Mapped[float | None] = mapped_column(
         Float,
@@ -112,7 +135,10 @@ class ValmerVectorPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     days_since_coupon: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,
-        info={"label": "Days Since Coupon", "description": "Days since previous coupon."},
+        info={
+            "label": "Days Since Coupon",
+            "description": "Days since previous coupon.",
+        },
     )
     coupons_remaining: Mapped[int | None] = mapped_column(
         BigInteger,
@@ -187,12 +213,18 @@ class ValmerVectorPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     daily_change_pct: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Daily Change Pct", "description": "Daily change percentage value."},
+        info={
+            "label": "Daily Change Pct",
+            "description": "Daily change percentage value.",
+        },
     )
     weekly_change_pct: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Weekly Change Pct", "description": "Weekly change percentage value."},
+        info={
+            "label": "Weekly Change Pct",
+            "description": "Weekly change percentage value.",
+        },
     )
     max_price_12m: Mapped[float | None] = mapped_column(
         Float,
@@ -242,7 +274,10 @@ class ValmerVectorPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     standard_deviation: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Standard Deviation", "description": "Valmer standard deviation."},
+        info={
+            "label": "Standard Deviation",
+            "description": "Valmer standard deviation.",
+        },
     )
     adjusted_face_value: Mapped[float | None] = mapped_column(
         Float,
@@ -257,12 +292,18 @@ class ValmerVectorPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     max_price_date: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
-        info={"label": "Max Price Date", "description": "Date of twelve-month high price."},
+        info={
+            "label": "Max Price Date",
+            "description": "Date of twelve-month high price.",
+        },
     )
     min_price_date: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
-        info={"label": "Min Price Date", "description": "Date of twelve-month low price."},
+        info={
+            "label": "Min Price Date",
+            "description": "Date of twelve-month low price.",
+        },
     )
     sensitivity: Mapped[float | None] = mapped_column(
         Float,

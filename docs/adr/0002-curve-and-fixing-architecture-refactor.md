@@ -202,6 +202,10 @@ The output frame should contain:
 The builder may return raw `curve` dictionaries. `DiscountCurvesNode` owns
 compression through `msm_pricing.data_nodes.curve_codec`.
 
+Because Valmer publishes this curve as a daily dataset, the Valmer runtime must
+set the imported `DiscountCurvesNode` storage cadence to `1d` before pricing
+runtime attachment or curve updates.
+
 The builder must not:
 
 - compress curve payloads itself

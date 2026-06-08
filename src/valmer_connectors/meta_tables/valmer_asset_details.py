@@ -6,17 +6,15 @@ from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
-from mainsequence.meta_tables import MetaTableForeignKey
 from msm.base import (
     MarketsBase,
-    MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
 )
 from msm.models.assets import AssetTable
-from sqlalchemy import Date, DateTime, Float, Index, Integer, String
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
+from valmer_connectors.markets import ValmerMarketsMetaTableMixin
 
 VALMER_ASSET_DETAIL_VECTOR_COLUMNS = frozenset(
     {
@@ -67,60 +65,164 @@ VALMER_ASSET_DETAIL_SOURCE_COLUMNS = frozenset(
 _VALMER_ASSET_DETAILS_CONTEXT = None
 
 
-class ValmerAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+def _column_info(label: str, description: str) -> dict[str, str]:
+    return {"label": label, "description": description}
+
+
+class ValmerAssetDetailsTable(ValmerMarketsMetaTableMixin, MarketsBase):
     """Latest Valmer vendor details linked 1:1 to the canonical Asset row."""
 
     __metatable_identifier__ = "ValmerAssetDetails"
+    __metatable_description__ = (
+        "Latest static Valmer asset descriptors keyed one-to-one by AssetTable.uid. "
+        "Rows hold vendor master-data fields that do not belong in time-indexed "
+        "vector price storage."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "valmer_unique_identifier", unique=True),
+            None,
             "valmer_unique_identifier",
             unique=True,
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "issuer"),
+            None,
             "issuer",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "maturity_date"),
+            None,
             "maturity_date",
         ),
     )
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         primary_key=True,
         nullable=False,
+        info=_column_info(
+            "Asset UID",
+            "Foreign key to AssetTable.uid for the canonical asset described by this row.",
+        ),
     )
-    valmer_unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
+    valmer_unique_identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info=_column_info(
+            "Valmer Unique Identifier",
+            "Valmer instrument identifier used to join source vector rows to AssetTable.",
+        ),
+    )
     details_asof: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+        info=_column_info(
+            "Details As Of",
+            "UTC timestamp of the latest Valmer source row used to hydrate these details.",
+        ),
     )
-    security_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    issuer: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    series: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    full_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    sector: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    issued_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
-    issue_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
-    issue_term: Mapped[float | None] = mapped_column(Float, nullable=True)
-    maturity_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
-    face_value: Mapped[float | None] = mapped_column(Float, nullable=True)
-    issue_currency: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    underlying: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    placement_yield: Mapped[float | None] = mapped_column(Float, nullable=True)
-    placement_spread: Mapped[float | None] = mapped_column(Float, nullable=True)
-    coupon_frequency: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    coupon_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
-    coupon_rule: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    coupons_at_issue: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    security_type: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        info=_column_info("Security Type", "Valmer TIPO VALOR security type code."),
+    )
+    issuer: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        info=_column_info("Issuer", "Valmer EMISORA issuer code."),
+    )
+    series: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        info=_column_info("Series", "Valmer SERIE instrument series code."),
+    )
+    full_name: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
+        info=_column_info(
+            "Full Name", "Full Valmer instrument name from NOMBRE COMPLETO."
+        ),
+    )
+    sector: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info=_column_info("Sector", "Valmer SECTOR classification."),
+    )
+    issued_amount: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info=_column_info(
+            "Issued Amount", "Original issued amount from MONTO EMITIDO."
+        ),
+    )
+    issue_date: Mapped[dt.date | None] = mapped_column(
+        Date,
+        nullable=True,
+        info=_column_info("Issue Date", "Instrument issue date from FECHA EMISION."),
+    )
+    issue_term: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info=_column_info("Issue Term", "Original issue term from PLAZO EMISION."),
+    )
+    maturity_date: Mapped[dt.date | None] = mapped_column(
+        Date,
+        nullable=True,
+        info=_column_info("Maturity Date", "Instrument maturity date from FECHA VCTO."),
+    )
+    face_value: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info=_column_info("Face Value", "Instrument face value from VALOR NOMINAL."),
+    )
+    issue_currency: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        info=_column_info(
+            "Issue Currency", "Original issue currency from MONEDA EMISION."
+        ),
+    )
+    underlying: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info=_column_info("Underlying", "Underlying reference from Valmer SUBYACENTE."),
+    )
+    placement_yield: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info=_column_info("Placement Yield", "Placement yield from REND. COLOCACION."),
+    )
+    placement_spread: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info=_column_info("Placement Spread", "Placement spread from STCOLOCACION."),
+    )
+    coupon_frequency: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        info=_column_info("Coupon Frequency", "Coupon frequency from Valmer FREC CPN."),
+    )
+    coupon_rate: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info=_column_info("Coupon Rate", "Coupon rate from Valmer TASA CUPON."),
+    )
+    coupon_rule: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info=_column_info("Coupon Rule", "Coupon rule from Valmer REGLA CUPON."),
+    )
+    coupons_at_issue: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        info=_column_info(
+            "Coupons At Issue",
+            "Coupon count at issuance from Valmer CUPONES EMISION.",
+        ),
+    )
 
 
 def ensure_valmer_asset_detail_runtime(
@@ -176,7 +278,9 @@ def resolve_valmer_asset_details(
 ) -> dict[str, dict[str, Any]]:
     """Resolve latest Valmer detail rows keyed by Valmer unique identifier."""
 
-    normalized_asset_uids = [asset_uid for asset_uid in asset_uids if not pd.isna(asset_uid)]
+    normalized_asset_uids = [
+        asset_uid for asset_uid in asset_uids if not pd.isna(asset_uid)
+    ]
     if not normalized_asset_uids:
         return {}
 
@@ -330,7 +434,10 @@ def _datetime_value(
 def _batches(values: list[Any], batch_size: int) -> list[list[Any]]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
-    return [values[start : start + batch_size] for start in range(0, len(values), batch_size)]
+    return [
+        values[start : start + batch_size]
+        for start in range(0, len(values), batch_size)
+    ]
 
 
 __all__ = [

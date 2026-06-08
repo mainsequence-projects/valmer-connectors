@@ -11,7 +11,7 @@ Proposed
 ## Context
 
 Main Sequence SDK and ms-markets now treat platform-managed MetaTables and
-PlatformTimeIndexMetaData tables as migration-first resources.
+PlatformTimeIndexMetaTable tables as migration-first resources.
 
 The old pattern in this project was effectively:
 
@@ -28,7 +28,7 @@ That is no longer the correct lifecycle. The current architecture separates:
 
 The relevant Main Sequence SDK contract is now:
 
-- `PlatformManagedMetaTable` and `PlatformTimeIndexMetaData` models are registered
+- `PlatformManagedMetaTable` and `PlatformTimeIndexMetaTable` models are registered
   through `AlembicMetaTableMigration`.
 - Direct `Model.register()` calls are internal migration plumbing and should fail
   in normal runtime code.
@@ -67,10 +67,12 @@ Reviewed contracts:
 - Main Sequence SDK ADR 0021:
   `platform-managed-metatables-migration-first`
 - `mainsequence.meta_tables.migrations.AlembicMetaTableMigration`
+- `mainsequence.meta_tables.migrations.build_metatable_migration_provider`
+- `mainsequence.meta_tables.migrations.env.run_mainsequence_alembic_env`
 - `mainsequence.meta_tables.sqlalchemy_contracts`
 - `msm.migrations:migration`
+- `msm.migrations.registry`
 - `msm.bootstrap.start_engine`
-- `msm.maintenance.catalog`
 - refreshed project skills for Main Sequence DataNodes, MetaTables,
   ms-markets bootstrap registration, and ms-markets MetaTable migrations
 
@@ -133,16 +135,16 @@ This project must not generate duplicate migrations for those tables.
 Add a project migration provider exposed from the importable project package:
 
 ```text
-valmer_connectors.migrations:migration
+migrations:migration
 ```
 
 This project uses a normal src-layout package at `src/valmer_connectors`. The
 migration provider should be addressed explicitly as
-`valmer_connectors.migrations:migration`, which also matches provider
+`migrations:migration`, which also matches provider
 auto-discovery from the distribution name `valmer-connectors`.
 
-The provider should use `AlembicMetaTableMigration` and include only project-owned
-models:
+The provider should use the SDK-owned helper machinery and include only
+project-owned models:
 
 ```python
 VALMER_MIGRATION_MODELS = (
@@ -151,54 +153,100 @@ VALMER_MIGRATION_MODELS = (
 )
 ```
 
+The intended registry shape is:
+
+```python
+from mainsequence.meta_tables.migrations import build_metatable_model_registry
+
+from msm.base import MarketsBase
+
+
+def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
+    from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
+    from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
+
+    return [
+        ValmerAssetDetailsTable,
+        ValmerVectorPricesStorage,
+    ]
+
+
+METATABLE_PROVIDER_MODELS = tuple(
+    build_metatable_model_registry(
+        _metatable_provider_model_sources(),
+        base=MarketsBase,
+    )
+)
+```
+
 The intended provider shape is:
 
 ```python
 from mainsequence.meta_tables.migrations import (
-    AlembicMetaTableMigration,
-    AlembicVersionMetaTable,
+    build_alembic_version_metatable,
+    build_metatable_migration_provider,
+    metadata_for_models,
 )
-from msm.base import MARKETS_SCHEMA, MarketsBase
-from msm.settings import markets_identifier, markets_namespace
+from msm.base import MARKETS_SCHEMA, markets_table_name
+from msm.settings import (
+    markets_auto_register_namespace,
+    markets_identifier,
+    markets_namespace,
+)
 
-from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
-from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
-
-
-class ValmerAlembicVersion(AlembicVersionMetaTable):
-    __metatable_namespace__ = markets_namespace()
-    __metatable_identifier__ = markets_identifier("valmer.alembic_version")
-    __alembic_version_schema__ = MARKETS_SCHEMA
-    __alembic_version_table_name__ = "valmer_alembic_version"
-    __alembic_version_column_name__ = "version_num"
+from migrations.registry import metatable_provider_models
+from valmer_connectors.markets import VALMER_MARKETS_STORAGE_APP
 
 
-migration = AlembicMetaTableMigration(
+VALMER_MIGRATION_MODELS = tuple(metatable_provider_models())
+VALMER_TABLE_APP = VALMER_MARKETS_STORAGE_APP
+
+
+ValmerAlembicVersion = build_alembic_version_metatable(
+    class_name="ValmerAlembicVersion",
+    namespace=markets_namespace(),
+    identifier=markets_identifier("valmer.alembic_version"),
+    schema=MARKETS_SCHEMA,
+    table_name=markets_table_name(
+        VALMER_TABLE_APP,
+        "alembic_version",
+        suffix=markets_auto_register_namespace(),
+    ),
+)
+
+
+migration = build_metatable_migration_provider(
     package="valmer_connectors",
     migration_namespace=markets_namespace(),
-    script_location="valmer_connectors:migrations",
-    target_metadata=MarketsBase.metadata,
+    script_location="migrations:",
+    target_metadata=metadata_for_models(VALMER_MIGRATION_MODELS),
     alembic_registry=ValmerAlembicVersion,
     metatable_models=VALMER_MIGRATION_MODELS,
-    include_name_hook=include_valmer_name,
-    include_object_hook=include_valmer_object,
-    after_register_metatables=refresh_valmer_markets_catalog,
 )
 ```
 
 If the Python package is renamed later, the provider path, `package`, and
 `script_location` values must be updated together.
 
+The provider must keep revision files namespace-aware through
+`build_metatable_migration_provider(...)`. With no
+`MSM_AUTO_REGISTER_NAMESPACE`, `markets_namespace()` resolves to
+`mainsequence.markets`, so revisions live under
+`src/migrations/versions/mainsequence_markets/`. With a namespace such as
+`mainsequence.examples`, revisions live under
+`src/migrations/versions/mainsequence_examples/`.
+
 The provider must register those two models with the Main Sequence platform and
-must refresh any required ms-markets catalog rows for project extension tables.
+must not register or mutate built-in ms-markets models.
 
 Because the current Valmer project tables subclass `MarketsBase`, the provider
 must prevent Alembic autogenerate from emitting built-in ms-markets tables. The
-implementation should use explicit include hooks or a project-only metadata
-strategy. Initial table creation for provider-scoped platform MetaTables happens
-through `metatable_models` registration in the SDK migration lifecycle, not
-through hand-written `op.create_table(...)` statements. Alembic revisions should
-contain explicit DDL only when a later in-place schema evolution requires it.
+implementation uses `metadata_for_models(VALMER_MIGRATION_MODELS)` so the
+provider target metadata contains only project-owned Valmer tables. Initial
+table creation for provider-scoped platform MetaTables happens through
+`metatable_models` registration in the SDK migration lifecycle, not through
+hand-written `op.create_table(...)` statements. Alembic revisions should contain
+explicit DDL only when a later in-place schema evolution requires it.
 
 The project provider must not include:
 
@@ -208,32 +256,15 @@ The project provider must not include:
 
 ## Project Catalog Refresh
 
-Project extension tables that participate in the ms-markets runtime catalog need
-project-specific catalog refresh logic.
+The upgraded ms-markets runtime resolves already-registered project extension
+tables through the migration-registered physical table names and
+`msm.start_engine(models=...)`. This project should not define an
+`after_register_metatables` hook unless a future ms-markets API reintroduces a
+project table-spec refresh requirement.
 
-The Valmer migration provider should define an
-`after_register_metatables` hook that refreshes catalog rows only for
-`VALMER_MIGRATION_MODELS`.
-
-This hook should use the ms-markets catalog helper APIs, but it should not call
-the built-in ms-markets catalog refresh function for the full core registry. The
-built-in helper is for the complete ms-markets migration model registry, not for
+Valmer must not call built-in ms-markets migration catalog refresh logic. That
+logic is reserved for the full core ms-markets migration model registry, not for
 project-local extension models.
-
-The intended shape is:
-
-```python
-def refresh_valmer_markets_catalog(registered_metatables):
-    ...
-```
-
-It should upsert catalog rows for:
-
-- `ValmerAssetDetailsTable`
-- `ValmerVectorPricesStorage`
-
-This hook depends on the ms-markets migration having already created and
-registered the core catalog table.
 
 ## Runtime Bootstrap Refactor
 
@@ -315,11 +346,11 @@ The correct migration and runtime workflow is:
 3. Run the Valmer project migration provider:
 
    ```bash
-   mainsequence migrations current --provider valmer_connectors.migrations:migration
-   mainsequence migrations revision --provider valmer_connectors.migrations:migration
-   mainsequence migrations render --provider valmer_connectors.migrations:migration --to head
-   mainsequence migrations upgrade --provider valmer_connectors.migrations:migration --to head --dry-run
-   mainsequence migrations upgrade --provider valmer_connectors.migrations:migration --to head
+   mainsequence migrations current --provider migrations:migration
+   mainsequence migrations revision --provider migrations:migration
+   mainsequence migrations render --provider migrations:migration --to head
+   mainsequence migrations upgrade --provider migrations:migration --to head --dry-run
+   mainsequence migrations upgrade --provider migrations:migration --to head
    ```
 
 4. Start or run project code that attaches runtime tables.
@@ -329,18 +360,20 @@ The correct migration and runtime workflow is:
 
 ## Implementation Tasks
 
-- [x] Add `src/valmer_connectors/migrations/__init__.py` exposing the Valmer project migration
-  provider as `valmer_connectors.migrations:migration`.
+- [x] Add `src/migrations/__init__.py` exposing the Valmer project migration
+  provider as `migrations:migration`.
 - [x] Add an Alembic migration package for the Valmer project migration stream.
 - [x] Define a Valmer Alembic version MetaTable for the project migration stream.
+- [x] Configure namespace-aware Alembic version locations and version table names.
 - [x] Scope autogenerate so it emits only Valmer project tables and never emits
   built-in ms-markets tables.
 - [x] Include `ValmerAssetDetailsTable` in the project provider
   `metatable_models`.
 - [x] Include `ValmerVectorPricesStorage` in the project provider
   `metatable_models`.
-- [x] Add a project-specific `after_register_metatables` hook for Valmer
-  ms-markets catalog rows.
+- [x] Remove the obsolete project-specific `after_register_metatables` hook;
+  project extension tables are resolved through migrated MetaTables and
+  `msm.start_engine(models=...)`.
 - [x] Update bootstrap names and docs so runtime functions say "attach" or
   "seed", not "register schemas".
 - [x] Update scripts to run or document the required migration commands before
@@ -360,7 +393,7 @@ This ADR is implemented only when the following evidence exists:
 
 - `msm.migrations:migration` has been applied successfully in the target
   platform context.
-- `valmer_connectors.migrations:migration` has been applied successfully in the same
+- `migrations:migration` has been applied successfully in the same
   platform context.
 - The Valmer provider registers `ValmerAssetDetailsTable`.
 - The Valmer provider registers `ValmerVectorPricesStorage`.

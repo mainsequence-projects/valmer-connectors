@@ -32,8 +32,8 @@ Local package sources checked during the migration:
 
 Current dependency baseline:
 
-- `mainsequence>=4.2.1`
-- `ms-markets>=0.0.27`
+- `mainsequence>=4.3.14`
+- `ms-markets>=0.0.32`
 - `streamlit>=1.58.0`
 - `xlrd>=2.0.2`
 
@@ -50,6 +50,10 @@ The migration is complete when:
   `valmer_connectors.instruments.bootstrap.bootstrap_runtime()`.
 - Market MetaTables are migrated through the core `msm.migrations:migration`
   provider and attached through canonical `msm.start_engine(...)`.
+- Valmer project MetaTables are migrated through
+  `migrations:migration` using the SDK migration helper machinery for
+  namespace-aware Alembic version locations and namespace-suffixed version
+  tables.
 - Pricing MetaTables are migrated through the core `msm.migrations:migration`
   provider and attached through canonical
   `msm_pricing.bootstrap.create_pricing_schemas(...)`.
@@ -67,8 +71,8 @@ The migration is complete when:
 | --- | --- | --- |
 | Dependencies | Constraints and lockfile target current SDK/package versions | live platform validation |
 | Vector DataNode | `ImportValmer(AssetIndexedDataNode)` with `ImportValmerConfig` | run a namespaced backend write |
-| Vector storage | `ValmerVectorPricesStorage` declares the table contract | validate project migration provider registration |
-| Asset FK | storage `unique_identifier` uses `MetaTableForeignKey(AssetTable, column="unique_identifier")` | confirm FK resolves live |
+| Vector storage | `ValmerVectorPricesStorage` declares the table contract | validate namespace-aware project migration provider registration |
+| Asset FK | storage `unique_identifier` uses SQLAlchemy `ForeignKey` to `AssetTable.unique_identifier` | confirm FK resolves live |
 | Static details | `ValmerAssetDetailsTable.asset_uid` is 1:1 FK to `AssetTable.uid` | confirm rows link live |
 | Bootstrap | `bootstrap_runtime()` is the single project bootstrap entry point | add idempotency regression tests |
 | Asset registration | `upsert_valmer_assets(...)` is the single asset upsert helper | add wrong-type/missing-asset tests |
@@ -118,11 +122,11 @@ Implemented files:
 Implemented shape:
 
 - `ValmerVectorPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase)`
-- `__markets_base_identifier__ = "vector_de_precios_valmer"`
+- `__metatable_identifier__ = "vector_de_precios_valmer"`
 - `__time_index_name__ = "time_index"`
 - `__index_names__ = ["time_index", "unique_identifier"]`
 - `unique_identifier` declares:
-  `MetaTableForeignKey(AssetTable, column="unique_identifier", ondelete="RESTRICT")`
+  `ForeignKey(f"{AssetTable.__table__.fullname}.unique_identifier", ondelete="RESTRICT")`
 - `ImportValmerConfig(AssetIndexedDataNodeConfiguration)` owns `bucket_name`.
 - `ImportValmer(AssetIndexedDataNode)` binds to `ValmerVectorPricesStorage`
   through `_required_storage_table()`.
@@ -148,7 +152,7 @@ Completed:
 - [x] Add storage class.
 - [x] Move vector schema to storage class.
 - [x] Replace old DataNode base with current markets DataNode wrapper.
-- [x] Replace raw storage FK with `MetaTableForeignKey`.
+- [x] Replace raw storage FK with SQLAlchemy `ForeignKey`.
 - [x] Move `bucket_name` into `ImportValmerConfig`.
 - [x] Keep `bucket_name` in update identity.
 - [x] Remove old inline metadata methods.
@@ -160,7 +164,7 @@ Remaining:
 
 - [ ] Run a namespaced `ImportValmer` update against the backend.
 - [ ] Confirm `ValmerVectorPricesStorage` is registered by
-  `valmer_connectors.migrations:migration`.
+  `migrations:migration`.
 - [ ] Confirm backend rows land indexed by `time_index` and
   `unique_identifier`.
 
@@ -237,7 +241,7 @@ Contract:
 - It is a one-to-one extension of `AssetTable`.
 - `asset_uid` is the primary key.
 - `asset_uid` declares:
-  `MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE")`.
+  `ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE")`.
 - No separate `uid` column is added to this one-to-one table.
 
 Fields that belong here:
@@ -271,7 +275,7 @@ Fields intentionally not here:
 Completed:
 
 - [x] Add or verify the one-to-one table shape.
-- [x] Use `MetaTableForeignKey(AssetTable, column="uid")`.
+- [x] Use SQLAlchemy `ForeignKey` to `AssetTable.uid`.
 - [x] Keep ratings out of the detail table.
 - [x] Add schema tests for primary key and FK shape.
 - [x] Require `bootstrap_runtime()` before row operations.
@@ -350,12 +354,15 @@ Current architecture:
   `VALMER_TIIE_28`.
 - Curve observations are published through
   `msm_pricing.data_nodes.DiscountCurvesNode`.
+- Valmer sets the imported `DiscountCurvesNode` storage cadence to `1d` before
+  attaching pricing runtime or running the curve updater.
 - This project does not override `PricingMarketDataBinding`.
 
 Current execution path:
 
 - `scripts/update_tiie_zero_curve.py`
 - `valmer_connectors.instruments.bootstrap.bootstrap_runtime()`
+- `valmer_connectors.instruments.curve_bootstrap.configure_valmer_discount_curves_cadence()`
 - `valmer_connectors.instruments.rates_curves.build_tiie_valmer(...)`
 - `DiscountCurvesNode(curve_config=CurveConfig(...)).set_curve_builder(...)`
 
@@ -373,6 +380,8 @@ Completed:
 - [x] Move curve identity to core `Curve` row.
 - [x] Publish through `DiscountCurvesNode` instead of a custom standalone
   curve DataNode.
+- [x] Set the imported core discount-curve storage cadence to `1d` in the
+  Valmer curve runtime path.
 - [x] Remove project override of `PricingMarketDataBinding`.
 - [x] Keep `build_tiie_valmer(...)` focused on Valmer source parsing.
 - [x] Add curve bootstrap tests.
@@ -491,7 +500,9 @@ Live validation still required:
 - [ ] `mainsequence project current --debug`
 - [ ] `mainsequence project refresh_token --path .`
 - [ ] run `mainsequence migrations upgrade --provider msm.migrations:migration --to head`
-- [ ] run `mainsequence migrations upgrade --provider valmer_connectors.migrations:migration --to head`
+- [ ] run `mainsequence migrations upgrade --provider migrations:migration --to head`
+- [ ] confirm Valmer revision context points to the active namespace-specific
+  `migrations/versions/<slug>` location
 - [ ] run `valmer_connectors.instruments.bootstrap.bootstrap_runtime()` with credentials
 - [ ] confirm market/pricing MetaTables are migrated and runtime attaches
 - [ ] run a small `ImportValmer` update with a test `hash_namespace`

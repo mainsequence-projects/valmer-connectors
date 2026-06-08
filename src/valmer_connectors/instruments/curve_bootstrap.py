@@ -17,6 +17,7 @@ CETE_182_INDEX_UNIQUE_IDENTIFIER = "CETE_182"
 
 VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER = "VALMER_TIIE_28"
 VALMER_SOURCE = "valmer"
+VALMER_DISCOUNT_CURVES_CADENCE = "1d"
 
 
 @dataclass(frozen=True)
@@ -238,6 +239,7 @@ def attach_valmer_curve_pricing_runtime(
     import msm
     from msm_pricing.bootstrap import create_pricing_schemas
 
+    configure_valmer_discount_curves_cadence()
     models = ["AssetType", "Asset", "IndexType", "Index"]
     if markets_models is None:
         from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
@@ -247,6 +249,18 @@ def attach_valmer_curve_pricing_runtime(
         models.extend(markets_models)
     msm.start_engine(models=models, **runtime_kwargs)
     return create_pricing_schemas(**runtime_kwargs)
+
+
+def configure_valmer_discount_curves_cadence(
+    cadence: str = VALMER_DISCOUNT_CURVES_CADENCE,
+) -> type[Any]:
+    """Set the imported core discount-curve storage cadence for Valmer daily curves."""
+
+    from msm_pricing.data_nodes import DiscountCurvesNode
+
+    storage_table = DiscountCurvesNode._required_storage_table()
+    storage_table.__cadence__ = cadence
+    return storage_table
 
 
 def create_valmer_curve_pricing_schemas(
@@ -391,6 +405,7 @@ __all__ = [
     "MEXICAN_INDEX_CONVENTION_DEFINITIONS",
     "MEXICAN_MARKET_SOURCE",
     "MEXICAN_REFERENCE_INDEX_DEFINITIONS",
+    "VALMER_DISCOUNT_CURVES_CADENCE",
     "VALMER_SOURCE",
     "VALMER_TIIE_28_CURVE_DEFINITION",
     "VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER",
@@ -407,6 +422,7 @@ __all__ = [
     "attach_valmer_curve_pricing_runtime",
     "bootstrap_valmer_curve_pricing",
     "bootstrap_valmer_curve_indexes",
+    "configure_valmer_discount_curves_cadence",
     "create_valmer_curve_pricing_schemas",
     "mexican_reference_index_payloads",
     "upsert_interest_rate_index_type",
