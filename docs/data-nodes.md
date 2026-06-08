@@ -1,76 +1,159 @@
 # DataNodes
 
-## Source DataNode: `ImportValmer`
+This page documents the DataNode publication boundary only. Asset registration,
+static asset details, and pricing hydration are separate workflows documented in
+`markets.md` and `pricing.md`.
 
-`ImportValmer` reads Valmer artifacts from the bucket:
+## Current DataNode
 
-- `Hitorical Valmer Vector Analytico`
+`ImportValmer` in `src/valmer_connectors/data_nodes/nodes.py` publishes Valmer
+vector observations into the storage class:
 
-The spelling above is intentional because it matches the existing backend
-bucket resource name.
+- `ValmerVectorPricesStorage`
+- `__metatable_identifier__ = "vector_de_precios_valmer"`
+- storage app segment: `valmer_connectors`
+- observation cadence: daily Valmer source vector data
 
-It normalizes the vendor headers, derives `unique_identifier` as
-`tipovalor_emisora_serie`, and publishes the table:
+The storage class lives in:
 
-- `vector_de_precios_valmer`
+- `src/valmer_connectors/data_nodes/valmer_vector_storage.py`
 
-## Stored Schema
+The updater is built by:
 
-The table is indexed by:
+- `scripts/update_vector_valmer.py`
 
-- `time_index`
-- `unique_identifier`
+## Storage Relationship
 
-The stored columns are:
+`ValmerVectorPricesStorage` is an asset-indexed time-series table. It stores
+time-varying observations keyed by Valmer's canonical project asset identifier.
 
-- derived OHLC fields from `dirty_price`: `open`, `high`, `low`, `close`
-- derived execution fields: `volume`, `open_time`
-- time-varying Valmer price, yield, spread, risk, and liquidity fields
+```text
++------------------------------------+
+| AssetTable                         |
+|------------------------------------|
+| uid                                |
+| unique_identifier UNIQUE           |
+| asset_type                         |
++------------------------------------+
+              ^
+              |
+              | FK: unique_identifier
+              |
++------------------------------------+
+| ValmerVectorPricesStorage          |
+|------------------------------------|
+| time_index                         |
+| unique_identifier                  |
+| open, high, low, close             |
+| valuation_date                     |
+| clean_price, dirty_price           |
+| yield, spread, duration, risk      |
++------------------------------------+
+```
 
-Static repeated asset-descriptor fields no longer live in the DataNode. They
-are stored in the 1:1 `ValmerAssetDetailsTable` keyed by `asset_uid`.
+Row grain:
 
-Key DataNode columns include:
+```text
+(time_index, unique_identifier)
+```
 
-- `valuation_date`
-- `clean_price`, `dirty_price`, `accrued_interest`
-- `current_coupon`, `spread`
-- `theoretical_price`, `posted_bid`, `posted_ask`
-- `bid_yield`, `ask_yield`, `bid_spread`, `ask_spread`
-- `liquidity`, `daily_change_pct`, `weekly_change_pct`
-- `duration`, `monetary_duration`, `macaulay_duration`, `convexity`
-- `value_at_risk`, `standard_deviation`, `sensitivity`, `yield_rate`
-- changing vendor state such as ratings, outstanding amount, adjusted face
-  value, marketability, and suspension status
+`time_index` is the UTC end-of-day timestamp derived from the source valuation
+date. `unique_identifier` is the Valmer asset key built as:
 
-The translation contract is defined in `src/valmer_connectors/data_nodes/nodes.py` from the
-sample workbook schema and is persisted with explicit English metadata and
-typed casts for numeric, percentage, integer-count, and datetime fields. The
-node uses `DataFrequency.one_d` to match the effective update cadence.
+```text
+tipovalor_emisora_serie
+```
 
-`ValmerAssetDetailsTable` stores static asset-level Valmer fields such as
-`security_type`, `issuer`, `series`, `full_name`, `sector`, issue terms,
-currency, underlying, and coupon terms.
+The storage column is still named `unique_identifier` to preserve the existing
+Valmer vector table contract. It stores `AssetTable.unique_identifier`.
 
-## Operational Guidance
+## What The DataNode Publishes
 
-For large data volumes:
+The DataNode stores fields that can change from one Valmer vector date to the
+next:
 
-- test first in a test namespace
-- limit the time range before running a full update or backfill
+- synthetic OHLC fields copied from dirty price: `open`, `high`, `low`, `close`
+- execution placeholders: `volume`, `open_time`
+- valuation fields: `valuation_date`, `clean_price`, `dirty_price`,
+  `accrued_interest`
+- coupon/current state: `current_coupon`, `spread`, `amount_outstanding`,
+  `adjusted_face_value`
+- bid/ask and theoretical values: `theoretical_price`, `posted_bid`,
+  `posted_ask`, `bid_yield`, `ask_yield`, `bid_spread`, `ask_spread`
+- risk and analytics: `duration`, `monetary_duration`, `macaulay_duration`,
+  `convexity`, `value_at_risk`, `standard_deviation`, `sensitivity`,
+  `yield_rate`
+- time-varying vendor state: ratings, marketability, liquidity, suspension
+  status, market event, and change percentages
 
-`ImportValmer.get_asset_list()` also registers or reuses assets, upserts
-`ValmerAssetDetailsTable`, and updates pricing details for the target bond
-subset selected by `_get_target_bonds(...)`.
+## What The DataNode Does Not Own
 
-## Curve Node
+These concerns are intentionally outside `ImportValmer.update()`:
 
-This repo only wires one curve execution path:
+- source selection from bucket versus local files
+- AssetTable registration
+- static Valmer asset descriptors
+- current pricing-detail hydration
+- curve publication
+- index/fixing reference-data bootstrap
 
-- the canonical `msm_pricing.data_nodes.DiscountCurvesNode` flow wired through
-  `scripts/update_tiie_zero_curve.py`
+The vector update service performs those steps before the DataNode run through
+`ImportValmer.prepare_for_update()`.
 
-The Valmer TIIE curve is keyed by `curve_unique_identifier`, not asset
-`unique_identifier`, and writes to the canonical `discount_curves` DataNode.
-The old standalone `valmer_mexder_tiie28_zero_curve` path has been removed from
-the codebase and should be treated as legacy backend data only.
+## Update Flow
+
+```text
+valmer-connectors vector update
+    |
+    v
+bootstrap_runtime()
+    |
+    v
+build_import_valmer()
+    |
+    v
+prepare_for_update()
+    |
+    +-- load Valmer source rows
+    +-- sync AssetTable rows
+    +-- sync ValmerAssetDetailsTable rows
+    +-- hydrate current pricing details for supported target bonds
+    |
+    v
+run(force_update=True)
+    |
+    +-- get_asset_list()
+    |      returns the already prepared asset scope
+    |
+    +-- update()
+           returns the time-series Valmer vector DataFrame
+```
+
+`get_asset_list()` must stay a scope handoff. It should not register assets,
+upsert detail rows, or persist pricing details.
+
+## Source Rows
+
+Source import behavior is documented separately in `source-import.md`.
+
+At the DataNode boundary, `ImportValmer.update()` expects `self.source_data` to
+already contain normalized Valmer rows with a valid `unique_identifier`. It then
+coerces fields according to `VALMER_TIMESERIES_SOURCE_COLUMN_SPECS`, builds the
+time-series frame, indexes it by `(time_index, unique_identifier)`, filters it
+through update statistics, and returns the final DataFrame.
+
+## Current Operational Entry Point
+
+Run:
+
+```bash
+valmer-connectors vector update
+```
+
+For local source files instead of the platform artifact bucket:
+
+```bash
+valmer-connectors vector update --debug-artifact-path /path/to/valmer/files
+```
+
+`scripts/update_vector_valmer.py` remains a compatibility wrapper.

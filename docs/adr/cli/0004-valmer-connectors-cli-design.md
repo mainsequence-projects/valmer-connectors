@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted / Implemented
 
 ## Date
 
@@ -40,29 +40,30 @@ Initial package shape:
 
 ```text
 src/valmer_connectors/
-  cli.py
-  operations/
+  cli/
     __init__.py
-    curves.py
-    metadata.py
+    main.py
+  services/
+    __init__.py
+    curve_update.py
     migrations.py
-    runtime.py
-    vector.py
+    runtime_validation.py
+    vector_update.py
 ```
 
 Packaging entry point:
 
 ```toml
 [project.scripts]
-valmer-connectors = "valmer_connectors.cli:main"
+valmer-connectors = "valmer_connectors.cli.main:main"
 ```
 
 Use Python stdlib `argparse` for the first implementation. Do not add `click` or
 `typer` until the command surface is large enough to justify a new dependency.
 
-`cli.py` should only parse arguments and dispatch. Operational behavior belongs
-in `valmer_connectors.operations.*` so scripts, tests, jobs, and future APIs can
-reuse the same functions.
+`cli/main.py` should only parse arguments and dispatch. Operational behavior
+belongs in `valmer_connectors.services.*` so scripts, tests, jobs, and future
+APIs can reuse the same functions.
 
 ## Command Surface
 
@@ -89,20 +90,6 @@ mainsequence migrations upgrade --provider migrations:migration head
 
 This command must not run migrations. It is a discovery/help command only.
 
-### `valmer-connectors metadata inspect`
-
-Run offline metadata checks for the Valmer project models:
-
-- `migrations:migration` imports successfully.
-- `VALMER_MIGRATION_MODELS` contains only project-owned models.
-- `ValmerVectorPricesStorage.__metatable_identifier__` is
-  `vector_de_precios_valmer`.
-- Valmer storage and detail foreign keys point to `AssetTable`.
-- default PostgreSQL schema is authored as `None`, not `"public"`.
-- Valmer Alembic version table is project-prefixed.
-
-This command should return non-zero on failed checks.
-
 ### `valmer-connectors runtime validate`
 
 Run `bootstrap_runtime(override=True)` and print a JSON summary of the runtime
@@ -123,17 +110,22 @@ Default behavior:
 
 - call `bootstrap_runtime()`;
 - build `ImportValmer` with `ImportValmerConfig`;
-- run the Valmer vector DataNode update with the current script behavior,
-  `run(force_update=True)`.
+- call `ImportValmer.prepare_for_update()` to import source rows, sync
+  AssetTable rows, sync `ValmerAssetDetailsTable`, and hydrate supported
+  current pricing details;
+- run the Valmer vector DataNode update with `run(force_update=True)`.
 
 Initial options:
 
 ```text
 --bucket-name TEXT
+--debug-artifact-path PATH
 --first-loop-count INT
 ```
 
-The default bucket should remain `BUCKET_NAME_HISTORICAL_VECTORS`.
+If `--bucket-name` is omitted, resolve the platform source bucket from
+`VALMER_VECTOR_BUCKET_NAME`. The legacy bucket name constant is only a
+backwards-compatible fallback.
 
 Do not expose `--force` / `--no-force` in the first CLI version.
 `force_update=True` is the current script behavior and the intended default.
@@ -171,7 +163,7 @@ Keep existing `scripts/*.py` files temporarily as thin compatibility wrappers.
 Example:
 
 ```python
-from valmer_connectors.operations.vector import run_vector_update
+from valmer_connectors.services.vector_update import run_vector_update
 
 
 if __name__ == "__main__":
@@ -197,18 +189,19 @@ This ADR does not:
 
 ## Implementation Tasks
 
-- [ ] Add `src/valmer_connectors/operations/`.
-- [ ] Add reusable operation functions for runtime validation, vector update,
-      TIIE zero curve update, metadata inspection, and migration command
-      rendering.
-- [ ] Add `src/valmer_connectors/cli.py` using `argparse`.
-- [ ] Add `[project.scripts] valmer-connectors = "valmer_connectors.cli:main"`.
-- [ ] Convert `scripts/update_vector_valmer.py` into a thin wrapper.
-- [ ] Convert `scripts/update_tiie_zero_curve.py` into a thin wrapper.
-- [ ] Convert `scripts/validate_runtime.py` into a thin wrapper.
+- [x] Add `src/valmer_connectors/services/`.
+- [x] Add reusable service functions for runtime validation, vector update,
+      TIIE zero curve update, and migration command rendering.
+- [x] Add `src/valmer_connectors/cli/main.py` using `argparse`.
+- [x] Add `[project.scripts] valmer-connectors = "valmer_connectors.cli.main:main"`.
+- [x] Convert `scripts/update_vector_valmer.py` into a thin wrapper.
+- [x] Convert `scripts/update_tiie_zero_curve.py` into a thin wrapper.
+- [x] Convert `scripts/validate_runtime.py` into a thin wrapper.
+- [x] Document CLI usage in project docs after implementation.
+- [ ] Add offline metadata inspection command if the project needs an explicit
+      schema-audit CLI.
 - [ ] Add CLI unit tests for offline commands.
 - [ ] Add tests that the script wrappers call the package operations.
-- [ ] Document CLI usage in project docs after implementation.
 
 ## Validation
 
@@ -216,7 +209,6 @@ Offline validation:
 
 ```bash
 valmer-connectors version
-valmer-connectors metadata inspect
 valmer-connectors migrations commands
 TDAG_ROOT_PATH=/private/tmp/tdag-plan .venv/bin/python -m unittest discover -s tests
 ```

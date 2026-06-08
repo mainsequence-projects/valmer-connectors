@@ -90,7 +90,7 @@ markupsafe==3.0.3
     #   mako
 mdurl==0.1.2
     # via markdown-it-py
-ms-markets==0.0.44
+ms-markets==0.0.45
     # via valmer-connectors
 narwhals==2.22.1
     # via altair

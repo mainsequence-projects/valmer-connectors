@@ -32,6 +32,7 @@ from valmer_connectors.meta_tables.valmer_asset_details import (
     VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
     upsert_valmer_asset_details,
 )
+from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
 
 
 @dataclass(frozen=True)
@@ -521,6 +522,34 @@ def _prepare_frame_for_target_bond_rules(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns=rename_map).copy()
 
 
+class _ProgressLogger:
+    def __init__(self, logger, label: str, total: int, *, steps: int = 5):
+        self.logger = logger
+        self.label = label
+        self.total = total
+        self.thresholds = {
+            max(1, (total * step + steps - 1) // steps)
+            for step in range(1, steps + 1)
+        }
+        self.completed = 0
+        self.logged: set[int] = set()
+        if total:
+            self.logger.info(f"{label}: starting {total} items.")
+
+    def advance(self, count: int = 1) -> None:
+        if not self.total:
+            return
+        self.completed += count
+        for threshold in sorted(self.thresholds):
+            if threshold in self.logged or self.completed < threshold:
+                continue
+            self.logged.add(threshold)
+            percent = min(100, round((self.completed / self.total) * 100))
+            self.logger.info(
+                f"{self.label}: {percent}% complete ({self.completed}/{self.total})."
+            )
+
+
 class ImportValmerConfig(AssetIndexedDataNodeConfiguration):
     bucket_name: str = Field(
         ...,
@@ -540,6 +569,7 @@ class ImportValmer(AssetIndexedDataNode):
         self.bucket_name = config.bucket_name
         self.artifact_data = None
         self.source_data = None
+        self.asset_list = None
         super().__init__(config=config, **kwargs)
 
     @classmethod
@@ -593,11 +623,17 @@ class ImportValmer(AssetIndexedDataNode):
                 return df
 
             base = Path(debug_artifact_path)
-            sorted_artifacts = [read_artifact(p) for p in sorted(base.rglob("*.xls*"))]
+            if not base.exists():
+                raise FileNotFoundError(f"DEBUG_ARTIFACT_PATH does not exist: {base}")
+            if base.is_file():
+                sorted_artifacts = [read_artifact(base)]
+            else:
+                sorted_artifacts = [read_artifact(p) for p in sorted(base.rglob("*.xls*"))]
             latest_date = (
                 self.local_persist_manager.get_update_statistics_for_table()
                 .get_max_time_in_update_statistics()
             )
+            source_label = f"local DEBUG_ARTIFACT_PATH '{debug_artifact_path}'"
         else:
             if self.artifact_data is not None:
                 return None
@@ -621,8 +657,13 @@ class ImportValmer(AssetIndexedDataNode):
                 self.logger.info("No new artifacts to process. Task finished.")
                 self.artifact_data = pd.DataFrame()
                 return None
+            source_label = f"Artifact bucket '{self.bucket_name}'"
 
-        frames = self._concatenate_artifacts_content(sorted_artifacts, self.logger)
+        frames = self._concatenate_artifacts_content(
+            sorted_artifacts,
+            self.logger,
+            source_label=source_label,
+        )
 
         try:
             self.artifact_data = pd.concat(frames, ignore_index=True, sort=False, copy=False)
@@ -696,25 +737,37 @@ class ImportValmer(AssetIndexedDataNode):
     @staticmethod
     def _get_current_pricing_details_by_uid(
         existing_assets: dict[str, MarketsAsset],
+        *,
+        batch_size: int,
+        logger,
     ) -> dict[str, AssetCurrentPricingDetails]:
         if not existing_assets:
             return {}
 
         asset_uid_to_valmer_uid = {str(asset.uid): uid for uid, asset in existing_assets.items()}
         asset_uids = [asset.uid for asset in existing_assets.values()]
-        result = search_model(
-            AssetCurrentPricingDetails._active_context(),
-            model=AssetCurrentPricingDetails.__table__,
-            in_filters={"asset_uid": asset_uids},
-            limit=len(asset_uid_to_valmer_uid),
+        context = AssetCurrentPricingDetails._active_context()
+        progress = _ProgressLogger(
+            logger,
+            "Resolving current pricing details",
+            len(asset_uids),
         )
 
         pricing_details: dict[str, AssetCurrentPricingDetails] = {}
-        for row in operation_result_rows(result):
-            detail = AssetCurrentPricingDetails.model_validate(row)
-            valmer_uid = asset_uid_to_valmer_uid.get(str(detail.asset_uid))
-            if valmer_uid is not None:
-                pricing_details[valmer_uid] = detail
+        for start in range(0, len(asset_uids), batch_size):
+            batch = asset_uids[start : start + batch_size]
+            result = search_model(
+                context,
+                model=AssetCurrentPricingDetails.__table__,
+                in_filters={"asset_uid": batch},
+                limit=len(batch),
+            )
+            for row in operation_result_rows(result):
+                detail = AssetCurrentPricingDetails.model_validate(row)
+                valmer_uid = asset_uid_to_valmer_uid.get(str(detail.asset_uid))
+                if valmer_uid is not None:
+                    pricing_details[valmer_uid] = detail
+            progress.advance(len(batch))
         return pricing_details
 
     @staticmethod
@@ -793,10 +846,11 @@ class ImportValmer(AssetIndexedDataNode):
         return sorted_artifacts, artifact_dates
 
     @staticmethod
-    def _concatenate_artifacts_content(sorted_artifacts, logger):
+    def _concatenate_artifacts_content(sorted_artifacts, logger, *, source_label: str | None = None):
         frames = []
         for artifact in tqdm(sorted_artifacts):
             if isinstance(artifact, Artifact):
+                artifact_name = artifact.name
                 name_l = artifact.name.lower()
                 content = artifact.content
                 buf = content
@@ -819,6 +873,7 @@ class ImportValmer(AssetIndexedDataNode):
                     continue
             else:
                 df = artifact
+                artifact_name = source_label or "local dataframe"
 
             # Normalize all column names
             df.columns = [normalize_column_name(col) for col in df.columns]
@@ -829,14 +884,15 @@ class ImportValmer(AssetIndexedDataNode):
                 df = add_valmer_unique_identifier(df)
             else:
                 logger.warning(
-                    f"Skipping unique_identifier creation for {artifact.name} due to missing columns."
+                    f"Skipping unique_identifier creation for {artifact_name} due to missing columns."
                 )
                 continue
 
             frames.append(df)
 
         if not frames:
-            raise ValueError(f"No valid data frames could be created from files in bucket .")
+            source = source_label or "provided artifacts"
+            raise ValueError(f"No valid data frames could be created from {source}.")
         return frames
 
     @staticmethod
@@ -863,7 +919,7 @@ class ImportValmer(AssetIndexedDataNode):
         logger.warning("No parsable dates in artifact names; falling back to last by name.")
         return sorted(artifacts, key=lambda a: a.name)[-1]
 
-    def _register_and_update_pricing(
+    def _sync_asset_registry_and_pricing(
         self,
         unique_identifiers: List[str],
         df_latest: pd.DataFrame,
@@ -871,13 +927,28 @@ class ImportValmer(AssetIndexedDataNode):
         *,
         force_update: bool = False,
     ) -> list:
-        """One orchestrator for both paths (full vector or last vector)."""
-        per_page_assets = int(os.environ.get("VALMER_PER_PAGE", 5000))
+        """Sync Valmer asset rows, Valmer asset details, and current pricing details."""
+        per_page_assets = resolve_valmer_meta_operation_batch_size()
+        target_uids = set(all_target_bonds["unique_identifier"].unique())
+        self.logger.info(
+            "Starting Valmer asset registry and pricing sync: "
+            f"{len(unique_identifiers)} source assets, "
+            f"{len(target_uids)} target pricing assets, "
+            f"batch size {per_page_assets}."
+        )
         existing_assets = resolve_valmer_assets(
             unique_identifiers,
             batch_size=per_page_assets,
+            logger=self.logger,
         )
-        current_pricing_details = self._get_current_pricing_details_by_uid(existing_assets)
+        existing_target_assets = {
+            uid: asset for uid, asset in existing_assets.items() if uid in target_uids
+        }
+        current_pricing_details = self._get_current_pricing_details_by_uid(
+            existing_target_assets,
+            batch_size=per_page_assets,
+            logger=self.logger,
+        )
         missing_assets = self._get_missing_asset_uids(unique_identifiers, existing_assets)
         pricing_updates = self._get_pricing_refresh_uids(
             unique_identifiers,
@@ -890,7 +961,6 @@ class ImportValmer(AssetIndexedDataNode):
         df_latest_idx = df_latest.drop_duplicates("unique_identifier", keep="last").set_index(
             "unique_identifier"
         )
-        target_uids = set(all_target_bonds["unique_identifier"].unique())
 
         assets_needing_type_update = [
             uid
@@ -905,10 +975,15 @@ class ImportValmer(AssetIndexedDataNode):
             upserted_assets = upsert_valmer_assets(
                 assets_to_upsert,
                 batch_size=per_page_assets,
+                logger=self.logger,
             )
             existing_assets.update(upserted_assets)
 
-        detail_rows = upsert_valmer_asset_details(df_latest, existing_assets)
+        detail_rows = upsert_valmer_asset_details(
+            df_latest,
+            existing_assets,
+            logger=self.logger,
+        )
         self.logger.info(f"Upserted {len(detail_rows)} Valmer asset detail rows.")
 
         # --- decide pricing recipients ---
@@ -917,8 +992,15 @@ class ImportValmer(AssetIndexedDataNode):
 
         if uids_needing_pricing:
             instrument_pricing_detail_map: dict[str, dict] = {}
-            for uid in uids_needing_pricing:
+            pricing_uid_list = list(uids_needing_pricing)
+            instrument_progress = _ProgressLogger(
+                self.logger,
+                "Building Valmer pricing instruments",
+                len(pricing_uid_list),
+            )
+            for uid in pricing_uid_list:
                 if uid not in df_latest_idx.index:
+                    instrument_progress.advance()
                     continue
                 row = df_latest_idx.loc[uid]
 
@@ -936,6 +1018,7 @@ class ImportValmer(AssetIndexedDataNode):
                     "instrument": ql_bond,
                     "pricing_details_date": row["fecha"],
                 }
+                instrument_progress.advance()
 
             # target the correct asset objects (newly registered + existing)
             assets_for_update: dict[str, MarketsAsset] = {
@@ -944,6 +1027,11 @@ class ImportValmer(AssetIndexedDataNode):
                 if u in existing_assets and u in instrument_pricing_detail_map
             }
 
+            persist_progress = _ProgressLogger(
+                self.logger,
+                "Persisting current pricing details",
+                len(assets_for_update),
+            )
             for uid, asset in assets_for_update.items():
                 try:
                     pricing_details = instrument_pricing_detail_map[uid]
@@ -956,6 +1044,8 @@ class ImportValmer(AssetIndexedDataNode):
                     )
                 except Exception as e:
                     self.logger.error(f"Failed to update pricing details for {uid}: {e}")
+                finally:
+                    persist_progress.advance()
 
         return list(existing_assets.values())
 
@@ -976,7 +1066,7 @@ class ImportValmer(AssetIndexedDataNode):
         source_df = source_df_list[0]
         df_latest, all_target_bonds, unique_identifiers = self._prepare_latest_inputs(source_df)
         self.logger.info(f"[last vector] Found {len(unique_identifiers)} unique assets to process.")
-        return self._register_and_update_pricing(
+        return self._sync_asset_registry_and_pricing(
             unique_identifiers, df_latest, all_target_bonds, force_update=force_update
         )
 
@@ -993,21 +1083,40 @@ class ImportValmer(AssetIndexedDataNode):
         unique_identifiers = df["unique_identifier"].unique().tolist()
         return df_latest, all_target_bonds, unique_identifiers
 
-    def get_asset_list(self) -> Union[None, list]:
-        """
-        Processes and registers each unique asset only once from the combined DataFrame.
-        """
+    def prepare_source_data(self) -> pd.DataFrame:
+        """Load Valmer artifact rows for the current DataNode update."""
         self._set_artifact_data()
         self.source_data = self.artifact_data
+        if self.source_data is None:
+            self.source_data = pd.DataFrame()
+        return self.source_data
+
+    def prepare_for_update(self, *, force_pricing_update: bool = False) -> list:
+        """
+        Prepare the Valmer update explicitly before the DataNode run.
+
+        This registers AssetTable rows, upserts static Valmer asset details,
+        hydrates current pricing details for target bonds, and stores the
+        resulting AssetTable scope for get_asset_list().
+        """
+        source_data = self.prepare_source_data()
         if self.source_data.empty:
+            self.asset_list = None
             return []
-        df_latest, all_target_bonds, unique_identifiers = self._prepare_latest_inputs(
-            self.source_data
-        )
+
+        df_latest, all_target_bonds, unique_identifiers = self._prepare_latest_inputs(source_data)
         self.logger.info(f"Found {len(unique_identifiers)} unique assets to process.")
-        return self._register_and_update_pricing(
-            unique_identifiers, df_latest, all_target_bonds, force_update=False
+        self.asset_list = self._sync_asset_registry_and_pricing(
+            unique_identifiers,
+            df_latest,
+            all_target_bonds,
+            force_update=force_pricing_update,
         )
+        return self.asset_list
+
+    def get_asset_list(self) -> Union[None, list]:
+        """Return the already-prepared asset scope for this DataNode run."""
+        return super().get_asset_list()
 
     def update(self):
         source_data = self.source_data

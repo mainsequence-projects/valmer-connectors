@@ -112,8 +112,9 @@ Asset detail persistence is also separate from price-vector publishing:
 - [x] Create `src/valmer_connectors/instruments/asset_identity.py`.
 - [x] Move Valmer `unique_identifier` construction out of
   `ImportValmer._concatenate_artifacts_content(...)`.
-- [x] Replace asset lookup in `ImportValmer._register_and_update_pricing(...)`
-  with the typed Valmer asset resolver.
+- [x] Replace asset lookup in
+  `ImportValmer._sync_asset_registry_and_pricing(...)` with the typed Valmer
+  asset resolver.
 - [x] Replace legacy custom asset registration with typed Asset upsert using
   `msm.constants.ASSET_TYPE_BOND`.
 - [x] Split registration planning from pricing-refresh planning.
@@ -133,6 +134,9 @@ Asset detail persistence is also separate from price-vector publishing:
   price-vector DataNode output.
 - [x] Re-enrich dashboard reads from `ValmerAssetDetailsTable` when descriptor
   fields are needed for display or target-bond checks.
+- [x] Move AssetTable and pricing side effects out of
+  `ImportValmer.get_asset_list()` and into the explicit
+  `ImportValmer.prepare_for_update()` phase.
 
 Curve and reference-rate asset lookup, including
 `MexDerTIIE28Zero.get_asset_list()`, is intentionally out of scope for this ADR.
@@ -161,8 +165,10 @@ Before marking the implementation complete:
   - `msc.Asset.query`
   - `msc.Asset.filter`
   - `msc.Asset.batch_get_or_register_custom_assets`
-- verify `ImportValmer.get_asset_list()` can resolve or upsert Valmer assets as
-  typed `msm.api.assets.Asset` rows
+- verify `ImportValmer.prepare_for_update()` can resolve or upsert Valmer
+  assets as typed `msm.api.assets.Asset` rows
+- verify `ImportValmer.get_asset_list()` only returns the already prepared
+  asset scope
 - verify sample Valmer assets have
   `asset_type == msm.constants.ASSET_TYPE_BOND`
 - verify pricing-detail hydration writes through

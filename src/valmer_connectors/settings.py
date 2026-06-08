@@ -1,3 +1,5 @@
+import os
+
 from valmer_connectors.instruments.curve_bootstrap import (
     CETE_182_INDEX_UNIQUE_IDENTIFIER,
     CETE_28_INDEX_UNIQUE_IDENTIFIER,
@@ -9,7 +11,35 @@ from valmer_connectors.instruments.curve_bootstrap import (
 )
 
 PROJECT_BUCKET_NAME = "Data Connectors"
-BUCKET_NAME_HISTORICAL_VECTORS = "Hitorical Valmer Vector Analytico"
+VALMER_VECTOR_BUCKET_NAME_ENV = "VALMER_VECTOR_BUCKET_NAME"
+DEFAULT_VALMER_VECTOR_BUCKET_NAME = "Hitorical Valmer Vector Analytico"
+DEFAULT_VECTOR_FIRST_LOOP_COUNT = 360 // 5
+VALMER_META_OPERATION_BATCH_SIZE_ENV = "VALMER_PER_PAGE"
+DEFAULT_VALMER_META_OPERATION_BATCH_SIZE = 500
+MAX_VALMER_META_OPERATION_BATCH_SIZE = 500
+
+
+def resolve_valmer_vector_bucket_name(bucket_name: str | None = None) -> str:
+    return bucket_name or os.environ.get(
+        VALMER_VECTOR_BUCKET_NAME_ENV,
+        DEFAULT_VALMER_VECTOR_BUCKET_NAME,
+    )
+
+
+def resolve_valmer_meta_operation_batch_size(batch_size: int | None = None) -> int:
+    if batch_size is None:
+        batch_size = int(
+            os.environ.get(
+                VALMER_META_OPERATION_BATCH_SIZE_ENV,
+                DEFAULT_VALMER_META_OPERATION_BATCH_SIZE,
+            )
+        )
+    if batch_size <= 0:
+        raise ValueError("Valmer MetaTable operation batch size must be positive.")
+    return min(batch_size, MAX_VALMER_META_OPERATION_BATCH_SIZE)
+
+
+BUCKET_NAME_HISTORICAL_VECTORS = resolve_valmer_vector_bucket_name()
 SUBYACENTE_TO_INDEX_MAP = {
     "TIIE28": TIIE_28_INDEX_UNIQUE_IDENTIFIER,
     "TIIE182": TIIE_182_INDEX_UNIQUE_IDENTIFIER,

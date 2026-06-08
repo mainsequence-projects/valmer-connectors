@@ -24,7 +24,7 @@ mainsequence project data-node-updates list 113 --timeout 60
 mainsequence project project_resource list 113 --path . --timeout 60
 mainsequence project images list 113 --timeout 60
 mainsequence markets portfolios list --timeout 60
-python scripts/validate_runtime.py
+valmer-connectors runtime validate
 ```
 
 Use the dashboard after deployment to confirm:

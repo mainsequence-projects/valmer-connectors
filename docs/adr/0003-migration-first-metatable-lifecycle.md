@@ -109,8 +109,8 @@ Before this project runs its own migrations, operators must run the canonical
 ms-markets provider:
 
 ```bash
-mainsequence migrations upgrade --provider msm.migrations:migration --to head --dry-run
-mainsequence migrations upgrade --provider msm.migrations:migration --to head
+mainsequence migrations current --provider msm.migrations:migration
+mainsequence migrations upgrade --provider msm.migrations:migration head
 ```
 
 This provider owns the built-in ms-markets tables, including:
@@ -121,7 +121,6 @@ This provider owns the built-in ms-markets tables, including:
 - `IndexConventionDetailsTable`
 - `CurveTable`
 - `AssetCurrentPricingDetailsTable`
-- `PricingMarketDataBindingTable`
 - `DiscountCurvesStorage`
 - `IndexFixingsStorage`
 - `AssetPricingDetailsStorage`
@@ -339,19 +338,21 @@ The correct migration and runtime workflow is:
 
    ```bash
    mainsequence migrations current --provider msm.migrations:migration
-   mainsequence migrations upgrade --provider msm.migrations:migration --to head --dry-run
-   mainsequence migrations upgrade --provider msm.migrations:migration --to head
+   mainsequence migrations upgrade --provider msm.migrations:migration head
    ```
 
 3. Run the Valmer project migration provider:
 
    ```bash
    mainsequence migrations current --provider migrations:migration
-   mainsequence migrations revision --provider migrations:migration
-   mainsequence migrations render --provider migrations:migration --to head
-   mainsequence migrations upgrade --provider migrations:migration --to head --dry-run
-   mainsequence migrations upgrade --provider migrations:migration --to head
+   mainsequence migrations upgrade --provider migrations:migration head
    ```
+
+   Do not run `mainsequence migrations revision` as part of normal setup. Use
+   it only after changing the Valmer SQLAlchemy table contract and expecting an
+   in-place Alembic DDL delta. Initial table registration and physical table
+   creation are driven by `metatable_models` during `upgrade`; the baseline
+   `0001` revision intentionally has no `op.create_table(...)` statements.
 
 4. Start or run project code that attaches runtime tables.
 5. Seed static rows such as reference indexes and Valmer asset details.

@@ -15,6 +15,7 @@ from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 from valmer_connectors.markets import ValmerMarketsMetaTableMixin
+from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
 
 VALMER_ASSET_DETAIL_VECTOR_COLUMNS = frozenset(
     {
@@ -273,7 +274,7 @@ def ensure_valmer_asset_detail_schemas(
 def resolve_valmer_asset_details(
     asset_uids: list[Any],
     *,
-    batch_size: int = 5000,
+    batch_size: int | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Resolve latest Valmer detail rows keyed by Valmer unique identifier."""
@@ -289,7 +290,8 @@ def resolve_valmer_asset_details(
 
     context = ensure_valmer_asset_detail_runtime(timeout=timeout)
     details: dict[str, dict[str, Any]] = {}
-    for batch in _batches(normalized_asset_uids, batch_size):
+    resolved_batch_size = resolve_valmer_meta_operation_batch_size(batch_size)
+    for batch in _batches(normalized_asset_uids, resolved_batch_size):
         result = search_model(
             context,
             model=ValmerAssetDetailsTable,
@@ -308,6 +310,7 @@ def upsert_valmer_asset_details(
     assets_by_unique_identifier: Mapping[str, Any],
     *,
     timeout: int | float | tuple[float, float] | None = None,
+    logger=None,
 ) -> dict[str, dict[str, Any]]:
     """Upsert latest 1:1 Valmer detail rows for registered assets."""
 
@@ -325,9 +328,23 @@ def upsert_valmer_asset_details(
     )
 
     upserted: dict[str, dict[str, Any]] = {}
+    total = len(latest_rows)
+    if logger is not None:
+        logger.info(f"Upserting {total} Valmer asset detail rows.")
+    processed = 0
     for unique_identifier, row in latest_rows.iterrows():
         asset = assets_by_unique_identifier.get(str(unique_identifier))
         if asset is None:
+            previous = processed
+            processed += 1
+            if logger is not None:
+                _log_progress(
+                    logger,
+                    label="Upserting Valmer asset detail rows",
+                    previous=previous,
+                    completed=processed,
+                    total=total,
+                )
             continue
 
         result = upsert_model(
@@ -339,6 +356,16 @@ def upsert_valmer_asset_details(
         rows = operation_result_rows(result)
         if rows:
             upserted[str(unique_identifier)] = rows[0]
+        previous = processed
+        processed += 1
+        if logger is not None:
+            _log_progress(
+                logger,
+                label="Upserting Valmer asset detail rows",
+                previous=previous,
+                completed=processed,
+                total=total,
+            )
     return upserted
 
 
@@ -438,6 +465,26 @@ def _batches(values: list[Any], batch_size: int) -> list[list[Any]]:
         values[start : start + batch_size]
         for start in range(0, len(values), batch_size)
     ]
+
+
+def _log_progress(
+    logger,
+    *,
+    label: str,
+    previous: int,
+    completed: int,
+    total: int,
+) -> None:
+    if not total:
+        return
+    thresholds = {
+        max(1, (total * step + 4) // 5)
+        for step in range(1, 6)
+    }
+    for threshold in sorted(thresholds):
+        if previous < threshold <= completed:
+            percent = min(100, round((completed / total) * 100))
+            logger.info(f"{label}: {percent}% complete ({completed}/{total}).")
 
 
 __all__ = [

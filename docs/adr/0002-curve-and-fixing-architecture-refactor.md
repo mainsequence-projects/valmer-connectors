@@ -23,8 +23,8 @@ The implementation that follows this ADR must:
 - model pricing conventions as `IndexConventionDetails` rows keyed by
   `index_uid`
 - model curve identities as `Curve` rows keyed by `curve_unique_identifier`
-- register the current pricing schema graph, including
-  `PricingMarketDataBindingTable`
+- attach the current pricing schema graph needed for index conventions, curves,
+  current pricing details, discount curves, and fixings
 - publish curve observations through `msm_pricing.data_nodes.DiscountCurvesNode`
 - publish real fixing observations through `msm_pricing.data_nodes.FixingRatesNode`
   only when a real fixing source exists
@@ -77,7 +77,7 @@ time-varying observations:
   registers the pricing MetaTable dependency graph in order:
   `AssetTable`, `IndexTypeTable`, `IndexTable`,
   `IndexConventionDetailsTable`, `CurveTable`,
-  `AssetCurrentPricingDetailsTable`, and `PricingMarketDataBindingTable`.
+  `AssetCurrentPricingDetailsTable`, and pricing DataNode storage tables.
 - `msm.data_nodes.indices.IndexTimestampedDataNode`
   is the base for timestamped index facts keyed by
   `INDEX_UNIQUE_IDENTIFIER_DIMENSION`.
@@ -395,8 +395,8 @@ Reference-rate lookup changes from:
 Do not mark the implementation complete until these checks pass:
 
 - pricing schemas register or attach with `IndexTypeTable`, `IndexTable`,
-  `IndexConventionDetailsTable`, `CurveTable`, and
-  `PricingMarketDataBindingTable`
+  `IndexConventionDetailsTable`, `CurveTable`, current pricing detail tables,
+  and pricing DataNode storage tables
 - `IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())`
   returns or preserves an `interest_rate` row
 - `Index` rows exist for supported TIIE and CETE reference indexes

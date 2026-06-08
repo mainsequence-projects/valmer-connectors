@@ -1,17 +1,21 @@
 # valmer-connectors
 
-`valmer-connectors` extends `mainsequence` with Valmer market data for Mexican
-fixed income. The repository ingests Valmer vector artifacts from MainSequence
-artifact storage, registers or reuses Valmer bond assets, attaches pricing
-details through `msm_pricing`, and publishes a Valmer TIIE 28 curve from the
-public Valmer MexDer benchmark CSV.
+`valmer-connectors` extends `mainsequence`, `ms-markets`, and `msm_pricing`
+with Valmer market data for Mexican fixed income. The repository imports Valmer
+vector source rows, registers or reuses Valmer bond assets, stores static Valmer
+asset descriptors, publishes source vector observations, hydrates supported bond
+pricing details, and publishes a Valmer TIIE 28 curve from the public Valmer
+MexDer benchmark CSV.
 
 ## What The Project Does
 
-- Reads historical Valmer vector files from a MainSequence artifact bucket and
-  publishes them as `vector_de_precios_valmer`.
+- Reads historical Valmer vector files from a Main Sequence Artifact bucket or
+  a local `DEBUG_ARTIFACT_PATH` file or folder.
 - Builds or reuses MainSequence `Asset` objects keyed as
   `tipovalor_emisora_serie`.
+- Stores static Valmer asset descriptors in `ValmerAssetDetailsTable`.
+- Publishes time-varying Valmer vector observations as
+  `vector_de_precios_valmer`.
 - Attaches `msm_pricing` pricing details for the supported Mexican bond
   universe.
 - Registers Mexican TIIE/CETE index identities, pricing conventions, and the
@@ -21,31 +25,42 @@ public Valmer MexDer benchmark CSV.
 - Includes a project-specific multipage Streamlit dashboard under
   `dashboards/valmer_monitor/`.
 
-## How Vector Rows Become Assets
+## Workflow Boundaries
 
-The pricing-hydration path is centered on
-`src/valmer_connectors/instruments/vector_to_asset.py` and is triggered from
-`ImportValmer.get_asset_list()` in `src/valmer_connectors/data_nodes/nodes.py`.
+The vector update flow is explicit:
 
-At a high level, the flow is:
+```text
+valmer-connectors vector update
+    |
+    v
+bootstrap_runtime()
+    |
+    v
+ImportValmer.prepare_for_update()
+    |
+    +-- import source rows
+    +-- sync AssetTable rows
+    +-- sync ValmerAssetDetailsTable rows
+    +-- hydrate supported bond pricing details
+    |
+    v
+ImportValmer.run(force_update=True)
+    |
+    v
+ValmerVectorPricesStorage
+```
 
-1. Valmer source files are normalized and a stable asset key is built as
-   `tipovalor_emisora_serie`.
-2. The latest row per asset is filtered down to the supported bond universe.
-3. `get_instrument_conventions(...)` chooses the market conventions and
-   `build_qll_bond_from_row(...)` converts the Valmer row into a
-   `msm_pricing.instruments` bond object.
-4. Missing assets are registered and supported rows receive current pricing
-   details through `msm_pricing.api.instruments.persist_current_pricing_details(...)`.
+`ImportValmer.get_asset_list()` is only the prepared asset-scope handoff for
+the asset-indexed DataNode lifecycle. It does not own registration or pricing
+hydration.
 
-The important consequence is that not every row in the source vector becomes a
-priced asset. The source table is broader than the supported instrument-mapping
-surface.
+Not every row in the source vector becomes a priced asset. The source DataNode
+is broader than the supported instrument-mapping surface.
 
 ## How To Extend The Mapping
 
-To extend the current vector-to-asset path, change the smallest layer that owns
-the behavior:
+To extend the current vector-to-pricing path, change the smallest layer that
+owns the behavior:
 
 - Add or correct a vendor benchmark mapping in `src/valmer_connectors/settings.py` via
   `SUBYACENTE_TO_INDEX_MAP`.
@@ -55,9 +70,15 @@ the behavior:
   `get_instrument_conventions(...)`.
 - Add a new instrument-construction rule in `build_qll_bond_from_row(...)`.
 - Validate the change with `run_price_check(...)`,
-  `build_position_from_sheet(...)`, and `python scripts/validate_runtime.py`.
+  `build_position_from_sheet(...)`, and `valmer-connectors runtime validate`.
 
-The detailed extension guide lives in `docs/instruments.md`.
+Detailed guides:
+
+- `docs/source-import.md`: bucket versus local file import
+- `docs/data-nodes.md`: Valmer vector DataNode publication
+- `docs/markets.md`: AssetTable and ValmerAssetDetailsTable relationships
+- `docs/pricing.md`: pricing hydration and curve publication
+- `docs/instruments.md`: Valmer row-to-instrument mapping
 
 ## Quickstart
 
@@ -75,23 +96,64 @@ pip install -e .
 uv pip install -e .
 ```
 
-### Run The Valmer Vector Import
+### Migration CLI
+
+Run the core ms-markets provider first, then the Valmer project provider:
 
 ```bash
-python scripts/update_vector_valmer.py
+mainsequence migrations current --provider msm.migrations:migration
+mainsequence migrations upgrade --provider msm.migrations:migration head
+
+mainsequence migrations current --provider migrations:migration
+mainsequence migrations upgrade --provider migrations:migration head
 ```
 
-### Run The TIIE Zero Curve Build
+The Valmer provider uses the top-level `migrations:migration` package exposed
+from `src/migrations`.
+
+Do not run `mainsequence migrations revision` during normal setup. Use
+`revision` only after changing the Valmer SQLAlchemy table contract and
+expecting an in-place Alembic DDL delta. Initial MetaTable registration is
+handled by `mainsequence migrations upgrade` through the provider
+`metatable_models`.
+
+### Project CLI Surface
+
+The package CLI surface is defined in `docs/adr/cli/0004-valmer-connectors-cli-design.md`.
+It is installed through the `pyproject.toml` console script:
+
+```text
+valmer-connectors = "valmer_connectors.cli.main:main"
+```
+
+Current commands:
 
 ```bash
-python scripts/update_tiie_zero_curve.py
+valmer-connectors version
+valmer-connectors migrations commands
+valmer-connectors runtime validate
+valmer-connectors vector update
+valmer-connectors curves update-tiie-zero
 ```
 
-### Validate The Pricing Runtime
+The current `scripts/*.py` files are compatibility wrappers around package
+services.
+
+### Current Operations
 
 ```bash
-python scripts/validate_runtime.py
+valmer-connectors runtime validate
+valmer-connectors vector update
+valmer-connectors curves update-tiie-zero
 ```
+
+## Compatibility Scripts
+
+- `scripts/update_vector_valmer.py`: compatibility wrapper for the Valmer vector
+  refresh.
+- `scripts/update_tiie_zero_curve.py`: compatibility wrapper for the TIIE 28
+  discount-curve refresh.
+- `scripts/validate_runtime.py`: compatibility wrapper for runtime validation.
 
 ## Documentation
 
@@ -99,16 +161,17 @@ Authoritative project documentation lives under `docs/` and is organized
 for MkDocs through `mkdocs.yml`.
 
 - `docs/index.md`: documentation entry point and navigation
-- `docs/introduction.md`: project overview; this page intentionally mirrors the
-  README
+- `docs/introduction.md`: project overview and runtime flow
+- `docs/source-import.md`: source selection, bucket import, and local debug import
+- `docs/data-nodes.md`: Valmer vector DataNode publication boundary
+- `docs/markets.md`: AssetTable and ValmerAssetDetailsTable relationships
+- `docs/pricing.md`: pricing hydration, reference indexes, and curve publication
+- `docs/instruments.md`: row-to-instrument mapping rules
 - `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up
-- `docs/data-nodes.md`: Valmer DataNode definitions and stored fields
-- `docs/markets.md`: MainSequence assets and market-side pricing reference data
-- `docs/instruments.md`: vector-to-asset flow, `msm_pricing` bootstrap, and
-  extension points
 - `docs/dashboards.md`: dashboards currently shipped by the project
-- `astro/tasks.md`: current open tasks only
-- `astro/journal.md`: historical implementation and failure log
+- `docs/SUMMARY.md`: documentation map required by the project instructions
+- `.agents/tasks.md`: current open tasks only
+- `.agents/journal.md`: historical implementation and failure log
 
 ## Current Scope
 
@@ -121,20 +184,8 @@ This repository currently does not create:
 The repository now includes:
 
 - `scheduled_jobs.yaml` for repo-managed ETL scheduling
-- `scripts/validate_runtime.py` for runtime validation
+- `valmer-connectors runtime validate` for runtime validation
 - a project-specific dashboard overview plus source, pricing, and curve pages
 
 For deployment verification and current backend follow-up, see
 `docs/deployment.md`.
-
-## Key Entry Points
-
-- `scripts/update_vector_valmer.py`: artifact-backed Valmer vector refresh
-- `scripts/update_tiie_zero_curve.py`: TIIE 28 discount-curve refresh
-- `scripts/validate_runtime.py`: runtime smoke test for pricing MetaTable rows
-- `src/valmer_connectors/data_nodes/nodes.py`: Valmer source nodes
-- `src/valmer_connectors/instruments/vector_to_asset.py`: instrument mapping and pricing-detail construction
-- `src/valmer_connectors/instruments/bootstrap.py`: current ms-markets pricing bootstrap
-- `src/valmer_connectors/instruments/rates_curves.py`: Valmer TIIE curve builder
-- `dashboards/valmer_monitor/app.py`: dashboard overview entry point
-- `scheduled_jobs.yaml`: canonical job schedule definitions for the two ETL runners

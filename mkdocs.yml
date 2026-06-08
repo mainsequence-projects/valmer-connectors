@@ -3,14 +3,18 @@ docs_dir: docs
 nav:
   - Home: index.md
   - Introduction: introduction.md
+  - Source Import: source-import.md
   - DataNodes: data-nodes.md
-  - New Version Migration: new-version-migration.md
-  - Markets: markets.md
-  - Instruments: instruments.md
+  - Markets And Asset Details: markets.md
+  - Pricing: pricing.md
+  - Instrument Mapping: instruments.md
   - Dashboards: dashboards.md
   - Deployment: deployment.md
+  - New Version Migration: new-version-migration.md
   - ADRs:
       - Core Pricing Library Boundary: adr/0000-core-pricing-library-boundary.md
       - Asset Registration Identity Migration: adr/0001-asset-registration-identity-migration.md
       - Curve and Fixing Architecture Refactor: adr/0002-curve-and-fixing-architecture-refactor.md
       - Migration-First MetaTable Lifecycle: adr/0003-migration-first-metatable-lifecycle.md
+      - CLI:
+          - Valmer Connectors CLI Design: adr/cli/0004-valmer-connectors-cli-design.md

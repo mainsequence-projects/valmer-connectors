@@ -21,13 +21,18 @@
       "name": "Migrations: Current (Valmer)",
       "type": "python",
       "request": "launch",
-      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "mainsequence",
       "args": [
         "migrations",
         "current",
         "--provider",
         "migrations:migration",
-        "--verbose"
+        "--verbose",
+        "--timeout",
+        "900",
+        "--ttl-seconds",
+        "900"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -36,20 +41,26 @@
         "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
         "PYTHONUNBUFFERED": "1"
       },
-      "justMyCode": true
+      "justMyCode": false
     },
     {
       "name": "Migrations: Revision (Valmer)",
       "type": "python",
       "request": "launch",
-      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "mainsequence",
       "args": [
         "migrations",
         "revision",
         "--provider",
         "migrations:migration",
+        "--autogenerate",
         "--message",
-        "${input:migrationRevisionMessage}"
+        "migration",
+        "--timeout",
+        "900",
+        "--ttl-seconds",
+        "900"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -58,19 +69,24 @@
         "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
         "PYTHONUNBUFFERED": "1"
       },
-      "justMyCode": true
+      "justMyCode": false
     },
     {
       "name": "Migrations: Upgrade (Valmer)",
       "type": "python",
       "request": "launch",
-      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "mainsequence",
       "args": [
         "migrations",
         "upgrade",
         "--provider",
         "migrations:migration",
-        "${input:migrationTargetRevision}"
+        "head",
+        "--timeout",
+        "900",
+        "--ttl-seconds",
+        "900"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -79,7 +95,45 @@
         "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
         "PYTHONUNBUFFERED": "1"
       },
-      "justMyCode": true
+      "justMyCode": false
+    },
+    {
+      "name": "Valmer CLI: Vector Update",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "vector",
+        "update"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "Valmer CLI: Update TIIE Zero Curve",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "curves",
+        "update-tiie-zero"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
     },
     {
       "name": "Example Script",
@@ -92,20 +146,6 @@
         "PYTHONPATH": "${workspaceFolder}"
       },
       "justMyCode": true
-    }
-  ],
-  "inputs": [
-    {
-      "id": "migrationRevisionMessage",
-      "type": "promptString",
-      "description": "Alembic revision message",
-      "default": "migration"
-    },
-    {
-      "id": "migrationTargetRevision",
-      "type": "promptString",
-      "description": "Alembic target revision",
-      "default": "head"
     }
   ]
 }

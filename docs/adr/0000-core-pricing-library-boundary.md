@@ -372,10 +372,11 @@ is not required for moving Valmer pricing behavior out of this connector.
    diagnostics before writing current asset pricing details.
 6. Refactor `src/valmer_connectors/instruments/vector_to_asset.py` so it becomes a Valmer row
    mapper and validation adapter, not a bond pricing library.
-7. Refactor `ImportValmer._register_and_update_pricing(...)` into two separate
-   calls:
-   - asset registration or lookup, covered by ADR 0001
-   - core pricing-definition upsert, covered by this ADR
+7. Keep `ImportValmer.prepare_for_update()` as the explicit orchestration
+   boundary before `ImportValmer.run(...)`. Inside that preparation phase,
+   `_sync_asset_registry_and_pricing(...)` keeps the Valmer asset/detail sync
+   and current pricing hydration visible instead of hiding them in
+   `get_asset_list()`.
 
 ## Implementation Tasks
 

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 from msm.constants import ASSET_TYPE_BOND
+from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
 
 if TYPE_CHECKING:
     from msm.api.assets import Asset
@@ -84,8 +85,9 @@ def ensure_valmer_asset_schemas() -> None:
 def resolve_valmer_assets(
     unique_identifiers: Sequence[object],
     *,
-    batch_size: int = 5000,
+    batch_size: int | None = None,
     ensure_schemas: bool = True,
+    logger=None,
 ) -> dict[str, Asset]:
     """Resolve existing typed markets assets by Valmer unique identifier."""
 
@@ -101,7 +103,15 @@ def resolve_valmer_assets(
     Asset = _asset_model()
     context = Asset._active_context()
     assets: dict[str, Asset] = {}
-    for batch in _batches(identifiers, batch_size):
+    resolved_batch_size = resolve_valmer_meta_operation_batch_size(batch_size)
+    batches = batched_values(identifiers, resolved_batch_size)
+    if logger is not None:
+        logger.info(
+            f"Resolving {len(identifiers)} Valmer assets in {len(batches)} batches "
+            f"of up to {resolved_batch_size}."
+        )
+    processed = 0
+    for batch in batches:
         result = search_model(
             context,
             model=Asset.__table__,
@@ -111,14 +121,25 @@ def resolve_valmer_assets(
         for row in operation_result_rows(result):
             asset = Asset.model_validate(row)
             assets[asset.unique_identifier] = asset
+        previous = processed
+        processed += len(batch)
+        if logger is not None:
+            _log_batch_progress(
+                logger,
+                label="Resolving Valmer assets",
+                previous=previous,
+                completed=processed,
+                total=len(identifiers),
+            )
     return assets
 
 
 def upsert_valmer_assets(
     unique_identifiers: Sequence[object],
     *,
-    batch_size: int = 5000,
+    batch_size: int | None = None,
     ensure_schemas: bool = True,
+    logger=None,
 ) -> dict[str, Asset]:
     """Idempotently create or update Valmer assets as typed bond assets."""
 
@@ -133,7 +154,15 @@ def upsert_valmer_assets(
     Asset = _asset_model()
     context = Asset._active_context()
     assets: dict[str, Asset] = {}
-    for batch in _batches(identifiers, batch_size):
+    resolved_batch_size = resolve_valmer_meta_operation_batch_size(batch_size)
+    batches = batched_values(identifiers, resolved_batch_size)
+    if logger is not None:
+        logger.info(
+            f"Upserting {len(identifiers)} Valmer assets in {len(batches)} batches "
+            f"of up to {resolved_batch_size}."
+        )
+    processed = 0
+    for batch in batches:
         for unique_identifier in batch:
             result = upsert_model(
                 context,
@@ -146,6 +175,15 @@ def upsert_valmer_assets(
             )
             asset = Asset._from_operation_result(result)
             assets[asset.unique_identifier] = asset
+        processed += len(batch)
+        if logger is not None:
+            _log_batch_progress(
+                logger,
+                label="Upserting Valmer assets",
+                previous=processed - len(batch),
+                completed=processed,
+                total=len(identifiers),
+            )
     return assets
 
 
@@ -161,10 +199,30 @@ def _required_identity_part(row: Mapping[str, object], field: str) -> str:
     return text
 
 
-def _batches(values: Sequence[str], batch_size: int) -> list[list[str]]:
+def batched_values(values: Sequence[object], batch_size: int) -> list[list[object]]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
     return [list(values[start : start + batch_size]) for start in range(0, len(values), batch_size)]
+
+
+def _log_batch_progress(
+    logger,
+    *,
+    label: str,
+    previous: int,
+    completed: int,
+    total: int,
+) -> None:
+    if not total:
+        return
+    thresholds = {
+        max(1, (total * step + 4) // 5)
+        for step in range(1, 6)
+    }
+    for threshold in sorted(thresholds):
+        if previous < threshold <= completed:
+            percent = min(100, round((completed / total) * 100))
+            logger.info(f"{label}: {percent}% complete ({completed}/{total}).")
 
 
 def _asset_model():
@@ -176,6 +234,7 @@ def _asset_model():
 __all__ = [
     "VALMER_ASSET_IDENTITY_COLUMNS",
     "add_valmer_unique_identifier",
+    "batched_values",
     "build_valmer_unique_identifier",
     "ensure_valmer_asset_runtime",
     "ensure_valmer_asset_schemas",

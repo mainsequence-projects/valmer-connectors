@@ -1,26 +1,55 @@
 # Valmer Connectors Documentation
 
-This is the authoritative MkDocs-compatible documentation root for
-`valmer-connectors`.
+This is the MkDocs-compatible documentation root for `valmer-connectors`.
 
-## Pages
+The documentation is organized by responsibility. Do not use one page to infer
+another workflow boundary.
+
+## Architecture Pages
 
 - [Introduction](introduction.md)
+- [Source Import](source-import.md)
 - [DataNodes](data-nodes.md)
-- [New Version Migration](new-version-migration.md)
-- [Markets](markets.md)
-- [Instruments](instruments.md)
+- [Markets And Asset Details](markets.md)
+- [Pricing](pricing.md)
+- [Instrument Mapping](instruments.md)
 - [Dashboards](dashboards.md)
 - [Deployment](deployment.md)
-- ADRs:
-  - [ADR 0000: Core Pricing Library Boundary](adr/0000-core-pricing-library-boundary.md)
-  - [ADR 0001: Asset Registration Identity Migration](adr/0001-asset-registration-identity-migration.md)
-  - [ADR 0002: Curve and Fixing Architecture Refactor](adr/0002-curve-and-fixing-architecture-refactor.md)
-  - [ADR 0003: Migration-First MetaTable Lifecycle](adr/0003-migration-first-metatable-lifecycle.md)
-  - CLI:
-    - [ADR 0004: Valmer Connectors CLI Design](adr/cli/0004-valmer-connectors-cli-design.md)
+- [New Version Migration](new-version-migration.md)
+
+## Workflow Boundaries
+
+```text
+Valmer source files
+    |
+    v
+Source Import
+    |
+    v
+Asset and Detail Sync
+    |
+    +------------------------+
+    |                        |
+    v                        v
+DataNode Publication      Pricing Hydration
+    |                        |
+    v                        v
+vector_de_precios_valmer  current pricing details
+                             |
+                             v
+                         curve/index runtime
+```
+
+## ADRs
+
+- [ADR 0000: Core Pricing Library Boundary](adr/0000-core-pricing-library-boundary.md)
+- [ADR 0001: Asset Registration Identity Migration](adr/0001-asset-registration-identity-migration.md)
+- [ADR 0002: Curve and Fixing Architecture Refactor](adr/0002-curve-and-fixing-architecture-refactor.md)
+- [ADR 0003: Migration-First MetaTable Lifecycle](adr/0003-migration-first-metatable-lifecycle.md)
+- [ADR 0004: Valmer Connectors CLI Design](adr/cli/0004-valmer-connectors-cli-design.md)
 
 ## Operational Files
 
-- `astro/tasks.md` tracks only open work.
-- `astro/journal.md` preserves historical implementation and failure context.
+- `.agents/tasks.md` tracks open agent work.
+- `.agents/journal.md` and related `.agents/` files preserve project-state
+  history when the maintenance flow updates them.

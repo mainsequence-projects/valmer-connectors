@@ -647,7 +647,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.44"
+version = "0.0.45"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -665,9 +665,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/39/00760368096c5eac91f1bf809c41908526d93508ab830251cf7b288f65f1/ms_markets-0.0.44.tar.gz", hash = "sha256:38571da962154b8b738be197ba38c399c2a9171ac1d20dc5620915d3e260ca5c", size = 520545, upload-time = "2026-06-07T21:39:41.862Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8f/f7/1f1be0fd6a1c7c402d0a28322ea9b961de88eb7b91ec3e08f3cfa94d75ae/ms_markets-0.0.45.tar.gz", hash = "sha256:2c2d9a4d1f58e0754e53c5711180cd0ff02c699ed35c7905d1bd865ba84d0079", size = 539396, upload-time = "2026-06-08T12:59:49.677Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f8/6b/fa29157e0f357550a92fd4001745767778888f9a3c8b88ea19cdabf997bc/ms_markets-0.0.44-py3-none-any.whl", hash = "sha256:02188af3d2498c6b14d6683a639e1ea8560a465c3dc5777ce2fff8209a713e1e", size = 409008, upload-time = "2026-06-07T21:39:40.205Z" },
+    { url = "https://files.pythonhosted.org/packages/10/6d/75dc0e6685e821f78a7aef94c415b7f8bb9cbac2e904bdf2a25648e17c7c/ms_markets-0.0.45-py3-none-any.whl", hash = "sha256:909a822f5b2e527c79202872adfa2862633ad92057dbf3b4d2d9b876bb8fe57e", size = 419667, upload-time = "2026-06-08T12:59:48.018Z" },
 ]
 
 [[package]]
@@ -1841,7 +1841,7 @@ wheels = [
 
 [[package]]
 name = "valmer-connectors"
-version = "0.1.8"
+version = "0.1.9"
 source = { editable = "." }
 dependencies = [
     { name = "mainsequence" },
