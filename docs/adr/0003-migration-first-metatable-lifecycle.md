@@ -301,13 +301,15 @@ That call is valid only after both migration providers have been applied.
 Main Sequence architecture, it must be migrated and registered before any
 DataNode writes occur.
 
-`ValmerVectorPricesStorage.unique_identifier` must remain a foreign key to
-`AssetTable.unique_identifier`.
+`ValmerVectorPricesStorage.asset_identifier` must remain a foreign key to
+`AssetTable.unique_identifier`. The value is the Asset unique identifier, but
+the DataNode dimension name must be the `ms-markets` canonical
+`asset_identifier`.
 
 DataNode validation must verify:
 
 - rows use `time_index` with dtype `datetime64[ns, UTC]`;
-- rows include the correct `unique_identifier`;
+- rows include the correct `asset_identifier`;
 - static asset details do not remain duplicated in the DataNode storage;
 - storage identity and hash namespace are explicit enough for shared backend
   validation.
@@ -386,7 +388,7 @@ The correct migration and runtime workflow is:
 - [ ] Validate both migration providers with `current`, `render`, `dry-run`, and
   `upgrade` in a real platform context.
 - [ ] Validate a Valmer vector DataNode update after migrations and confirm rows
-  land in migrated storage keyed by `time_index` and `unique_identifier`.
+  land in migrated storage keyed by `time_index` and `asset_identifier`.
 
 ## Validation Evidence Required
 
@@ -403,7 +405,7 @@ This ADR is implemented only when the following evidence exists:
 - Valmer static asset details are present in `ValmerAssetDetailsTable` and linked
   to `AssetTable.uid`.
 - Valmer vector market data rows land in `ValmerVectorPricesStorage` with the
-  correct time index and asset identifier.
+  correct `time_index` and `asset_identifier`.
 - No runtime path calls direct `Model.register()` for platform-managed project
   tables.
 

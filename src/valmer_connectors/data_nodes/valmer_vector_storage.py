@@ -5,6 +5,7 @@ from typing import Any, ClassVar
 
 from msm.base import MarketsBase
 from msm.models import AssetTable
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 from valmer_connectors.markets import ValmerMarketsTimeIndexMetaTableMixin
@@ -15,7 +16,7 @@ class ValmerVectorPricesStorage(ValmerMarketsTimeIndexMetaTableMixin, MarketsBas
 
     __metatable_identifier__: ClassVar[str] = "vector_de_precios_valmer"
     __metatable_description__ = (
-        "Daily Valmer vector price storage keyed by (time_index, unique_identifier). "
+        "Daily Valmer vector price storage keyed by (time_index, asset_identifier). "
         "Each row is one Valmer instrument observation with time-varying price, yield, "
         "spread, rating, liquidity, and risk fields plus derived OHLC columns. Static "
         "Valmer asset descriptors live in ValmerAssetDetailsTable."
@@ -24,7 +25,7 @@ class ValmerVectorPricesStorage(ValmerMarketsTimeIndexMetaTableMixin, MarketsBas
         "storage_name": "vector_de_precios_valmer",
     }
     __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "unique_identifier"]
+    __index_names__: ClassVar[list[str]] = ["time_index", ASSET_IDENTIFIER_DIMENSION]
 
     time_index: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -34,7 +35,7 @@ class ValmerVectorPricesStorage(ValmerMarketsTimeIndexMetaTableMixin, MarketsBas
             "description": "UTC end-of-day valuation timestamp.",
         },
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String(255),
         ForeignKey(
             f"{AssetTable.__table__.fullname}.unique_identifier",
@@ -42,8 +43,8 @@ class ValmerVectorPricesStorage(ValmerMarketsTimeIndexMetaTableMixin, MarketsBas
         ),
         nullable=False,
         info={
-            "label": "Unique Identifier",
-            "description": "Valmer asset unique identifier from AssetTable.",
+            "label": "Asset Identifier",
+            "description": "AssetTable.unique_identifier value for the Valmer asset.",
         },
     )
     open: Mapped[float | None] = mapped_column(
@@ -132,16 +133,16 @@ class ValmerVectorPricesStorage(ValmerMarketsTimeIndexMetaTableMixin, MarketsBas
         nullable=True,
         info={"label": "Amount Outstanding", "description": "Outstanding amount."},
     )
-    days_since_coupon: Mapped[int | None] = mapped_column(
-        BigInteger,
+    days_since_coupon: Mapped[float | None] = mapped_column(
+        Float,
         nullable=True,
         info={
             "label": "Days Since Coupon",
             "description": "Days since previous coupon.",
         },
     )
-    coupons_remaining: Mapped[int | None] = mapped_column(
-        BigInteger,
+    coupons_remaining: Mapped[float | None] = mapped_column(
+        Float,
         nullable=True,
         info={"label": "Coupons Remaining", "description": "Remaining coupon count."},
     )

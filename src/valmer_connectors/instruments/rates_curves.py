@@ -25,7 +25,7 @@ def read_tiie_valmer_csv(content: bytes) -> pd.DataFrame:
 def build_tiie_curve_frame_from_csv(
     content: bytes,
     *,
-    curve_unique_identifier: str,
+    curve_identifier: str,
 ) -> pd.DataFrame:
     df = read_tiie_valmer_csv(content)
 
@@ -39,21 +39,21 @@ def build_tiie_curve_frame_from_csv(
     df["zero_rate"] = df["zero_rate"].astype(float) / 100
 
     df["time_index"] = base_dt
-    df["curve_unique_identifier"] = curve_unique_identifier
+    df["curve_identifier"] = curve_identifier
 
     return (
-        df.groupby(["time_index", "curve_unique_identifier"])
+        df.groupby(["time_index", "curve_identifier"])
         .apply(lambda g: g.set_index("days_to_maturity")["zero_rate"].to_dict())
         .rename("curve")
         .reset_index()
-        .set_index(["time_index", "curve_unique_identifier"])
+        .set_index(["time_index", "curve_identifier"])
     )
 
 
 def build_tiie_valmer(
     *,
     update_statistics,
-    curve_unique_identifier: str,
+    curve_identifier: str,
     base_node_curve_points=None,
 ) -> pd.DataFrame:
     _ = update_statistics, base_node_curve_points
@@ -61,5 +61,5 @@ def build_tiie_valmer(
     response.raise_for_status()
     return build_tiie_curve_frame_from_csv(
         response.content,
-        curve_unique_identifier=curve_unique_identifier,
+        curve_identifier=curve_identifier,
     )

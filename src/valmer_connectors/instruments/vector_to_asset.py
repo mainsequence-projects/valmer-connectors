@@ -2,6 +2,7 @@
 import datetime as dt
 import re
 import tempfile
+import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,7 +23,7 @@ from msm_pricing.pricing_engine.coupon_schedules import (
 )
 from tqdm import tqdm
 
-from valmer_connectors.instruments.asset_identity import resolve_valmer_assets
+from valmer_connectors.instruments.asset_identity import resolve_valmer_asset_uids
 from valmer_connectors.settings import SUBYACENTE_TO_INDEX_MAP
 
 # =============================================================================
@@ -55,12 +56,45 @@ class CoreBondPricingPayload:
     calendar: ql.Calendar
     business_day_convention: int
     settlement_days: int
-    benchmark_rate_index_name: str
+    benchmark_rate_index_uid: uuid.UUID
     coupon_frequency: ql.Period | None = None
     coupon_rate: float | None = None
-    floating_rate_index_name: str | None = None
+    floating_rate_index_uid: uuid.UUID | None = None
     spread: float | None = None
     schedule: ql.Schedule | None = None
+
+
+_REFERENCE_INDEX_UID_CACHE: dict[str, uuid.UUID] | None = None
+
+
+def resolve_reference_index_uid(index_unique_identifier: str) -> uuid.UUID:
+    """Resolve a core Index.unique_identifier to its backend IndexTable.uid."""
+
+    uid_map = _reference_index_uid_map()
+    try:
+        return uid_map[index_unique_identifier]
+    except KeyError as exc:
+        raise KeyError(
+            "Valmer pricing requires a bootstrapped Index row for "
+            f"{index_unique_identifier!r}. Run bootstrap_runtime() before pricing "
+            "hydration and ensure SUBYACENTE_TO_INDEX_MAP points to a supported "
+            "Index.unique_identifier."
+        ) from exc
+
+
+def _reference_index_uid_map() -> dict[str, uuid.UUID]:
+    global _REFERENCE_INDEX_UID_CACHE
+    if _REFERENCE_INDEX_UID_CACHE is None:
+        from valmer_connectors.instruments.curve_bootstrap import (
+            upsert_mexican_reference_indexes,
+        )
+
+        indexes = upsert_mexican_reference_indexes(attach_runtime=False)
+        _REFERENCE_INDEX_UID_CACHE = {
+            unique_identifier: uuid.UUID(str(index.uid))
+            for unique_identifier, index in indexes.items()
+        }
+    return _REFERENCE_INDEX_UID_CACHE
 
 
 # =============================================================================
@@ -529,18 +563,21 @@ def valmer_row_to_core_bond_pricing_payload(
     if is_zero_coupon:
         assert cuponesemision == 0, "No Zero coupon bond review log"
         if "BONDES" in emisora:
-            benchmark_rate_index_name = SUBYACENTE_TO_INDEX_MAP["CETE_28"]
+            benchmark_rate_index_identifier = SUBYACENTE_TO_INDEX_MAP["CETE_28"]
         elif tipo_valor in ["MC", "MP"]:
-            benchmark_rate_index_name = SUBYACENTE_TO_INDEX_MAP["CETE182"]
+            benchmark_rate_index_identifier = SUBYACENTE_TO_INDEX_MAP["CETE182"]
         elif tipo_valor in zero_corps_tipo_valor:
             try:
-                benchmark_rate_index_name = SUBYACENTE_TO_INDEX_MAP[row["subyacente"]]
+                benchmark_rate_index_identifier = SUBYACENTE_TO_INDEX_MAP[row["subyacente"]]
             except Exception as e:
                 raise e
         elif emisora in ["CETES"]:
-            benchmark_rate_index_name = SUBYACENTE_TO_INDEX_MAP["CETE_28"]
+            benchmark_rate_index_identifier = SUBYACENTE_TO_INDEX_MAP["CETE_28"]
         else:
             raise NotImplementedError
+        benchmark_rate_index_uid = resolve_reference_index_uid(
+            benchmark_rate_index_identifier
+        )
 
         return CoreBondPricingPayload(
             instrument_type="zero_coupon_bond",
@@ -552,11 +589,14 @@ def valmer_row_to_core_bond_pricing_payload(
             calendar=calendar,
             business_day_convention=bdc,
             settlement_days=settlement_days,
-            benchmark_rate_index_name=benchmark_rate_index_name,
+            benchmark_rate_index_uid=benchmark_rate_index_uid,
         )
 
     elif coupon_rule == "Tasa Fija":  # Fixed Rate Bond
-        benchmark_rate_index_name = SUBYACENTE_TO_INDEX_MAP[row["subyacente"]]
+        benchmark_rate_index_identifier = SUBYACENTE_TO_INDEX_MAP[row["subyacente"]]
+        benchmark_rate_index_uid = resolve_reference_index_uid(
+            benchmark_rate_index_identifier
+        )
 
         return CoreBondPricingPayload(
             instrument_type="fixed_rate_bond",
@@ -568,7 +608,7 @@ def valmer_row_to_core_bond_pricing_payload(
             calendar=calendar,
             business_day_convention=bdc,
             settlement_days=settlement_days,
-            benchmark_rate_index_name=benchmark_rate_index_name,
+            benchmark_rate_index_uid=benchmark_rate_index_uid,
             coupon_rate=float(row["tasacupon"]) / 100,
             coupon_frequency=coupon_frequency,
             schedule=explicit_schedule,
@@ -576,9 +616,12 @@ def valmer_row_to_core_bond_pricing_payload(
 
     else:  # floating rate bond
         try:
-            floating_rate_index_name = SUBYACENTE_TO_INDEX_MAP[row["subyacente"]]
+            floating_rate_index_identifier = SUBYACENTE_TO_INDEX_MAP[row["subyacente"]]
         except KeyError as e:
             raise e
+        floating_rate_index_uid = resolve_reference_index_uid(
+            floating_rate_index_identifier
+        )
 
         return CoreBondPricingPayload(
             instrument_type="floating_rate_bond",
@@ -590,8 +633,8 @@ def valmer_row_to_core_bond_pricing_payload(
             calendar=calendar,
             business_day_convention=bdc,
             settlement_days=settlement_days,
-            benchmark_rate_index_name=floating_rate_index_name,
-            floating_rate_index_name=floating_rate_index_name,
+            benchmark_rate_index_uid=floating_rate_index_uid,
+            floating_rate_index_uid=floating_rate_index_uid,
             spread=spread_decimal,
             coupon_frequency=coupon_frequency,
             schedule=explicit_schedule,
@@ -608,7 +651,7 @@ def build_instrument_from_core_bond_pricing_payload(
     if payload.instrument_type == "zero_coupon_bond":
         instrument = msi.ZeroCouponBond(
             face_value=payload.face_value,
-            benchmark_rate_index_name=payload.benchmark_rate_index_name,
+            benchmark_rate_index_uid=payload.benchmark_rate_index_uid,
             issue_date=payload.issue_date,
             maturity_date=payload.maturity_date,
             day_count=payload.day_count,
@@ -620,7 +663,7 @@ def build_instrument_from_core_bond_pricing_payload(
         instrument = msi.FixedRateBond(
             face_value=payload.face_value,
             coupon_rate=payload.coupon_rate,
-            benchmark_rate_index_name=payload.benchmark_rate_index_name,
+            benchmark_rate_index_uid=payload.benchmark_rate_index_uid,
             issue_date=payload.issue_date,
             maturity_date=payload.maturity_date,
             coupon_frequency=payload.coupon_frequency,
@@ -633,7 +676,7 @@ def build_instrument_from_core_bond_pricing_payload(
     elif payload.instrument_type == "floating_rate_bond":
         instrument = msi.FloatingRateBond(
             face_value=payload.face_value,
-            floating_rate_index_name=payload.floating_rate_index_name,
+            floating_rate_index_uid=payload.floating_rate_index_uid,
             spread=payload.spread,
             issue_date=payload.issue_date,
             maturity_date=payload.maturity_date,
@@ -642,7 +685,7 @@ def build_instrument_from_core_bond_pricing_payload(
             calendar=payload.calendar,
             business_day_convention=payload.business_day_convention,
             settlement_days=payload.settlement_days,
-            benchmark_rate_index_name=payload.benchmark_rate_index_name,
+            benchmark_rate_index_uid=payload.benchmark_rate_index_uid,
             schedule=payload.schedule,
         )
     else:
@@ -960,8 +1003,10 @@ def build_position_from_sheet(
     df_out, instrument_map = run_price_check(all_floating)
     pd.set_option("display.float_format", lambda x: f"{x:,.6f}")
 
-    ms_assets_map = resolve_valmer_assets(df_out["UID"].to_list())
-    ms_assets_map = {uid: str(asset.uid) for uid, asset in ms_assets_map.items()}
+    ms_assets_map = {
+        uid: str(asset_uid)
+        for uid, asset_uid in resolve_valmer_asset_uids(df_out["UID"].to_list()).items()
+    }
 
     df_out["asset_uid"] = df_out["UID"].map(ms_assets_map)
     df_out["asset_id"] = df_out["asset_uid"]

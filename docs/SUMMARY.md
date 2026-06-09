@@ -13,6 +13,8 @@
 - `docs/pricing.md`: pricing runtime bootstrap, target-bond hydration, and curve
   publication.
 - `docs/instruments.md`: Valmer row-to-`msm_pricing` instrument mapping.
+- `docs/metatable-query-optimization.md`: implementation plan for replacing
+  full-row MetaTable validation reads with thin projection queries.
 - `docs/dashboards.md`: Streamlit dashboard pages and monitoring purpose.
 - `docs/deployment.md`: deployment and verification commands.
 - `docs/new-version-migration.md`: migration status against current SDK and
@@ -24,4 +26,5 @@
 - `docs/adr/0001-asset-registration-identity-migration.md`
 - `docs/adr/0002-curve-and-fixing-architecture-refactor.md`
 - `docs/adr/0003-migration-first-metatable-lifecycle.md`
+- `docs/adr/0004-mexican-government-bond-curve-bootstrap.md`
 - `docs/adr/cli/0004-valmer-connectors-cli-design.md`

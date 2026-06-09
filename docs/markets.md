@@ -17,8 +17,11 @@ tipovalor_emisora_serie
 The same value is used as:
 
 - `AssetTable.unique_identifier`
-- Valmer vector storage `unique_identifier`
+- Valmer vector storage `asset_identifier`
 - `ValmerAssetDetailsTable.valmer_unique_identifier`
+
+`asset_identifier` is the `ms-markets` DataNode dimension name. Its value is the
+same string as `AssetTable.unique_identifier`.
 
 Valmer bond assets are registered with:
 

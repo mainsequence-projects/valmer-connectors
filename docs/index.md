@@ -13,6 +13,7 @@ another workflow boundary.
 - [Markets And Asset Details](markets.md)
 - [Pricing](pricing.md)
 - [Instrument Mapping](instruments.md)
+- [MetaTable Query Optimization](metatable-query-optimization.md)
 - [Dashboards](dashboards.md)
 - [Deployment](deployment.md)
 - [New Version Migration](new-version-migration.md)

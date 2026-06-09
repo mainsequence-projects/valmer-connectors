@@ -13,12 +13,12 @@ class ValmerRatesCurvesTests(unittest.TestCase):
 
         frame = build_tiie_curve_frame_from_csv(
             content,
-            curve_unique_identifier="VALMER_TIIE_28",
+            curve_identifier="VALMER_TIIE_28",
         )
         row = frame.reset_index().iloc[0]
 
-        self.assertEqual(frame.index.names, ["time_index", "curve_unique_identifier"])
-        self.assertEqual(row["curve_unique_identifier"], "VALMER_TIIE_28")
+        self.assertEqual(frame.index.names, ["time_index", "curve_identifier"])
+        self.assertEqual(row["curve_identifier"], "VALMER_TIIE_28")
         self.assertEqual(row["curve"], {1: 0.11, 2: 0.1125, 3: 0.115})
 
 

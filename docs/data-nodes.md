@@ -43,7 +43,7 @@ time-varying observations keyed by Valmer's canonical project asset identifier.
 | ValmerVectorPricesStorage          |
 |------------------------------------|
 | time_index                         |
-| unique_identifier                  |
+| asset_identifier                   |
 | open, high, low, close             |
 | valuation_date                     |
 | clean_price, dirty_price           |
@@ -54,18 +54,19 @@ time-varying observations keyed by Valmer's canonical project asset identifier.
 Row grain:
 
 ```text
-(time_index, unique_identifier)
+(time_index, asset_identifier)
 ```
 
 `time_index` is the UTC end-of-day timestamp derived from the source valuation
-date. `unique_identifier` is the Valmer asset key built as:
+date. `asset_identifier` stores the Valmer asset key built as:
 
 ```text
 tipovalor_emisora_serie
 ```
 
-The storage column is still named `unique_identifier` to preserve the existing
-Valmer vector table contract. It stores `AssetTable.unique_identifier`.
+`asset_identifier` is the canonical `ms-markets` asset-indexed DataNode
+dimension. Its value is still `AssetTable.unique_identifier`; only the DataNode
+dimension name follows the current `ms-markets` contract.
 
 ## What The DataNode Publishes
 
@@ -139,7 +140,7 @@ Source import behavior is documented separately in `source-import.md`.
 At the DataNode boundary, `ImportValmer.update()` expects `self.source_data` to
 already contain normalized Valmer rows with a valid `unique_identifier`. It then
 coerces fields according to `VALMER_TIMESERIES_SOURCE_COLUMN_SPECS`, builds the
-time-series frame, indexes it by `(time_index, unique_identifier)`, filters it
+time-series frame, indexes it by `(time_index, asset_identifier)`, filters it
 through update statistics, and returns the final DataFrame.
 
 ## Current Operational Entry Point

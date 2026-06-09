@@ -167,6 +167,8 @@ for MkDocs through `mkdocs.yml`.
 - `docs/markets.md`: AssetTable and ValmerAssetDetailsTable relationships
 - `docs/pricing.md`: pricing hydration, reference indexes, and curve publication
 - `docs/instruments.md`: row-to-instrument mapping rules
+- `docs/metatable-query-optimization.md`: implementation plan for thin
+  MetaTable projection reads and the remaining pricing persistence bottleneck
 - `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up
 - `docs/dashboards.md`: dashboards currently shipped by the project
 - `docs/SUMMARY.md`: documentation map required by the project instructions

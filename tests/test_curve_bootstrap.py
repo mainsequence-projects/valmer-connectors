@@ -8,8 +8,10 @@ from valmer_connectors.instruments.bootstrap import seed_static_defaults
 from valmer_connectors.instruments.curve_bootstrap import (
     MEXICAN_INDEX_CONVENTION_DEFINITIONS,
     MEXICAN_REFERENCE_INDEX_DEFINITIONS,
+    MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER,
     TIIE_28_INDEX_UNIQUE_IDENTIFIER,
     VALMER_DISCOUNT_CURVES_CADENCE,
+    VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION,
     VALMER_TIIE_28_CURVE_DEFINITION,
     attach_valmer_curve_pricing_runtime,
     configure_valmer_discount_curves_cadence,
@@ -35,6 +37,7 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
                 "CETE_28",
                 "CETE_91",
                 "CETE_182",
+                "MXN_GOVERNMENT_BOND",
             },
         )
 
@@ -65,10 +68,40 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             "ModifiedFollowing",
         )
 
+    def test_mxn_government_convention_payload_follows_ms_markets_curve_contract(self):
+        definition = next(
+            item
+            for item in MEXICAN_INDEX_CONVENTION_DEFINITIONS
+            if item.index_unique_identifier == MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER
+        )
+
+        payload = definition.to_convention_payload(index_uid="fake-index-uid")
+        convention_dump = payload["convention_dump"]
+
+        self.assertEqual(payload["index_family"], "MXN_GOVERNMENT_BOND")
+        self.assertEqual(convention_dump["currency_code"], "MXN")
+        self.assertEqual(convention_dump["fixing_calendar_code"], "Mexico-BMV")
+        self.assertEqual(convention_dump["calendar_code"], "Mexico/BMV")
+        self.assertEqual(convention_dump["day_counter_code"], "Actual360")
+        self.assertEqual(convention_dump["settlement_days"], 0)
+        self.assertEqual(convention_dump["coupon_period_days"], 182)
+        self.assertEqual(convention_dump["date_generation_rule"], "Backward")
+        self.assertFalse(convention_dump["end_of_month"])
+
     def test_valmer_curve_payload_links_to_tiie_index(self):
         payload = VALMER_TIIE_28_CURVE_DEFINITION.to_curve_payload(index_uid="fake-index-uid")
 
         self.assertEqual(payload["unique_identifier"], "VALMER_TIIE_28")
+        self.assertEqual(payload["curve_type"], "discount")
+        self.assertEqual(payload["source"], "valmer")
+        self.assertEqual(payload["index_uid"], "fake-index-uid")
+
+    def test_valmer_mxn_government_curve_payload_links_to_benchmark_index(self):
+        payload = VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION.to_curve_payload(
+            index_uid="fake-index-uid"
+        )
+
+        self.assertEqual(payload["unique_identifier"], "VALMER_MXN_GOVERNMENT_BOND")
         self.assertEqual(payload["curve_type"], "discount")
         self.assertEqual(payload["source"], "valmer")
         self.assertEqual(payload["index_uid"], "fake-index-uid")

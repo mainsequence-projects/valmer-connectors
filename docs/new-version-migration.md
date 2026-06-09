@@ -119,7 +119,7 @@ AssetTable.uid
     -> ValmerAssetDetailsTable.asset_uid
 
 AssetTable.unique_identifier
-    -> ValmerVectorPricesStorage.unique_identifier
+    -> ValmerVectorPricesStorage.asset_identifier
 
 IndexTable.uid
     -> IndexConventionDetails.index_uid

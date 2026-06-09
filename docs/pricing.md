@@ -37,7 +37,8 @@ seed static pricing rows
 ## Static Pricing Rows
 
 `src/valmer_connectors/instruments/curve_bootstrap.py` seeds the Mexican
-reference-rate and Valmer curve rows.
+reference-index, convention, and Valmer curve rows required by core
+`ms-markets` / `msm_pricing`.
 
 Reference indexes:
 
@@ -48,6 +49,7 @@ Reference indexes:
 - `CETE_28`
 - `CETE_91`
 - `CETE_182`
+- `MXN_GOVERNMENT_BOND`
 
 Pricing convention details:
 
@@ -55,11 +57,18 @@ Pricing convention details:
 - keyed by `index_uid`
 - source: `mexico`
 
-Curve identity:
+Curve identities:
 
-- `Curve.unique_identifier = "VALMER_TIIE_28"`
+| Curve | Benchmark Index | Source | Purpose |
+| --- | --- | --- | --- |
+| `VALMER_TIIE_28` | `TIIE_28` | Valmer MexDer TIIE CSV | TIIE 28 discount curve |
+| `VALMER_MXN_GOVERNMENT_BOND` | `MXN_GOVERNMENT_BOND` | Valmer Vector Analitico | CETES + M Bonos MXN government discount curve |
+
+Both curves use:
+
 - `curve_type = "discount"`
-- `index_unique_identifier = "TIIE_28"`
+- `interpolation_method = "log_linear_discount"`
+- `compounding = "compounded_annual"`
 - `source = "valmer"`
 
 Relationship:
@@ -86,6 +95,7 @@ Relationship:
 |-----------------------------|
 | unique_identifier           |
 | VALMER_TIIE_28              |
+| VALMER_MXN_GOVERNMENT_BOND  |
 +-----------------------------+
 ```
 
@@ -146,9 +156,9 @@ build_qll_bond_from_row(...)
 That adapter converts one normalized Valmer source row into an `msm_pricing`
 instrument.
 
-## Curve Publication
+## TIIE Curve Publication
 
-The active curve publication path is:
+The active TIIE curve publication path is:
 
 ```text
 valmer-connectors curves update-tiie-zero
@@ -174,6 +184,70 @@ run(force_update=True)
 The curve writes to the canonical `msm_pricing.data_nodes.DiscountCurvesNode`
 storage. The old standalone Valmer TIIE curve DataNode is not an active
 publication path.
+
+## MXN Government Bond Curve Publication
+
+The Valmer Mexican government bond curve uses Vector Analitico rows directly.
+It does not run asset registration, asset-detail upserts, vector price storage,
+or current bond-pricing hydration.
+
+```text
+valmer-connectors curves update-mxn-government
+    |
+    v
+bootstrap_runtime()
+    |
+    v
+configure_valmer_discount_curves_cadence()
+    |
+    v
+ImportValmer.prepare_source_data()
+    |
+    v
+select_mxn_government_bootstrap_instruments(...)
+    |
+    +-- CETES:  tipovalor=BI, emisora=CETES, monedaemision=MPS
+    |
+    +-- M Bonos: tipovalor=M, emisora=BONOS, monedaemision=MPS
+    |
+    v
+build_mxn_government_curve_frame(...)
+    |
+    v
+DiscountCurvesNode(
+    CurveConfig(curve_unique_identifier="VALMER_MXN_GOVERNMENT_BOND")
+)
+    |
+    v
+run(force_update=True)
+```
+
+The connector builder follows the current `msm_pricing.DiscountCurvesNode`
+contract:
+
+```text
+time_index
+curve_identifier
+curve
+```
+
+The node is configured with `CurveConfig(curve_unique_identifier=...)`, but the
+builder frame uses `curve_identifier`. Do not emit legacy
+`curve_unique_identifier` in the builder output.
+
+The emitted `curve` value is an uncompressed dictionary of zero-rate points
+keyed by days to maturity. The core `DiscountCurvesNode` storage and curve codec
+own compression and persistence.
+
+Example logical output:
+
+```text
+time_index                 curve_identifier              curve
+2024-08-30T23:59:59Z       VALMER_MXN_GOVERNMENT_BOND    {6: 0.0562, 13: 0.0871, ...}
+```
+
+The local sample file currently selects 37 CETES rows and 17 M Bonos rows for
+the first supported bootstrap universe. Exact counts vary by source file.
 
 ## What Pricing Does Not Own
 

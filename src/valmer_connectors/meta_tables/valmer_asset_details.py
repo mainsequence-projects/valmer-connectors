@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
@@ -12,9 +13,11 @@ from msm.base import (
 )
 from msm.models.assets import AssetTable
 from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import select
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 from valmer_connectors.markets import ValmerMarketsMetaTableMixin
+from valmer_connectors.settings import resolve_valmer_asset_upsert_batch_size
 from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
 
 VALMER_ASSET_DETAIL_VECTOR_COLUMNS = frozenset(
@@ -64,6 +67,13 @@ VALMER_ASSET_DETAIL_SOURCE_COLUMNS = frozenset(
 )
 
 _VALMER_ASSET_DETAILS_CONTEXT = None
+
+
+@dataclass(frozen=True)
+class ValmerAssetDetailVersion:
+    asset_uid: uuid.UUID
+    valmer_unique_identifier: str
+    details_asof: dt.datetime | None
 
 
 def _column_info(label: str, description: str) -> dict[str, str]:
@@ -305,6 +315,83 @@ def resolve_valmer_asset_details(
     return details
 
 
+def resolve_valmer_asset_detail_versions(
+    asset_uids: list[Any],
+    *,
+    batch_size: int | None = None,
+    timeout: int | float | tuple[float, float] | None = None,
+    logger=None,
+) -> dict[str, ValmerAssetDetailVersion]:
+    """Resolve only Valmer detail freshness fields keyed by unique identifier."""
+
+    normalized_asset_uids = _normalize_asset_uids(asset_uids)
+    if not normalized_asset_uids:
+        return {}
+
+    from msm.api.base import operation_result_rows
+    from msm.repositories.base import compile_markets_statement
+    from msm.repositories.base import execute_markets_operation
+
+    context = ensure_valmer_asset_detail_runtime(timeout=timeout)
+    versions: dict[str, ValmerAssetDetailVersion] = {}
+    resolved_batch_size = resolve_valmer_meta_operation_batch_size(batch_size)
+    batches = _batches(normalized_asset_uids, resolved_batch_size)
+    if logger is not None:
+        logger.info(
+            "Resolving "
+            f"{len(normalized_asset_uids)} Valmer asset detail versions in "
+            f"{len(batches)} batches of up to {resolved_batch_size}."
+        )
+    processed = 0
+    for batch in batches:
+        statement = (
+            select(
+                ValmerAssetDetailsTable.asset_uid.label("asset_uid"),
+                ValmerAssetDetailsTable.valmer_unique_identifier.label(
+                    "valmer_unique_identifier"
+                ),
+                ValmerAssetDetailsTable.details_asof.label("details_asof"),
+            )
+            .where(ValmerAssetDetailsTable.asset_uid.in_(batch))
+            .limit(len(batch))
+        )
+        operation = compile_markets_statement(
+            statement,
+            context=context,
+            operation="select",
+            models=[ValmerAssetDetailsTable],
+            access="read",
+        )
+        result = execute_markets_operation(operation, context=context)
+        for row in operation_result_rows(result):
+            unique_identifier = row.get("valmer_unique_identifier")
+            asset_uid = row.get("asset_uid")
+            if not unique_identifier or asset_uid in (None, ""):
+                continue
+            versions[str(unique_identifier)] = ValmerAssetDetailVersion(
+                asset_uid=_uuid_value(asset_uid),
+                valmer_unique_identifier=str(unique_identifier),
+                details_asof=_normalize_detail_datetime(row.get("details_asof")),
+            )
+        previous = processed
+        processed += len(batch)
+        if logger is not None:
+            _log_progress(
+                logger,
+                label="Resolving Valmer asset detail versions",
+                previous=previous,
+                completed=processed,
+                total=len(normalized_asset_uids),
+            )
+    if logger is not None:
+        logger.info(
+            "Resolved Valmer asset detail versions: "
+            f"{len(versions)} existing, "
+            f"{len(normalized_asset_uids) - len(versions)} missing."
+        )
+    return versions
+
+
 def upsert_valmer_asset_details(
     df_latest: pd.DataFrame,
     assets_by_unique_identifier: Mapping[str, Any],
@@ -318,53 +405,86 @@ def upsert_valmer_asset_details(
         return {}
 
     from msm.api.base import operation_result_rows
-    from msm.repositories.crud import upsert_model
+    from msm.repositories.crud import bulk_upsert_model
 
     context = ensure_valmer_asset_detail_runtime(timeout=timeout)
     latest_rows = (
         df_latest[df_latest["unique_identifier"].notna()]
         .drop_duplicates("unique_identifier", keep="last")
-        .set_index("unique_identifier")
+        .set_index("unique_identifier", drop=False)
     )
 
     upserted: dict[str, dict[str, Any]] = {}
-    total = len(latest_rows)
-    if logger is not None:
-        logger.info(f"Upserting {total} Valmer asset detail rows.")
-    processed = 0
+    values_by_identifier: list[tuple[str, dict[str, Any]]] = []
     for unique_identifier, row in latest_rows.iterrows():
         asset = assets_by_unique_identifier.get(str(unique_identifier))
         if asset is None:
-            previous = processed
-            processed += 1
-            if logger is not None:
-                _log_progress(
-                    logger,
-                    label="Upserting Valmer asset detail rows",
-                    previous=previous,
-                    completed=processed,
-                    total=total,
-                )
             continue
+        values_by_identifier.append(
+            (
+                str(unique_identifier),
+                build_valmer_asset_detail_values(row, asset.uid),
+            )
+        )
 
-        result = upsert_model(
+    total = len(values_by_identifier)
+    resolved_batch_size = resolve_valmer_asset_upsert_batch_size()
+    existing_details = resolve_valmer_asset_detail_versions(
+        [values["asset_uid"] for _, values in values_by_identifier],
+        timeout=timeout,
+        logger=logger,
+    )
+    values_to_upsert: list[tuple[str, dict[str, Any]]] = []
+    skipped_not_newer = 0
+    for unique_identifier, values in values_by_identifier:
+        existing = existing_details.get(unique_identifier)
+        if existing is not None and not _is_candidate_detail_newer(existing, values):
+            skipped_not_newer += 1
+            continue
+        values_to_upsert.append((unique_identifier, values))
+
+    batches = _batches(values_to_upsert, resolved_batch_size)
+    if logger is not None:
+        skipped = len(latest_rows) - total
+        logger.info(
+            "Prepared Valmer asset detail sync: "
+            f"{total} candidate rows, {len(values_to_upsert)} missing/changed rows, "
+            f"{skipped_not_newer} skipped because source date is not newer, "
+            f"{skipped} rows skipped without assets."
+        )
+        if values_to_upsert:
+            logger.info(
+                f"Upserting {len(values_to_upsert)} Valmer asset detail rows in "
+                f"{len(batches)} batches of up to {resolved_batch_size}."
+            )
+        else:
+            logger.info("No Valmer asset detail upserts required.")
+    processed = 0
+    for batch_index, batch in enumerate(batches, start=1):
+        result = bulk_upsert_model(
             context,
             model=ValmerAssetDetailsTable,
-            values=build_valmer_asset_detail_values(row, asset.uid),
+            values=[values for _, values in batch],
             conflict_columns=("asset_uid",),
         )
-        rows = operation_result_rows(result)
-        if rows:
-            upserted[str(unique_identifier)] = rows[0]
+        for result_row in operation_result_rows(result):
+            unique_identifier = result_row.get("valmer_unique_identifier")
+            if unique_identifier:
+                upserted[str(unique_identifier)] = result_row
         previous = processed
-        processed += 1
+        processed += len(batch)
         if logger is not None:
+            logger.info(
+                "Completed Valmer asset detail bulk upsert batch "
+                f"{batch_index}/{len(batches)} ({len(batch)} rows, "
+                f"{processed}/{len(values_to_upsert)} total)."
+            )
             _log_progress(
                 logger,
                 label="Upserting Valmer asset detail rows",
                 previous=previous,
                 completed=processed,
-                total=total,
+                total=len(values_to_upsert),
             )
     return upserted
 
@@ -458,6 +578,66 @@ def _datetime_value(
     return timestamp.to_pydatetime()
 
 
+def _is_candidate_detail_newer(
+    existing: ValmerAssetDetailVersion | Mapping[str, Any],
+    candidate: Mapping[str, Any],
+) -> bool:
+    if isinstance(existing, ValmerAssetDetailVersion):
+        raw_existing_asof = existing.details_asof
+    else:
+        raw_existing_asof = existing.get("details_asof")
+    existing_asof = _normalize_detail_datetime(raw_existing_asof)
+    candidate_asof = _normalize_detail_datetime(candidate.get("details_asof"))
+    if candidate_asof is None:
+        return False
+    if existing_asof is None:
+        return True
+    return candidate_asof > existing_asof
+
+
+def _normalize_detail_datetime(value: Any) -> dt.datetime | None:
+    if value is None:
+        return None
+    if pd.isna(value):
+        return None
+    if isinstance(value, pd.Timestamp):
+        if pd.isna(value):
+            return None
+        timestamp = value.to_pydatetime()
+    elif isinstance(value, dt.datetime):
+        timestamp = value
+    elif isinstance(value, dt.date):
+        timestamp = dt.datetime.combine(value, dt.time.min)
+    else:
+        timestamp = pd.to_datetime(value, errors="coerce", utc=True)
+        if pd.isna(timestamp):
+            return None
+        timestamp = timestamp.to_pydatetime()
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=dt.timezone.utc)
+    return timestamp.astimezone(dt.timezone.utc)
+
+
+def _normalize_asset_uids(asset_uids: list[Any]) -> list[Any]:
+    seen: set[str] = set()
+    normalized: list[Any] = []
+    for asset_uid in asset_uids:
+        if pd.isna(asset_uid):
+            continue
+        key = str(asset_uid)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(asset_uid)
+    return normalized
+
+
+def _uuid_value(value: object) -> uuid.UUID:
+    if isinstance(value, uuid.UUID):
+        return value
+    return uuid.UUID(str(value))
+
+
 def _batches(values: list[Any], batch_size: int) -> list[list[Any]]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -478,8 +658,8 @@ def _log_progress(
     if not total:
         return
     thresholds = {
-        max(1, (total * step + 4) // 5)
-        for step in range(1, 6)
+        max(1, (total * milestone + 99) // 100)
+        for milestone in (1, 5, 20, 40, 60, 80, 100)
     }
     for threshold in sorted(thresholds):
         if previous < threshold <= completed:
@@ -490,10 +670,12 @@ def _log_progress(
 __all__ = [
     "VALMER_ASSET_DETAIL_VECTOR_COLUMNS",
     "VALMER_ASSET_DETAIL_SOURCE_COLUMNS",
+    "ValmerAssetDetailVersion",
     "ValmerAssetDetailsTable",
     "build_valmer_asset_detail_values",
     "ensure_valmer_asset_detail_runtime",
     "ensure_valmer_asset_detail_schemas",
+    "resolve_valmer_asset_detail_versions",
     "resolve_valmer_asset_details",
     "upsert_valmer_asset_details",
 ]

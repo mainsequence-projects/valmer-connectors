@@ -80,7 +80,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             ),
         )
 
-    def test_provider_metadata_excludes_core_markets_tables(self):
+    def test_provider_metadata_includes_core_markets_reference_tables(self):
         target_table_names = {
             table.name for table in migration.target_metadata.tables.values()
         }
@@ -89,9 +89,10 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             {
                 ValmerAssetDetailsTable.__table__.name,
                 ValmerVectorPricesStorage.__table__.name,
+                AssetTable.__table__.name,
             },
         )
-        self.assertNotIn(AssetTable.__table__.name, target_table_names)
+        self.assertIn(AssetTable.__table__.name, target_table_names)
 
     def test_provider_default_include_excludes_core_markets_tables(self):
         self.assertIsNone(migration.after_register_metatables)

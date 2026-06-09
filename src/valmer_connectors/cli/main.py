@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
 
 from valmer_connectors.instruments.curve_bootstrap import (
+    VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
     VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
 )
 from valmer_connectors.settings import DEFAULT_VECTOR_FIRST_LOOP_COUNT
@@ -62,6 +63,17 @@ def _curves_update_tiie_zero_command(args: argparse.Namespace) -> int:
     from valmer_connectors.services.curve_update import run_tiie_zero_curve_update
 
     run_tiie_zero_curve_update(curve_identifier=args.curve_identifier)
+    return 0
+
+
+def _curves_update_mxn_government_command(args: argparse.Namespace) -> int:
+    from valmer_connectors.services.curve_update import run_mxn_government_curve_update
+
+    run_mxn_government_curve_update(
+        curve_identifier=args.curve_identifier,
+        bucket_name=args.bucket_name,
+        debug_artifact_path=args.debug_artifact_path,
+    )
     return 0
 
 
@@ -144,6 +156,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Curve.unique_identifier to publish with the Valmer TIIE curve builder.",
     )
     curves_update_parser.set_defaults(func=_curves_update_tiie_zero_command)
+
+    curves_mxn_government_parser = curves_subcommands.add_parser(
+        "update-mxn-government",
+        help="Run the Valmer MXN government bond discount-curve update.",
+    )
+    curves_mxn_government_parser.add_argument(
+        "--curve-identifier",
+        default=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+        help="Curve.unique_identifier to publish with the Valmer MXN government curve builder.",
+    )
+    curves_mxn_government_parser.add_argument(
+        "--bucket-name",
+        default=None,
+        help=(
+            "Main Sequence Artifact bucket name for Valmer vector source files. "
+            f"If omitted, reads {VALMER_VECTOR_BUCKET_NAME_ENV} from the environment."
+        ),
+    )
+    curves_mxn_government_parser.add_argument(
+        "--debug-artifact-path",
+        default=None,
+        help="Local Valmer Excel file or folder. Overrides bucket import for this command.",
+    )
+    curves_mxn_government_parser.set_defaults(func=_curves_update_mxn_government_command)
 
     migrations_parser = subcommands.add_parser(
         "migrations",

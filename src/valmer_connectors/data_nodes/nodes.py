@@ -11,16 +11,19 @@ from msm.api.assets import Asset as MarketsAsset
 from msm.api.base import operation_result_rows
 from msm.constants import ASSET_TYPE_BOND
 from msm.data_nodes import AssetIndexedDataNode, AssetIndexedDataNodeConfiguration
-from msm.repositories.crud import search_model
+from msm.repositories.base import compile_markets_statement
+from msm.repositories.base import execute_markets_operation
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_pricing.api.instruments import persist_current_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from pydantic import Field
+from sqlalchemy import select
 from tqdm import tqdm
 
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.asset_identity import (
     add_valmer_unique_identifier,
-    resolve_valmer_assets,
+    resolve_valmer_asset_refs,
     upsert_valmer_assets,
 )
 from valmer_connectors.instruments.vector_to_asset import (
@@ -50,7 +53,7 @@ def _coerce_valmer_series(series: pd.Series, transform: str) -> pd.Series:
         return series.astype("string")
 
     if transform == "float":
-        return pd.to_numeric(series, errors="coerce")
+        return pd.to_numeric(series, errors="coerce").astype("float64")
 
     if transform == "int":
         return pd.to_numeric(series, errors="coerce").astype("Int64")
@@ -62,15 +65,21 @@ def _coerce_valmer_series(series: pd.Series, transform: str) -> pd.Series:
             .str.replace(",", "", regex=False)
             .str.strip()
         )
-        return pd.to_numeric(cleaned, errors="coerce")
+        return pd.to_numeric(cleaned, errors="coerce").astype("float64")
 
     if transform == "datetime":
-        return pd.to_datetime(series, errors="coerce", utc=True)
+        return _as_utc_ns(pd.to_datetime(series, errors="coerce", utc=True))
 
     if transform == "date_ymd":
-        return pd.to_datetime(series.astype("string"), format="%Y%m%d", errors="coerce", utc=True)
+        return _as_utc_ns(
+            pd.to_datetime(series.astype("string"), format="%Y%m%d", errors="coerce", utc=True)
+        )
 
     raise ValueError(f"Unsupported Valmer transform: {transform}")
+
+
+def _as_utc_ns(series: pd.Series) -> pd.Series:
+    return pd.Series(series, index=series.index).astype("datetime64[ns, UTC]")
 
 
 def _pricing_detail_face_value(instrument_dump: dict) -> object:
@@ -90,6 +99,18 @@ def _build_open_time_series(time_index: pd.Series) -> pd.Series:
     if valid.any():
         open_time.loc[valid] = (time_index.loc[valid].astype("int64") // 10**9).astype("Int64")
     return open_time
+
+
+def _coerce_nullable_integer_for_storage(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce").astype("Int64")
+
+
+def _normalize_nullable_integer_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    normalized = frame.copy()
+    for column in columns:
+        if column in normalized.columns:
+            normalized[column] = _coerce_nullable_integer_for_storage(normalized[column])
+    return normalized
 
 
 VALMER_DERIVED_COLUMN_SPECS = (
@@ -204,16 +225,16 @@ VALMER_SOURCE_COLUMN_SPECS = (
     ValmerColumnSpec(
         source_name="diastransccpn",
         column_name="days_since_coupon",
-        dtype="int",
-        transform="int",
+        dtype="float",
+        transform="float",
         label="Days Since Coupon",
         description="Days since coupon from DIAS TRANSC. CPN.",
     ),
     ValmerColumnSpec(
         source_name="cuponesxcobrar",
         column_name="coupons_remaining",
-        dtype="int",
-        transform="int",
+        dtype="float",
+        transform="float",
         label="Coupons Remaining",
         description="Remaining coupon count from CUPONES X COBRAR.",
     ),
@@ -523,13 +544,20 @@ def _prepare_frame_for_target_bond_rules(df: pd.DataFrame) -> pd.DataFrame:
 
 
 class _ProgressLogger:
-    def __init__(self, logger, label: str, total: int, *, steps: int = 5):
+    def __init__(
+        self,
+        logger,
+        label: str,
+        total: int,
+        *,
+        milestones: tuple[int, ...] = (1, 5, 20, 40, 60, 80, 100),
+    ):
         self.logger = logger
         self.label = label
         self.total = total
         self.thresholds = {
-            max(1, (total * step + steps - 1) // steps)
-            for step in range(1, steps + 1)
+            max(1, (total * milestone + 99) // 100)
+            for milestone in milestones
         }
         self.completed = 0
         self.logged: set[int] = set()
@@ -735,49 +763,79 @@ class ImportValmer(AssetIndexedDataNode):
         return [u for u in unique_identifiers if u not in existing_assets]
 
     @staticmethod
-    def _get_current_pricing_details_by_uid(
+    def _get_current_pricing_face_values_by_uid(
         existing_assets: dict[str, MarketsAsset],
         *,
         batch_size: int,
         logger,
-    ) -> dict[str, AssetCurrentPricingDetails]:
+    ) -> dict[str, object]:
         if not existing_assets:
             return {}
 
         asset_uid_to_valmer_uid = {str(asset.uid): uid for uid, asset in existing_assets.items()}
         asset_uids = [asset.uid for asset in existing_assets.values()]
         context = AssetCurrentPricingDetails._active_context()
+        batches = [
+            asset_uids[start : start + batch_size]
+            for start in range(0, len(asset_uids), batch_size)
+        ]
+        logger.info(
+            "Resolving current pricing face values for "
+            f"{len(asset_uids)} target assets in {len(batches)} batches "
+            f"of up to {batch_size}."
+        )
         progress = _ProgressLogger(
             logger,
-            "Resolving current pricing details",
+            "Resolving current pricing face values",
             len(asset_uids),
         )
 
-        pricing_details: dict[str, AssetCurrentPricingDetails] = {}
-        for start in range(0, len(asset_uids), batch_size):
-            batch = asset_uids[start : start + batch_size]
-            result = search_model(
-                context,
-                model=AssetCurrentPricingDetails.__table__,
-                in_filters={"asset_uid": batch},
-                limit=len(batch),
+        face_values: dict[str, object] = {}
+        rows_found = 0
+        for batch in batches:
+            statement = (
+                select(
+                    AssetCurrentPricingDetails.__table__.asset_uid.label("asset_uid"),
+                    AssetCurrentPricingDetails.__table__.instrument_dump.label(
+                        "instrument_dump"
+                    ),
+                )
+                .where(AssetCurrentPricingDetails.__table__.asset_uid.in_(batch))
+                .limit(len(batch))
             )
+            operation = compile_markets_statement(
+                statement,
+                context=context,
+                operation="select",
+                models=[AssetCurrentPricingDetails.__table__],
+                access="read",
+            )
+            result = execute_markets_operation(operation, context=context)
             for row in operation_result_rows(result):
-                detail = AssetCurrentPricingDetails.model_validate(row)
-                valmer_uid = asset_uid_to_valmer_uid.get(str(detail.asset_uid))
+                asset_uid = row.get("asset_uid")
+                valmer_uid = asset_uid_to_valmer_uid.get(str(asset_uid))
                 if valmer_uid is not None:
-                    pricing_details[valmer_uid] = detail
+                    face_values[valmer_uid] = _pricing_detail_face_value(
+                        row.get("instrument_dump")
+                    )
+                    rows_found += 1
             progress.advance(len(batch))
-        return pricing_details
+        logger.info(
+            "Resolved current pricing face values: "
+            f"{rows_found} existing pricing-detail rows, "
+            f"{len(asset_uids) - rows_found} missing rows."
+        )
+        return face_values
 
     @staticmethod
     def _get_pricing_refresh_uids(
         unique_identifiers: List[str],
         existing_assets: dict[str, MarketsAsset],
-        current_pricing_details: dict[str, AssetCurrentPricingDetails],
+        current_pricing_face_values: dict[str, object],
         all_target_bonds: pd.DataFrame,
         *,
         force_update: bool = False,
+        logger=None,
     ) -> List[str]:
         """
         Decide which target UIDs need a pricing-detail refresh.
@@ -791,6 +849,11 @@ class ImportValmer(AssetIndexedDataNode):
         target_uids = set(target_rows.index)
 
         pricing_updates: List[str] = []
+        missing_assets = 0
+        missing_pricing_details = 0
+        missing_face_values = 0
+        changed_face_values = 0
+        forced_refreshes = 0
 
         for u in unique_identifiers:
             if u not in target_uids:
@@ -798,32 +861,50 @@ class ImportValmer(AssetIndexedDataNode):
             asset = existing_assets.get(u)
 
             if asset is None:
+                missing_assets += 1
                 pricing_updates.append(u)
                 continue
 
             if force_update:
+                forced_refreshes += 1
                 pricing_updates.append(u)
                 continue
 
-            cpd = current_pricing_details.get(u)
-            instrument_dump = getattr(cpd, "instrument_dump", None)
-            if not cpd or instrument_dump is None:
+            if u not in current_pricing_face_values:
+                missing_pricing_details += 1
                 pricing_updates.append(u)
                 continue
 
-            old_face_value = _pricing_detail_face_value(instrument_dump)
+            old_face_value = current_pricing_face_values.get(u)
+            if old_face_value is None:
+                missing_face_values += 1
+                pricing_updates.append(u)
+                continue
 
             # Compare against latest nominal value in targets
             row = target_rows.loc[u]
             new_face_value = row.get("valornominalactualizado", row.get("adjusted_face_value"))
             if old_face_value is None or old_face_value != new_face_value:
+                changed_face_values += 1
                 pricing_updates.append(u)
 
         # Deduplicate while preserving order
         def _dedup(seq: List[str]) -> List[str]:
             return list(dict.fromkeys(seq))
 
-        return _dedup(pricing_updates)
+        deduped = _dedup(pricing_updates)
+        if logger is not None:
+            logger.info(
+                "Pricing refresh decision: "
+                f"{len(target_uids)} target assets, "
+                f"{missing_assets} missing assets, "
+                f"{missing_pricing_details} missing pricing details, "
+                f"{missing_face_values} missing face values, "
+                f"{changed_face_values} changed face values, "
+                f"{forced_refreshes} forced refreshes, "
+                f"{len(deduped)} refreshes."
+            )
+        return deduped
 
     @staticmethod
     def _get_artifacts(logger, bucket_name):
@@ -936,15 +1017,30 @@ class ImportValmer(AssetIndexedDataNode):
             f"{len(target_uids)} target pricing assets, "
             f"batch size {per_page_assets}."
         )
-        existing_assets = resolve_valmer_assets(
+        existing_asset_refs = resolve_valmer_asset_refs(
             unique_identifiers,
             batch_size=per_page_assets,
             logger=self.logger,
         )
+        existing_assets = {
+            uid: asset_ref.as_asset()
+            for uid, asset_ref in existing_asset_refs.items()
+        }
+        assets_needing_type_update = [
+            uid
+            for uid, asset_ref in existing_asset_refs.items()
+            if asset_ref.asset_type != ASSET_TYPE_BOND
+        ]
+        self.logger.info(
+            "Valmer asset registry decision: "
+            f"{len(existing_assets)} existing, "
+            f"{len(unique_identifiers) - len(existing_assets)} missing, "
+            f"{len(assets_needing_type_update)} wrong asset_type."
+        )
         existing_target_assets = {
             uid: asset for uid, asset in existing_assets.items() if uid in target_uids
         }
-        current_pricing_details = self._get_current_pricing_details_by_uid(
+        current_pricing_face_values = self._get_current_pricing_face_values_by_uid(
             existing_target_assets,
             batch_size=per_page_assets,
             logger=self.logger,
@@ -953,20 +1049,16 @@ class ImportValmer(AssetIndexedDataNode):
         pricing_updates = self._get_pricing_refresh_uids(
             unique_identifiers,
             existing_assets,
-            current_pricing_details,
+            current_pricing_face_values,
             all_target_bonds,
             force_update=force_update,
+            logger=self.logger,
         )
 
         df_latest_idx = df_latest.drop_duplicates("unique_identifier", keep="last").set_index(
             "unique_identifier"
         )
 
-        assets_needing_type_update = [
-            uid
-            for uid, asset in existing_assets.items()
-            if getattr(asset, "asset_type", None) != ASSET_TYPE_BOND
-        ]
         assets_to_upsert = list(dict.fromkeys([*missing_assets, *assets_needing_type_update]))
         if assets_to_upsert:
             self.logger.info(
@@ -1141,10 +1233,10 @@ class ImportValmer(AssetIndexedDataNode):
 
         valuation_date = vector_df["valuation_date"]
         dirty_price = vector_df["dirty_price"]
-        time_index = valuation_date + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+        time_index = _as_utc_ns(valuation_date + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
 
         vector_df["time_index"] = time_index
-        vector_df["unique_identifier"] = source_data["unique_identifier"].astype("string")
+        vector_df[ASSET_IDENTIFIER_DIMENSION] = source_data["unique_identifier"].astype("string")
         vector_df["open"] = dirty_price
         vector_df["high"] = dirty_price
         vector_df["low"] = dirty_price
@@ -1153,8 +1245,12 @@ class ImportValmer(AssetIndexedDataNode):
         vector_df["open_time"] = _build_open_time_series(time_index)
 
         ordered_columns = [spec.column_name for spec in VALMER_VECTOR_COLUMN_SPECS]
-        vector_df = vector_df[["time_index", "unique_identifier", *ordered_columns]]
-        vector_df.set_index(["time_index", "unique_identifier"], inplace=True)
+        vector_df = vector_df[["time_index", ASSET_IDENTIFIER_DIMENSION, *ordered_columns]]
+        vector_df.set_index(["time_index", ASSET_IDENTIFIER_DIMENSION], inplace=True)
         vector_df = self.update_statistics.filter_df_by_latest_value(vector_df)
+        integer_columns = [
+            spec.column_name for spec in VALMER_VECTOR_COLUMN_SPECS if spec.dtype == "int"
+        ]
+        vector_df = _normalize_nullable_integer_columns(vector_df, integer_columns)
 
         return vector_df
