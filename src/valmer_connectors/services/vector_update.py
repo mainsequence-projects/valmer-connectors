@@ -44,9 +44,10 @@ def build_import_valmer(
 def prepare_import_valmer(
     *,
     bucket_name: str | None = None,
+    force_pricing_update: bool = False,
 ) -> ImportValmer:
     updater = build_import_valmer(bucket_name=bucket_name)
-    updater.prepare_for_update()
+    updater.prepare_for_update(force_pricing_update=force_pricing_update)
     return updater
 
 
@@ -75,9 +76,15 @@ def run_vector_update(
 
         if first_time_update:
             for _ in range(first_loop_count):
-                updater = prepare_import_valmer(bucket_name=bucket_name)
+                updater = prepare_import_valmer(
+                    bucket_name=bucket_name,
+                    force_pricing_update=True,
+                )
                 updater.run(force_update=True)
             return
 
-        updater = prepare_import_valmer(bucket_name=bucket_name)
+        updater = prepare_import_valmer(
+            bucket_name=bucket_name,
+            force_pricing_update=True,
+        )
         updater.run(force_update=True)

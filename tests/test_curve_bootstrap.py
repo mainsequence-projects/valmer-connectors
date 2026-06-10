@@ -6,6 +6,7 @@ from msm.constants import INDEX_TYPE_INTEREST_RATE
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.bootstrap import seed_static_defaults
 from valmer_connectors.instruments.curve_bootstrap import (
+    BANCO_DE_MEXICO_PROVIDER,
     MEXICAN_INDEX_CONVENTION_DEFINITIONS,
     MEXICAN_REFERENCE_INDEX_DEFINITIONS,
     MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER,
@@ -48,8 +49,24 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
 
         tiie_28 = payload_by_identifier["TIIE_28"]
         self.assertEqual(tiie_28["index_type"], INDEX_TYPE_INTEREST_RATE)
-        self.assertIsNone(tiie_28["provider"])
+        self.assertEqual(tiie_28["provider"], BANCO_DE_MEXICO_PROVIDER)
         self.assertIsNone(tiie_28["metadata_json"])
+
+        for identifier in (
+            "TIIE_OVERNIGHT",
+            "TIIE_28",
+            "TIIE_91",
+            "TIIE_182",
+            "CETE_28",
+            "CETE_91",
+            "CETE_182",
+        ):
+            self.assertEqual(
+                payload_by_identifier[identifier]["provider"],
+                BANCO_DE_MEXICO_PROVIDER,
+            )
+
+        self.assertIsNone(payload_by_identifier["MXN_GOVERNMENT_BOND"]["provider"])
 
     def test_convention_payload_keeps_pricing_terms_off_index_payload(self):
         definition = next(

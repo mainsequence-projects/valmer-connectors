@@ -116,9 +116,9 @@ build_import_valmer()
 prepare_for_update()
     |
     +-- load Valmer source rows
-    +-- sync AssetTable rows
-    +-- sync ValmerAssetDetailsTable rows
-    +-- hydrate current pricing details for supported target bonds
+    +-- sync AssetTable rows for the broader imported source UID universe
+    +-- sync ValmerAssetDetailsTable rows from latest source rows
+    +-- hydrate current pricing details only for supported target bonds
     |
     v
 run(force_update=True)
@@ -132,6 +132,10 @@ run(force_update=True)
 
 `get_asset_list()` must stay a scope handoff. It should not register assets,
 upsert detail rows, or persist pricing details.
+
+The vector update can register an asset without writing current pricing details.
+That is expected when a Valmer row is present in the imported source universe
+but does not pass the supported target-bond filter used for pricing hydration.
 
 ## Source Rows
 

@@ -42,6 +42,18 @@ Asset registration is centralized in:
 `ImportValmer.prepare_for_update()` calls those helpers before the DataNode run.
 `ImportValmer.get_asset_list()` only returns the prepared scope.
 
+Asset registration is not the same as current pricing-detail hydration.
+
+During `valmer-connectors vector update`, `ImportValmer.prepare_for_update()`
+registers or resolves assets from the broader imported Valmer source UID
+universe after source normalization and `unique_identifier` filtering. Current
+pricing details are hydrated only for the supported target-pricing subset
+selected by `ImportValmer._get_target_bonds(...)`.
+
+This means an `AssetTable` row can legitimately exist without current pricing
+details. That state means the asset was present in the imported source universe
+but was not selected for the current pricing-detail target universe.
+
 ## ValmerAssetDetailsTable
 
 Static Valmer descriptors do not belong in the time-indexed DataNode. They live

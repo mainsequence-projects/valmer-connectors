@@ -349,8 +349,18 @@ def _query_current_pricing_details(
     if not assets:
         return {}
 
-    asset_uid_to_valmer_uid = {str(asset.uid): uid for uid, asset in assets.items()}
-    asset_uids = [asset.uid for asset in assets.values()]
+    asset_uid_to_valmer_uid = {}
+    asset_uids: list[str] = []
+    for uid, asset in assets.items():
+        raw_uid = getattr(asset, "uid", None)
+        if raw_uid is None:
+            continue
+        parsed_uid = str(raw_uid)
+        asset_uid_to_valmer_uid[parsed_uid] = uid
+        asset_uids.append(parsed_uid)
+    if not asset_uids:
+        return {}
+
     result = search_model(
         AssetCurrentPricingDetails._active_context(),
         model=AssetCurrentPricingDetails.__table__,
@@ -360,7 +370,10 @@ def _query_current_pricing_details(
 
     pricing_details: dict[str, AssetCurrentPricingDetails] = {}
     for row in operation_result_rows(result):
-        detail = AssetCurrentPricingDetails.model_validate(row)
+        try:
+            detail = AssetCurrentPricingDetails.model_validate(row)
+        except Exception:
+            continue
         valmer_uid = asset_uid_to_valmer_uid.get(str(detail.asset_uid))
         if valmer_uid is not None:
             pricing_details[valmer_uid] = detail

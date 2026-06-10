@@ -6,6 +6,7 @@ from typing import Any
 
 MEXICO_MARKET = "MX"
 MEXICAN_MARKET_SOURCE = "mexico"
+BANCO_DE_MEXICO_PROVIDER = "Banco de Mexico"
 
 TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER = "TIIE_OVERNIGHT"
 TIIE_28_INDEX_UNIQUE_IDENTIFIER = "TIIE_28"
@@ -54,6 +55,7 @@ MEXICAN_REFERENCE_INDEX_DEFINITIONS: tuple[MexicanReferenceIndexDefinition, ...]
         description="Mexican overnight TIIE reference rate.",
         index_family="TIIE",
         tenor_days=1,
+        provider=BANCO_DE_MEXICO_PROVIDER,
     ),
     MexicanReferenceIndexDefinition(
         unique_identifier=TIIE_28_INDEX_UNIQUE_IDENTIFIER,
@@ -61,6 +63,7 @@ MEXICAN_REFERENCE_INDEX_DEFINITIONS: tuple[MexicanReferenceIndexDefinition, ...]
         description="Mexican 28-day TIIE reference rate.",
         index_family="TIIE",
         tenor_days=28,
+        provider=BANCO_DE_MEXICO_PROVIDER,
     ),
     MexicanReferenceIndexDefinition(
         unique_identifier=TIIE_91_INDEX_UNIQUE_IDENTIFIER,
@@ -68,6 +71,7 @@ MEXICAN_REFERENCE_INDEX_DEFINITIONS: tuple[MexicanReferenceIndexDefinition, ...]
         description="Mexican 91-day TIIE reference rate.",
         index_family="TIIE",
         tenor_days=91,
+        provider=BANCO_DE_MEXICO_PROVIDER,
     ),
     MexicanReferenceIndexDefinition(
         unique_identifier=TIIE_182_INDEX_UNIQUE_IDENTIFIER,
@@ -75,6 +79,7 @@ MEXICAN_REFERENCE_INDEX_DEFINITIONS: tuple[MexicanReferenceIndexDefinition, ...]
         description="Mexican 182-day TIIE reference rate.",
         index_family="TIIE",
         tenor_days=182,
+        provider=BANCO_DE_MEXICO_PROVIDER,
     ),
     MexicanReferenceIndexDefinition(
         unique_identifier=CETE_28_INDEX_UNIQUE_IDENTIFIER,
@@ -82,6 +87,7 @@ MEXICAN_REFERENCE_INDEX_DEFINITIONS: tuple[MexicanReferenceIndexDefinition, ...]
         description="Mexican 28-day CETE reference index.",
         index_family="CETE",
         tenor_days=28,
+        provider=BANCO_DE_MEXICO_PROVIDER,
     ),
     MexicanReferenceIndexDefinition(
         unique_identifier=CETE_91_INDEX_UNIQUE_IDENTIFIER,
@@ -89,6 +95,7 @@ MEXICAN_REFERENCE_INDEX_DEFINITIONS: tuple[MexicanReferenceIndexDefinition, ...]
         description="Mexican 91-day CETE reference index.",
         index_family="CETE",
         tenor_days=91,
+        provider=BANCO_DE_MEXICO_PROVIDER,
     ),
     MexicanReferenceIndexDefinition(
         unique_identifier=CETE_182_INDEX_UNIQUE_IDENTIFIER,
@@ -96,6 +103,7 @@ MEXICAN_REFERENCE_INDEX_DEFINITIONS: tuple[MexicanReferenceIndexDefinition, ...]
         description="Mexican 182-day CETE reference index.",
         index_family="CETE",
         tenor_days=182,
+        provider=BANCO_DE_MEXICO_PROVIDER,
     ),
     MexicanReferenceIndexDefinition(
         unique_identifier=MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER,
@@ -478,6 +486,7 @@ def bootstrap_valmer_curve_indexes(**runtime_kwargs: Any) -> dict[str, Any]:
 
 
 __all__ = [
+    "BANCO_DE_MEXICO_PROVIDER",
     "MEXICO_MARKET",
     "MEXICAN_INDEX_CONVENTION_DEFINITIONS",
     "MEXICAN_MARKET_SOURCE",

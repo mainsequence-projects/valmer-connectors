@@ -141,10 +141,11 @@ Each row should include:
   model columns
 
 The TIIE and CETE rows are Mexican reference-rate identities, not Valmer
-identities. Do not persist Valmer source details, tenor, calendar,
-business-day convention, day-count convention, settlement days, or other
-pricing mechanics on the `Index` row. Those belong in
-`IndexConventionDetails`.
+identities. Their `provider` is `Banco de Mexico`; Valmer is only a curve or
+vector source for observations that reference those indexes. Do not persist
+Valmer source details, tenor, calendar, business-day convention, day-count
+convention, settlement days, or other pricing mechanics on the `Index` row.
+Those belong in `IndexConventionDetails`.
 
 ### Index Convention Details
 
