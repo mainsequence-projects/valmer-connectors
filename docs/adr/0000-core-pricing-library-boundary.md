@@ -422,8 +422,10 @@ refactor.
 - [x] In this project, replace direct calls to
   `asset.add_instrument_pricing_details_from_ms_instrument(...)` at
   `src/valmer_connectors/data_nodes/nodes.py:1216-1220` with the core pricing-definition
-  service. Implemented with
-  `msm_pricing.api.instruments.persist_current_pricing_details(...)`.
+  service. Implemented with the local
+  `valmer_connectors.data_nodes.nodes.persist_current_pricing_details(...)`
+  wrapper backed by
+  `msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)`.
 - [x] In this project, keep `SUBYACENTE_TO_INDEX_MAP` as a Valmer/Mexico
   adapter alias map. Do not move this taxonomy into core `msm_pricing`.
 

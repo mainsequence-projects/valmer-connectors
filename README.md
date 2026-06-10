@@ -54,8 +54,10 @@ ValmerVectorPricesStorage
 the asset-indexed DataNode lifecycle. It does not own registration or pricing
 hydration.
 
-Not every row in the source vector becomes a priced asset. The source DataNode
-is broader than the supported instrument-mapping surface.
+By default, the vector update registers and publishes only rows that pass the
+supported instrument-mapping filter. Use
+`valmer-connectors vector update --register-all-assets` only when the broader
+Valmer source universe should be registered and published deliberately.
 
 ## How To Extend The Mapping
 

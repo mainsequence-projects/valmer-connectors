@@ -69,13 +69,13 @@ class ValmerVectorStorageTest(unittest.TestCase):
         self.assertEqual(storage_columns, expected_columns)
         self.assertEqual(
             ValmerVectorPricesStorage.__metatable_identifier__,
-            "vector_de_precios_valmer",
+            "valmer_connectors.vector_de_precios_valmer",
         )
         self.assertEqual(
             ValmerVectorPricesStorage.__table__.name,
             markets_table_name(
                 VALMER_MARKETS_STORAGE_APP,
-                ValmerVectorPricesStorage.__metatable_identifier__,
+                ValmerVectorPricesStorage.__markets_authored_identifier__,
                 suffix=markets_auto_register_namespace(),
             ),
         )
@@ -123,7 +123,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             ValmerAssetDetailsTable.__table__.name,
             markets_table_name(
                 VALMER_MARKETS_STORAGE_APP,
-                ValmerAssetDetailsTable.__metatable_identifier__,
+                ValmerAssetDetailsTable.__markets_authored_identifier__,
                 suffix=markets_auto_register_namespace(),
             ),
         )
@@ -389,6 +389,187 @@ class ValmerVectorStorageTest(unittest.TestCase):
         )
 
         self.assertEqual(refreshes, ["LD_BONDESD_250101"])
+
+    def test_sync_asset_registry_defaults_to_pricing_target_registration_scope(self):
+        asset_uid = uuid.uuid4()
+        asset = SimpleNamespace(
+            uid=asset_uid,
+            unique_identifier="M_BONOS_241205",
+            asset_type=ASSET_TYPE_BOND,
+        )
+        node = ImportValmer.__new__(ImportValmer)
+        latest = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "M_BONOS_241205",
+                    "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
+                    "valornominalactualizado": 100.0,
+                },
+                {
+                    "unique_identifier": "X_OTHER_1",
+                    "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
+                    "valornominalactualizado": 100.0,
+                },
+            ]
+        )
+        target_bonds = latest.iloc[[0]].copy()
+        logger = Mock()
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_meta_operation_batch_size",
+                    return_value=1000,
+                )
+            )
+            resolve_refs = stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_asset_refs",
+                    return_value={},
+                )
+            )
+            upsert_assets = stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.upsert_valmer_assets",
+                    return_value={"M_BONOS_241205": asset},
+                )
+            )
+            upsert_details = stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.upsert_valmer_asset_details",
+                    return_value=[],
+                )
+            )
+            publish_snapshots = stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes._publish_valmer_asset_snapshots",
+                    return_value=1,
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "_get_current_pricing_face_values_by_uid",
+                    side_effect=[{}, {"M_BONOS_241205": 100.0}],
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.get_instrument_conventions",
+                    return_value=(object(), object(), 1, object()),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.build_qll_bond_from_row",
+                    return_value=object(),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.persist_current_pricing_details",
+                    return_value=SimpleNamespace(
+                        pricing_details_date=pd.Timestamp("2024-01-02T00:00:00Z")
+                    ),
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "logger",
+                    new_callable=PropertyMock,
+                    return_value=logger,
+                )
+            )
+
+            asset_scope = ImportValmer._sync_asset_registry_and_pricing(
+                node,
+                ["M_BONOS_241205", "X_OTHER_1"],
+                latest,
+                target_bonds,
+            )
+
+        resolve_refs.assert_called_once_with(
+            ["M_BONOS_241205"],
+            batch_size=1000,
+            logger=logger,
+        )
+        upsert_assets.assert_called_once_with(
+            ["M_BONOS_241205"],
+            batch_size=1000,
+            logger=logger,
+        )
+        self.assertEqual(
+            upsert_details.call_args.args[0]["unique_identifier"].tolist(),
+            ["M_BONOS_241205"],
+        )
+        self.assertEqual(
+            list(publish_snapshots.call_args.args[1]),
+            ["M_BONOS_241205"],
+        )
+        self.assertEqual(asset_scope, [asset])
+
+    def test_prepare_for_update_scopes_vector_source_to_pricing_targets_by_default(self):
+        node = ImportValmer.__new__(ImportValmer)
+        source_data = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "M_BONOS_241205",
+                    "fecha": "20240102",
+                    "tipovalor": "M",
+                    "subyacente": "Bonos M",
+                    "monedaemision": "MPS",
+                    "emisora": "BONOS",
+                    "fechaemision": "2020-01-01",
+                },
+                {
+                    "unique_identifier": "X_OTHER_1",
+                    "fecha": "20240102",
+                    "tipovalor": "X",
+                    "subyacente": "Other",
+                    "monedaemision": "MPS",
+                    "emisora": "OTHER",
+                    "fechaemision": "2020-01-01",
+                },
+            ]
+        )
+        node.source_data = source_data
+        asset = SimpleNamespace(
+            uid=uuid.uuid4(),
+            unique_identifier="M_BONOS_241205",
+            asset_type=ASSET_TYPE_BOND,
+        )
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "prepare_source_data",
+                    return_value=source_data,
+                )
+            )
+            sync = stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "_sync_asset_registry_and_pricing",
+                    return_value=[asset],
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "logger",
+                    new_callable=PropertyMock,
+                    return_value=Mock(),
+                )
+            )
+
+            asset_scope = ImportValmer.prepare_for_update(node)
+
+        self.assertEqual(asset_scope, [asset])
+        self.assertEqual(node.source_data["unique_identifier"].tolist(), ["M_BONOS_241205"])
+        sync.assert_called_once()
+        self.assertTrue(sync.call_args.kwargs["register_pricing_target_assets_only"])
 
     def test_sync_asset_registry_raises_when_current_pricing_persist_fails(self):
         asset_uid = uuid.uuid4()

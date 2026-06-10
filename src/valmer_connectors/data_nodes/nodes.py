@@ -1,8 +1,9 @@
 import os
 import re
+import json
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import List, Union
+from typing import Any, List, Union
 
 import pandas as pd
 import structlog
@@ -15,7 +16,6 @@ from msm.data_nodes.assets import AssetSnapshot
 from msm.repositories.base import compile_markets_statement
 from msm.repositories.base import execute_markets_operation
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
-from msm_pricing.api.instruments import persist_current_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from pydantic import Field
 from sqlalchemy import select
@@ -93,6 +93,35 @@ def _pricing_detail_face_value(instrument_dump: dict) -> object:
     if isinstance(wrapped_instrument, dict):
         return wrapped_instrument.get("face_value")
     return None
+
+
+def persist_current_pricing_details(
+    *,
+    asset: MarketsAsset,
+    instrument: Any,
+    pricing_details_date,
+    source: str | None = None,
+    metadata_json: dict[str, Any] | None = None,
+) -> AssetCurrentPricingDetails:
+    instrument.validate_asset(asset)
+    payload = json.loads(instrument.serialize_for_backend())
+    instrument_type = payload.get("instrument_type")
+    instrument_dump = payload.get("instrument")
+    if not isinstance(instrument_type, str) or not instrument_type:
+        raise ValueError("Instrument serialization must include a non-empty instrument_type.")
+    if not isinstance(instrument_dump, dict):
+        raise ValueError("Instrument serialization must include an instrument object.")
+
+    row = AssetCurrentPricingDetails.upsert(
+        asset_uid=asset.uid,
+        instrument_type=instrument_type,
+        instrument_dump=instrument_dump,
+        pricing_details_date=pricing_details_date,
+        source=source,
+        metadata_json=metadata_json,
+    )
+    instrument._asset_uid = asset.uid
+    return row
 
 
 def _build_open_time_series(time_index: pd.Series) -> pd.Series:
@@ -1186,18 +1215,30 @@ class ImportValmer(AssetIndexedDataNode):
         all_target_bonds: pd.DataFrame,
         *,
         force_update: bool = False,
+        register_pricing_target_assets_only: bool = True,
     ) -> list:
         """Sync Valmer asset rows, Valmer asset details, and current pricing details."""
         per_page_assets = resolve_valmer_meta_operation_batch_size()
-        target_uids = set(all_target_bonds["unique_identifier"].unique())
+        target_uids = set(all_target_bonds["unique_identifier"].dropna().unique())
+        registration_unique_identifiers = (
+            [uid for uid in unique_identifiers if uid in target_uids]
+            if register_pricing_target_assets_only
+            else unique_identifiers
+        )
         self.logger.info(
             "Starting Valmer asset registry and pricing sync: "
             f"{len(unique_identifiers)} source assets, "
             f"{len(target_uids)} target pricing assets, "
+            f"{len(registration_unique_identifiers)} registration-scope assets, "
+            f"target-only registration={register_pricing_target_assets_only}, "
             f"batch size {per_page_assets}."
         )
+        if not registration_unique_identifiers:
+            self.logger.info("No Valmer assets selected for registration or pricing sync.")
+            return []
+
         existing_asset_refs = resolve_valmer_asset_refs(
-            unique_identifiers,
+            registration_unique_identifiers,
             batch_size=per_page_assets,
             logger=self.logger,
         )
@@ -1213,7 +1254,7 @@ class ImportValmer(AssetIndexedDataNode):
         self.logger.info(
             "Valmer asset registry decision: "
             f"{len(existing_assets)} existing, "
-            f"{len(unique_identifiers) - len(existing_assets)} missing, "
+            f"{len(registration_unique_identifiers) - len(existing_assets)} missing, "
             f"{len(assets_needing_type_update)} wrong asset_type."
         )
         existing_target_assets = {
@@ -1224,9 +1265,12 @@ class ImportValmer(AssetIndexedDataNode):
             batch_size=per_page_assets,
             logger=self.logger,
         )
-        missing_assets = self._get_missing_asset_uids(unique_identifiers, existing_assets)
+        missing_assets = self._get_missing_asset_uids(
+            registration_unique_identifiers,
+            existing_assets,
+        )
         pricing_updates = self._get_pricing_refresh_uids(
-            unique_identifiers,
+            registration_unique_identifiers,
             existing_assets,
             current_pricing_face_values,
             all_target_bonds,
@@ -1256,8 +1300,11 @@ class ImportValmer(AssetIndexedDataNode):
             logger=self.logger,
         )
 
+        detail_source = df_latest[
+            df_latest["unique_identifier"].isin(existing_assets.keys())
+        ].copy()
         detail_rows = upsert_valmer_asset_details(
-            df_latest,
+            detail_source,
             existing_assets,
             logger=self.logger,
         )
@@ -1413,7 +1460,12 @@ class ImportValmer(AssetIndexedDataNode):
 
         return list(existing_assets.values())
 
-    def update_pricing_details_from_last_vector(self, force_update=False):
+    def update_pricing_details_from_last_vector(
+        self,
+        force_update=False,
+        *,
+        register_pricing_target_assets_only: bool = True,
+    ):
         artifacts, artifact_dates = self._get_artifacts(self.logger, self.bucket_name)
         if not artifacts:
             self.logger.info("No artifacts to process.")
@@ -1431,7 +1483,11 @@ class ImportValmer(AssetIndexedDataNode):
         df_latest, all_target_bonds, unique_identifiers = self._prepare_latest_inputs(source_df)
         self.logger.info(f"[last vector] Found {len(unique_identifiers)} unique assets to process.")
         return self._sync_asset_registry_and_pricing(
-            unique_identifiers, df_latest, all_target_bonds, force_update=force_update
+            unique_identifiers,
+            df_latest,
+            all_target_bonds,
+            force_update=force_update,
+            register_pricing_target_assets_only=register_pricing_target_assets_only,
         )
 
     def _prepare_latest_inputs(self, df: pd.DataFrame):
@@ -1455,7 +1511,12 @@ class ImportValmer(AssetIndexedDataNode):
             self.source_data = pd.DataFrame()
         return self.source_data
 
-    def prepare_for_update(self, *, force_pricing_update: bool = False) -> list:
+    def prepare_for_update(
+        self,
+        *,
+        force_pricing_update: bool = False,
+        register_pricing_target_assets_only: bool = True,
+    ) -> list:
         """
         Prepare the Valmer update explicitly before the DataNode run.
 
@@ -1475,7 +1536,19 @@ class ImportValmer(AssetIndexedDataNode):
             df_latest,
             all_target_bonds,
             force_update=force_pricing_update,
+            register_pricing_target_assets_only=register_pricing_target_assets_only,
         )
+        if register_pricing_target_assets_only:
+            target_uids = set(all_target_bonds["unique_identifier"].dropna().unique())
+            self.source_data = source_data[
+                source_data["unique_identifier"].isin(target_uids)
+            ].copy()
+            self.logger.info(
+                "Scoped Valmer vector publication to pricing-target assets: "
+                f"{len(self.source_data)} rows for {len(target_uids)} assets."
+            )
+            if self.source_data.empty:
+                self.asset_list = None
         return self.asset_list
 
     def get_asset_list(self) -> Union[None, list]:

@@ -45,14 +45,17 @@ Asset registration is centralized in:
 Asset registration is not the same as current pricing-detail hydration.
 
 During `valmer-connectors vector update`, `ImportValmer.prepare_for_update()`
-registers or resolves assets from the broader imported Valmer source UID
-universe after source normalization and `unique_identifier` filtering. Current
-pricing details are hydrated only for the supported target-pricing subset
-selected by `ImportValmer._get_target_bonds(...)`.
+registers or resolves assets from the supported target-pricing subset selected
+by `ImportValmer._get_target_bonds(...)`. Current pricing details and
+`ValmerAssetDetailsTable` rows are hydrated for that same default registration
+scope.
 
-This means an `AssetTable` row can legitimately exist without current pricing
-details. That state means the asset was present in the imported source universe
-but was not selected for the current pricing-detail target universe.
+The broader imported Valmer source universe is available only through the
+explicit diagnostic path:
+
+```bash
+valmer-connectors vector update --register-all-assets
+```
 
 ## ValmerAssetDetailsTable
 

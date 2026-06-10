@@ -433,7 +433,8 @@ a bulk pricing-details writer.
 The existing pricing persistence path calls:
 
 ```text
-msm_pricing.api.instruments.persist_current_pricing_details(...)
+valmer_connectors.data_nodes.nodes.persist_current_pricing_details(...)
+    -> msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)
 ```
 
 inside a loop. That performs one backend upsert per asset.

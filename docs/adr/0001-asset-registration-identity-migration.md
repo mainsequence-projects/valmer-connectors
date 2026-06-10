@@ -24,8 +24,9 @@ Current Main Sequence and `ms-markets` behavior makes those boundaries explicit:
   expose `asset_type == msm.constants.ASSET_TYPE_BOND`.
 - Current pricing details are no longer read from `asset.current_pricing_detail`
   on the typed `msm.api.assets.Asset` row. They live in
-  `AssetCurrentPricingDetailsTable` and are written through
-  `msm_pricing.api.instruments.persist_current_pricing_details(...)`.
+  `AssetCurrentPricingDetailsTable` and are written through the local
+  `persist_current_pricing_details(...)` wrapper backed by
+  `msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)`.
 
 ADR 0000 owns the pricing-library boundary and the pricing-detail write path.
 This ADR owns the Valmer asset identity and asset registration boundary.
@@ -39,7 +40,7 @@ References:
 - Current typed asset API:
   `msm.api.assets.Asset`
 - Current core pricing write API:
-  `msm_pricing.api.instruments.persist_current_pricing_details(...)`
+  `msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)`
 
 ## Decision
 
@@ -172,4 +173,5 @@ Before marking the implementation complete:
 - verify sample Valmer assets have
   `asset_type == msm.constants.ASSET_TYPE_BOND`
 - verify pricing-detail hydration writes through
-  `persist_current_pricing_details(...)`
+  `persist_current_pricing_details(...)` and
+  `AssetCurrentPricingDetails.upsert(...)`

@@ -1,22 +1,23 @@
 ---
 name: mainsequence-markets-portfolio-workflow
-description: Use this skill when creating, extending, reviewing, or documenting msm_portfolios workflows, including PortfolioTable, portfolio DataNodes, and account target-position exposure rows that reference portfolios.
+description: Use this skill when creating, extending, reviewing, or documenting msm_portfolios workflows, including portfolio DataNodes, portfolio metadata, portfolio construction examples, contributed price/signal nodes, and portfolio calculations that depend on core PortfolioTable identity.
 ---
 
 # Main Sequence Markets Portfolio Workflow
 
-Use this skill for `msm_portfolios` concepts: portfolio identity, portfolio
-DataNode storage, virtual-fund allocation, and account target-position exposure
-to portfolio sleeves.
+Use this skill for `msm_portfolios` concepts: portfolio calculation DataNodes,
+portfolio metadata, rebalance/signal workflows, and contributed portfolio price
+sources. Core `msm` owns `PortfolioTable` identity, account target-position
+exposure rows, and virtual-fund allocation state.
 
 ## Read First
 
-Before changing portfolio/account target exposure code, inspect:
+Before changing portfolio workflow code, inspect:
 
-1. `src/msm_portfolios/models/portfolios/core.py`
-2. `src/msm_portfolios/data_nodes/storage.py`
-3. `src/msm_portfolios/data_nodes/target_positions.py`
-4. `src/msm_portfolios/services/target_positions.py`
+1. `src/msm/models/portfolios/core.py`
+2. `src/msm_portfolios/models/portfolios/metadata.py`
+3. `src/msm_portfolios/data_nodes/portfolios/storage.py`
+4. `src/msm_portfolios/data_nodes/portfolios/__init__.py`
 5. `docs/knowledge/msm_portfolios/portfolios/index.md`
 6. `docs/knowledge/msm/accounts/index.md`
 
@@ -25,12 +26,12 @@ Before changing portfolio/account target exposure code, inspect:
 Core `msm` owns account registry rows:
 
 ```text
-AccountModelPortfolioTable
-AccountTargetPortfolioTable
+AccountAllocationModelTable
+AccountTargetAllocationTable
 PositionSetTable
 ```
 
-`msm_portfolios` owns portfolio-aware target exposure storage:
+Core `msm` owns account target exposure storage:
 
 ```text
 TargetPositionsStorage
@@ -45,7 +46,15 @@ TargetPositionsStorage
 Rules:
 
 - Do not create `AssetTable` rows for portfolios.
-- Do not use `PortfolioTable.portfolio_index_uid` as account target identity.
+- Do not use `PortfolioTable.published_index_uid` as account target identity or
+  as the portfolio weights/values storage key.
+- Use `PortfolioTable.uid` for account target identity and
+  `PortfolioTable.unique_identifier` as `portfolio_identifier` in portfolio
+  storage.
+- `PortfolioWeightsStorage.portfolio_identifier` and
+  `PortfoliosStorage.portfolio_identifier` must reference
+  `PortfolioTable.unique_identifier`. `PortfolioWeightsStorage.asset_identifier`
+  must reference `AssetTable.unique_identifier`.
 - Do not write target-position rows with `asset_identifier`.
 - Asset target rows use `target_type="asset"`, `target_uid=asset_uid`, and
   `portfolio_uid=None`.
@@ -57,22 +66,23 @@ Rules:
 
 ## Runtime Pattern
 
-Use `msm_portfolios.start_engine(...)` when target positions reference
-portfolios:
+Use `msm.start_engine(...)` for account target positions that reference
+portfolios. Use `msm_portfolios.start_engine(...)` only when attaching
+portfolio calculation, portfolio metadata, or portfolio storage tables.
 
 ```python
-import msm_portfolios
+import msm
 
-msm_portfolios.start_engine(
+msm.start_engine(
     models=[
         "AssetType",
         "Asset",
         "IndexType",
         "Index",
-        "AccountModelPortfolio",
+        "AccountAllocationModel",
         "AccountGroup",
         "Account",
-        "AccountTargetPortfolio",
+        "AccountTargetAllocation",
         "PositionSet",
         "Portfolio",
         "TargetPositionsStorage",
@@ -85,26 +95,122 @@ Example workflows should stay chainable. The reusable portfolio example exposes
 other examples can pass a superset model list and avoid starting a second
 incompatible runtime.
 
-Configured interpolation storage is dynamic and must stay out of static runtime
-model lists. For the equal-weight portfolio example, run:
+The equal-weight example uses contributed `InterpolatedPrices`, whose output
+storage is a dynamic `PlatformTimeIndexMetaTable` keyed from the source
+`TimeIndexMetaTable` UID and cadence. That schema preparation belongs to
+`msm_portfolios.contrib.prices`; it is not portfolio core registration and it
+does not mean `PortfoliosDataNode` may construct prices internally. For the
+example, prepare that interpolation storage before the normal run:
 
 ```bash
 python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
-The preparation step derives the configured interpolation table from the
-registered source price storage hash and cadence, creates/applies the dynamic
-Alembic revision if needed, and verifies the `TimeIndexMetaTable`. Normal
-runtime code then attaches only static models and fails clearly if the dynamic
-table has not been prepared.
+The preparation step derives only the contributed interpolation output table,
+creates/applies its dynamic Alembic revision if needed, and verifies the
+`TimeIndexMetaTable`. Normal runtime code still builds the graph explicitly as
+source price node -> interpolation node -> signal node -> portfolio node. If
+the backend dependency tree was created by an older graph, run the top-level
+portfolio node once with `refresh_dependency_tree=True`, or call
+`set_relation_tree(force_rebuild=True)` during setup, so stale backend edges are
+cleared before dependency execution.
+
+Portfolio construction must consume prices through an explicit dependency:
+
+```text
+source price DataNode -> InterpolatedPrices -> SignalWeights -> PortfoliosDataNode
+```
+
+`PortfoliosDataNode` must not construct `InterpolatedPrices` from
+`AssetsConfiguration`/`PricesConfiguration`. If persistent interpolation is
+needed, prepare or attach the interpolation node first and pass it as
+`PortfolioBuildConfiguration.price_source_instance`. Keep any local price
+alignment inside portfolio calculation as a temporary calculation step only.
+
+Current portfolio build contract:
+
+```text
+PortfolioBuildConfiguration
+  price_source_instance     DataNode | APIDataNode
+  price_column              close | open | vwap | ...
+  price_alignment_policy    PriceAlignmentPolicy
+  portfolio_prices_frequency
+  execution_configuration
+  backtesting_weights_configuration
+```
+
+Rules:
+
+- `PortfolioBuildConfiguration` must not contain `assets_configuration`.
+- `price_source_instance` is the recoverable upstream price dependency. It may
+  be `InterpolatedPrices`, another compatible DataNode, or an `APIDataNode`
+  built from a registered TimeIndexMetaTable UID.
+- `InterpolatedPricesConfig` accepts either `source_price_instance` or
+  `source_time_index_meta_table_uid`. Use the instance path when the raw/source
+  price node is already in the graph; use the UID path only to attach an
+  already registered compatible source table through `APIDataNode`.
+- `InterpolatedPrices.dependencies()` must expose the resolved source price
+  object in both cases.
+- Persistent interpolation belongs to `msm_portfolios.contrib.prices`, not to
+  `PortfoliosDataNode`.
+- `PortfoliosDataNode.dependencies()` must expose both `signal_weights` and
+  `price_source`.
+- The authoritative portfolio universe is the signal output frame. A signal
+  `get_asset_list()` is preflight/context only.
+- Required priced assets are derived from signal output, previous portfolio
+  weights that still need valuation or liquidation, and any explicit portfolio
+  value override asset.
+- Price sources may contain extra assets; portfolio calculation filters to the
+  required signal universe.
+- Portfolio update-window progress must be scoped to required portfolio assets:
+  the signal preflight universe, previous portfolio-weight assets still needing
+  valuation or liquidation, and any explicit portfolio value override asset. Do
+  not take the minimum progress timestamp across every asset in a large source
+  price table. If the required asset scope cannot be determined before deriving
+  the source window, fail instead of falling back to table-wide source progress.
+- Existing portfolio output progress must be scoped by `portfolio_identifier`;
+  `PortfoliosStorage` is shared and keyed by `(time_index, portfolio_identifier)`.
+  A later row for another portfolio must not move this portfolio's start date.
+- Contributed signal progress must be scoped by `signal_uid`; `SignalWeightsStorage`
+  is shared and keyed by `(time_index, signal_uid, asset_identifier)`.
+  `signal_uid` is a required reference to `SignalMetadataTable.signal_uid`, so
+  signal metadata must be registered before signal weights are published.
+  `asset_identifier` must reference `AssetTable.unique_identifier`. A later row
+  for another signal must not move this signal's start date.
+- Missing required price assets must be logged with the price source, date
+  range, price column, and policy. Strict policy fails; permissive policy logs
+  and continues when the downstream calculation can still produce a usable
+  frame.
+- Local reindex/forward-fill inside `PortfoliosDataNode` is only calculation
+  alignment. It must not create persistent storage or hide a price DataNode.
+- `PortfoliosDataNode.run(..., update_pointers=True)` is the default portfolio
+  workflow behavior. After the graph publishes, it must upsert the resolved
+  `PortfolioTable` row with `signal_weights_data_node_uid`,
+  `portfolio_weights_data_node_uid`, and `portfolio_data_node_uid`. Examples
+  should not perform this final pointer upsert manually.
+
+Contributed signal rules:
+
+- `FixedWeightsConfig` must not require asset/price configuration for portfolio
+  core behavior.
+- External weights and market-cap signals must receive their asset universe or
+  market-data dependencies explicitly.
+- ETF replication must expose both basket and ETF price sources explicitly.
+- Intraday trend must receive its price source explicitly.
+- Contributed signals must not call `get_interpolated_prices_timeseries(...)`
+  internally.
+
+The legacy `get_interpolated_prices_timeseries(...)` helper may remain as a
+non-core transition/helper path in the contributed price package. Do not use it
+from portfolio core or contributed signals.
 
 ## Write Pattern
 
 ```python
-from msm_portfolios.api.portfolios import Portfolio
-from msm_portfolios.data_nodes import TargetPositions
-from msm_portfolios.services import build_target_positions_frame
+from msm.api.portfolios import Portfolio
+from msm.data_nodes.accounts import TargetPositions
+from msm.services import build_target_positions_frame
 
 portfolio_sleeve = Portfolio.upsert(unique_identifier="example-sleeve")
 
@@ -133,7 +239,7 @@ Use `expand_portfolio_target_positions(...)` only when a downstream workflow
 explicitly needs asset-level exposure:
 
 ```python
-from msm_portfolios.services import expand_portfolio_target_positions
+from msm.services import expand_portfolio_target_positions
 
 expanded = expand_portfolio_target_positions(
     frame,
@@ -150,9 +256,17 @@ the account target-position table.
 
 ## Validation
 
+For explicit portfolio price-source changes, run:
+
+```bash
+uv run --extra portfolios --extra dev ruff check src/msm_portfolios/configuration.py src/msm_portfolios/data_nodes/portfolios src/msm_portfolios/contrib/signals examples/msm_portfolios tests/msm_portfolios/data_nodes/test_portfolio_contracts.py
+uv run --extra portfolios --extra dev pytest tests/msm_portfolios/data_nodes/test_portfolio_contracts.py tests/msm_portfolios/examples/test_equal_weight_portfolio_schema.py tests/msm_portfolios/configuration/test_prices_configuration.py
+uv run --extra portfolios --extra dev mkdocs build --strict --site-dir /private/tmp/msmarkets-docs-site
+```
+
 For portfolio target-position changes, run:
 
 ```bash
-uv run --extra dev ruff check src/msm_portfolios/data_nodes/target_positions.py src/msm_portfolios/services/target_positions.py tests/msm_portfolios/data_nodes/test_target_positions_contracts.py
-uv run --extra dev pytest tests/msm_portfolios/data_nodes/test_target_positions_contracts.py tests/msm_portfolios/models/test_model_graph.py
+uv run --extra dev ruff check src/msm/data_nodes/accounts src/msm/services/target_positions.py tests/msm/data_nodes/test_target_positions_contracts.py
+uv run --extra dev pytest tests/msm/data_nodes/test_target_positions_contracts.py tests/msm_portfolios/models/test_model_graph.py
 ```

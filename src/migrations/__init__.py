@@ -10,11 +10,13 @@ from msm.models.assets import AssetTable
 from msm.settings import (
     markets_auto_register_namespace,
     markets_identifier,
-    markets_namespace,
 )
 
 from migrations.registry import metatable_provider_models
-from valmer_connectors.markets import VALMER_MARKETS_STORAGE_APP
+from valmer_connectors.markets import (
+    VALMER_MARKETS_NAMESPACE,
+    VALMER_MARKETS_STORAGE_APP,
+)
 
 VALMER_MIGRATION_MODELS = tuple(metatable_provider_models())
 VALMER_REFERENCE_MODELS = (AssetTable,)
@@ -81,8 +83,11 @@ def _include_valmer_object(
 
 ValmerAlembicVersion = build_alembic_version_metatable(
     class_name="ValmerAlembicVersion",
-    namespace=markets_namespace(),
-    identifier=markets_identifier("valmer.alembic_version"),
+    namespace=VALMER_MARKETS_NAMESPACE,
+    identifier=markets_identifier(
+        "valmer.alembic_version",
+        namespace=VALMER_MARKETS_NAMESPACE,
+    ),
     schema=MARKETS_SCHEMA,
     table_name=markets_table_name(
         VALMER_TABLE_APP,
@@ -94,7 +99,7 @@ ValmerAlembicVersion = build_alembic_version_metatable(
 
 migration = build_metatable_migration_provider(
     package="valmer_connectors",
-    migration_namespace=markets_namespace(),
+    migration_namespace=VALMER_MARKETS_NAMESPACE,
     script_location="migrations:",
     target_metadata=VALMER_TARGET_METADATA,
     alembic_registry=ValmerAlembicVersion,

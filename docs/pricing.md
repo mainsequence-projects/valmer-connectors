@@ -111,14 +111,14 @@ prepare_for_update()
 _prepare_latest_inputs(...)
     |
     +-- latest Valmer row per unique_identifier
-    +-- full source UID list for asset registration
     +-- target-bond subset
+    +-- full source UID list for optional full-source registration
     |
     v
 _sync_asset_registry_and_pricing(...)
     |
-    +-- resolve/upsert AssetTable rows for the source UID list
-    +-- upsert ValmerAssetDetailsTable rows from latest source rows
+    +-- resolve/upsert AssetTable rows for pricing targets by default
+    +-- upsert ValmerAssetDetailsTable rows for registered assets
     +-- decide which target bonds need pricing refresh
     +-- build_qll_bond_from_row(...)
     +-- persist_current_pricing_details(...)
@@ -127,25 +127,24 @@ _sync_asset_registry_and_pricing(...)
 Pricing hydration writes through:
 
 ```text
-msm_pricing.api.instruments.persist_current_pricing_details(...)
+valmer_connectors.data_nodes.nodes.persist_current_pricing_details(...)
+    |
+    v
+msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)
 ```
 
 It links the current instrument/pricing payload to the canonical `AssetTable`
 row through the asset object.
 
-The asset registration universe and current pricing-detail universe are
-intentionally different:
+By default, the asset registration universe and current pricing-detail universe
+are the same: both use the target-bond subset selected by
+`ImportValmer._get_target_bonds(...)`. The vector publication is also scoped to
+those asset identifiers so `ValmerVectorPricesStorage.asset_identifier` always
+has a matching `AssetTable.unique_identifier`.
 
-- `AssetTable` registration uses the broader imported Valmer UID universe after
-  source normalization and `unique_identifier` filtering.
-- `ValmerAssetDetailsTable` uses the latest normalized source row per Valmer
-  UID.
-- Current pricing details use only the target-bond subset selected by
-  `ImportValmer._get_target_bonds(...)`.
-
-Therefore an `AssetTable` row may exist without current pricing details. That
-is expected when the Valmer row is part of the imported source universe but is
-outside the supported current-pricing target subset.
+The full-source registration mode remains available through
+`valmer-connectors vector update --register-all-assets`. Use it only when the
+broader source universe should be registered and published intentionally.
 
 ## Target Bond Selection
 
@@ -156,9 +155,8 @@ Target bond selection is implemented in:
 - `ImportValmer._get_target_bonds(...)`
 
 The source vector table is broader than the supported pricing surface. A row
-can be published as source data without being hydrated into an instrument.
-Those rows may still have `AssetTable` and `ValmerAssetDetailsTable` records so
-the vector DataNode can keep a canonical asset identifier.
+outside the supported pricing surface is ignored by the default vector update.
+It can still be registered and published with `--register-all-assets`.
 
 ## Instrument Construction
 

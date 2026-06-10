@@ -10,7 +10,9 @@ static asset details, and pricing hydration are separate workflows documented in
 vector observations into the storage class:
 
 - `ValmerVectorPricesStorage`
-- `__metatable_identifier__ = "vector_de_precios_valmer"`
+- `__metatable_identifier__ = "valmer_connectors.vector_de_precios_valmer"`
+- authored storage identifier: `vector_de_precios_valmer`
+- project namespace: `valmer_connectors`
 - storage app segment: `valmer_connectors`
 - observation cadence: daily Valmer source vector data
 
@@ -116,9 +118,11 @@ build_import_valmer()
 prepare_for_update()
     |
     +-- load Valmer source rows
-    +-- sync AssetTable rows for the broader imported source UID universe
-    +-- sync ValmerAssetDetailsTable rows from latest source rows
+    +-- select pricing-target assets from latest source rows
+    +-- sync AssetTable rows for the selected registration scope
+    +-- sync ValmerAssetDetailsTable rows for registered assets
     +-- hydrate current pricing details only for supported target bonds
+    +-- scope vector publication to registered target assets by default
     |
     v
 run(force_update=True)
@@ -133,9 +137,20 @@ run(force_update=True)
 `get_asset_list()` must stay a scope handoff. It should not register assets,
 upsert detail rows, or persist pricing details.
 
-The vector update can register an asset without writing current pricing details.
-That is expected when a Valmer row is present in the imported source universe
-but does not pass the supported target-bond filter used for pricing hydration.
+By default, `valmer-connectors vector update` registers and publishes only the
+assets that pass the pricing-detail target filter. This keeps the
+`AssetTable` registration scope aligned with the storage table foreign key:
+`ValmerVectorPricesStorage.asset_identifier` points to
+`AssetTable.unique_identifier`.
+
+For diagnostics or a deliberate full-source import, run:
+
+```bash
+valmer-connectors vector update --register-all-assets
+```
+
+That option restores the broader registration scope and publishes all source
+rows loaded by the vector updater.
 
 ## Source Rows
 

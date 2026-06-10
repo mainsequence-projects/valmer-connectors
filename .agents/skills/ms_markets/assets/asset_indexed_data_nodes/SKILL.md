@@ -46,7 +46,7 @@ Use the asset model extension skill instead when the task is about `AssetTable`,
 - Keeping schema details on storage classes: `__time_index_name__`,
   `__index_names__`, mapped columns, dtypes, nullability, and source-table
   foreign keys.
-- Deriving published identifiers from the migrated/cataloged storage table and active
+- Deriving published identifiers from the migrated and registered storage table and active
   markets namespace.
 - Deriving validation from `_required_storage_table()` and the instance's bound
   `storage_table`.
@@ -75,12 +75,12 @@ Before changing code, inspect the current local implementation:
 
 1. `src/msm/data_nodes/assets/asset_indexed.py`
 2. `src/msm/data_nodes/assets/snapshots.py`
-3. `src/msm/data_nodes/storage.py`
+3. `src/msm/data_nodes/assets/storage.py`
 4. `src/msm/data_nodes/utils/stamped.py`
 5. `src/msm/data_nodes/indices/timestamped.py`
 6. `src/msm/settings.py`
 7. `docs/knowledge/msm/assets/asset_indexed_data_nodes.md`
-8. `docs/ADR/0017-storage-first-data-node-architecture.md`
+8. `docs/knowledge/msm/migrations/index.md`
 
 For generic SDK behavior, verify against the latest Main Sequence DataNode docs
 and the `mainsequence-data-nodes` skill.
@@ -125,20 +125,24 @@ should explain the table's market intention, row grain, and downstream use, not
 only the schema. For asset-indexed tables, say what the asset row represents and
 why it is published over time.
 
-Storage must be migrated, registered, and cataloged by the SDK migration
+Storage must be migrated and registered by the SDK migration
 provider before a process writes through the DataNode. The runtime path,
 usually `msm.start_engine(models=[...])`, attaches the already-finalized
-storage metadata from the markets catalog. Do not manually bind a UID,
+storage metadata from the backend registered table. Do not manually bind a UID,
 reconstruct a generic `MetaTable`, call storage `.register()` from runtime
 startup, or use manual bind helpers as an authoring step.
 
-Project-local storage classes may set `__markets_storage_app__` to use a
-project-owned SQLAlchemy table-name app segment instead of the library default
-`ms_markets`. This is useful for extension storage such as provider bars or
-account facts. It only changes physical table naming; the globally unique
-`__metatable_identifier__` remains the logical catalog/runtime identity.
-Changing the storage app after migration/catalog finalization is a physical
-table-name rotation and must go through the normal SDK migration and
+Project-local storage classes should inherit from an abstract project mixin that
+sets the project's default `__metatable_namespace__` and, when needed,
+`__markets_storage_app__`. Concrete storage classes should declare
+`__markets_base_identifier__` as the bare storage concept. This is useful for
+extension storage such as provider bars or account facts. ms-markets combines
+the namespace and base identifier into the globally unique logical runtime
+identity. `MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace for
+isolated tests and examples.
+
+Changing the namespace or storage app after migration finalization is a logical
+or physical table-name rotation and must go through the normal SDK migration and
 registration path.
 
 Minimal storage-first pattern:
@@ -158,9 +162,14 @@ from msm.data_nodes.assets import (
 from msm.models.assets.core import AssetTable
 
 
-class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+class MyProjectMarketsStorageMixin(MarketsTimeIndexMetaTableMixin):
+    __abstract__ = True
+    __metatable_namespace__ = "com.my_project"
     __markets_storage_app__ = "my_project_markets"
-    __metatable_identifier__ = "ExampleAssetMetricsTS"
+
+
+class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, MarketsBase):
+    __markets_base_identifier__ = "ExampleAssetMetricsTS"
     __metatable_description__ = (
         "Timestamped asset metric observations keyed by asset identifier "
         "for market analytics and portfolio workflows."
@@ -403,10 +412,10 @@ Before marking work complete:
   `ASSET_IDENTIFIER_DIMENSION`.
 - The storage table declares the canonical `asset_identifier ->
   AssetTable.unique_identifier` SQLAlchemy `ForeignKey`.
-- The storage table is migrated, registered, and cataloged by the SDK migration
+- The storage table is migrated and registered by the SDK migration
   provider before writes.
 - `asset_list` is updater scope, not part of table meaning.
-- Identifier generation derives from the migrated/cataloged storage table.
+- Identifier generation derives from the migrated and registered storage table.
 - The implementation does not hardcode example or production namespaces.
 - Frame validation rejects missing index columns and duplicate keys.
 - Tests cover frame validation, storage columns, foreign keys, namespace identifier

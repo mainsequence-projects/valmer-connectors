@@ -12,7 +12,8 @@ with Valmer market data for Mexican fixed income.
 - Publishes time-varying Valmer vector observations as
   `vector_de_precios_valmer`.
 - Hydrates current pricing details for the supported Mexican bond universe
-  through `msm_pricing.api.instruments.persist_current_pricing_details(...)`.
+  through the local `persist_current_pricing_details(...)` wrapper backed by
+  `msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)`.
 - Seeds Mexican TIIE/CETE index identities, pricing conventions, and the
   `VALMER_TIIE_28` curve identity.
 - Publishes the Valmer TIIE curve through the canonical

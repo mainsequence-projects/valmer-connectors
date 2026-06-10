@@ -76,7 +76,7 @@ jsonschema==4.26.0
     # via altair
 jsonschema-specifications==2025.9.1
     # via jsonschema
-mainsequence==4.3.14
+mainsequence==4.3.18
     # via
     #   ms-markets
     #   valmer-connectors
@@ -90,7 +90,7 @@ markupsafe==3.0.3
     #   mako
 mdurl==0.1.2
     # via markdown-it-py
-ms-markets==0.0.45
+ms-markets==0.0.57
     # via valmer-connectors
 narwhals==2.22.1
     # via altair
@@ -222,7 +222,7 @@ tenacity==9.1.4
     # via streamlit
 toml==0.10.2
     # via streamlit
-tqdm==4.68.1
+tqdm==4.68.2
     # via mainsequence
 typer==0.26.7
     # via mainsequence

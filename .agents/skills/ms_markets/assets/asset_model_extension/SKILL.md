@@ -88,29 +88,34 @@ Add only fields that belong to that specific extension. Use indexed columns for
 lookup keys and JSON/text columns for provider payloads when the payload is not
 part of the canonical asset identity.
 
-For project-local extension tables, set `__markets_storage_app__` in the
-SQLAlchemy model class, or in an abstract project-local mixin, when the table
-should use a project-owned physical table-name app segment instead of the
-library default `ms_markets`. This does not replace
-`__metatable_identifier__`; the identifier remains the globally unique logical
-MetaTable identity used by catalog/runtime attachment. Changing
-`__markets_storage_app__` after the table has been migrated/cataloged is a
-physical table-name rotation and must go through the SDK migration and
-registration path.
+For project-local extension tables, define an abstract project-local mixin with
+the project's default `__metatable_namespace__` and, when needed,
+`__markets_storage_app__`. Concrete extension tables should declare
+`__markets_base_identifier__` as the bare table concept. ms-markets combines the
+mixin namespace and base identifier into the globally unique MetaTable identity
+used by runtime attachment.
+
+`MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace when it is set
+before model import. Use that for isolated tests and examples.
+
+Changing `__metatable_namespace__` or `__markets_storage_app__` after the table
+has been migrated and registered is a logical or physical table rotation and
+must go through the SDK migration and registration path.
 
 ```python
 class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
     __abstract__ = True
+    __metatable_namespace__ = "com.my_project"
     __markets_storage_app__ = "my_project_markets"
 
 
 class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
-    __metatable_identifier__ = "com.my_project.MyAssetDetails"
+    __markets_base_identifier__ = "MyAssetDetails"
 ```
 
 ## Public API Pattern
 
-After the SDK migration provider has migrated and cataloged the SQLAlchemy
+After the SDK migration provider has migrated and registered the SQLAlchemy
 detail model, application code should attach it through `msm.start_engine(...)`
 and then work through the Pydantic row API:
 
@@ -140,7 +145,7 @@ msm.start_engine(models=[FutureAssetDetailsTable])
 
 `MarketsMetaTableRow` is the Pydantic row-operation wrapper. It is not
 registered as a backend MetaTable. The SQLAlchemy detail model class is the
-registered/cataloged artifact. If generic row helpers expect `uid`, expose `uid`
+registered backend artifact. If generic row helpers expect `uid`, expose `uid`
 as an alias of `asset_uid` in the Pydantic row model. Do not change the SQL table
 shape just to satisfy generic helpers.
 
@@ -232,6 +237,11 @@ For OpenFIGI and similar providers:
 
 - keep canonical identity in `Asset`
 - keep provider-specific facts in the provider detail table
+- do not register assets with raw ticker symbols as `Asset.unique_identifier`;
+  tickers can collide, change, and require exchange/security context
+- when only a ticker is available for a listed provider-backed asset, resolve it
+  through OpenFIGI with the required market/exchange/security context and use
+  the resolved FIGI as the stable `Asset.unique_identifier`
 - store raw provider response separately from normalized lookup columns
 - preserve existing column mappings such as `metadata_text =
   mapped_column("metadata", Text, nullable=True)`

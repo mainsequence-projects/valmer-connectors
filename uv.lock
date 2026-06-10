@@ -509,7 +509,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.3.14"
+version = "4.3.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -533,9 +533,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/75/c7/9994d393ef0824128b07a058723fd37cc5544d02627133d8bc2798a86f2d/mainsequence-4.3.14.tar.gz", hash = "sha256:60d0bbfef368d3e13c8553d651425895b59f21a0957c32506fc232b8118038f6", size = 491411, upload-time = "2026-06-07T16:16:11.757Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/fb/0893968fc32adb9d5ab994fbd3f32f074eb1761c944034d94036f8e24d21/mainsequence-4.3.18.tar.gz", hash = "sha256:e20f3e267a398df3f8aac48e0e913b8ab544f404ab20b6a58b4222c660d4c1e1", size = 496298, upload-time = "2026-06-09T19:54:09.233Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/92/d9/4000418123b198670fe26ef7cc8de9da85a50977242ccbf9182ad54fd56b/mainsequence-4.3.14-py3-none-any.whl", hash = "sha256:88dadd050f14364c02fbe2cea6b0ac0f1314437998574ab76f258c293ac07517", size = 423272, upload-time = "2026-06-07T16:16:10.394Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/7b/e03ed8f055868fdbb19ce1c7b91b2b17ba289432ceec3c6c76a4886ef601/mainsequence-4.3.18-py3-none-any.whl", hash = "sha256:2933bfe442892805805f19e516c8242cc8743068a1478c58f84d0af69ee07331", size = 426666, upload-time = "2026-06-09T19:54:07.393Z" },
 ]
 
 [[package]]
@@ -647,7 +647,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.45"
+version = "0.0.57"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -665,9 +665,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8f/f7/1f1be0fd6a1c7c402d0a28322ea9b961de88eb7b91ec3e08f3cfa94d75ae/ms_markets-0.0.45.tar.gz", hash = "sha256:2c2d9a4d1f58e0754e53c5711180cd0ff02c699ed35c7905d1bd865ba84d0079", size = 539396, upload-time = "2026-06-08T12:59:49.677Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/b9/be0173b63086fa93d854ca845a3243e563b8b8aa786e693607065664ff5f/ms_markets-0.0.57.tar.gz", hash = "sha256:f5911a3d352c8fa10c305fabc6b38881257b75d41066961eb26d238c0198491f", size = 605057, upload-time = "2026-06-10T18:16:57.036Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/6d/75dc0e6685e821f78a7aef94c415b7f8bb9cbac2e904bdf2a25648e17c7c/ms_markets-0.0.45-py3-none-any.whl", hash = "sha256:909a822f5b2e527c79202872adfa2862633ad92057dbf3b4d2d9b876bb8fe57e", size = 419667, upload-time = "2026-06-08T12:59:48.018Z" },
+    { url = "https://files.pythonhosted.org/packages/db/41/6af26e6170837ff5013d0b31a313eb7e0bbcfd4d246905c084d8537af896/ms_markets-0.0.57-py3-none-any.whl", hash = "sha256:96d40b1db9f889511078e140d1c4e4174720e53879d3ad0f17ee8c47116cf05e", size = 438191, upload-time = "2026-06-10T18:16:55.416Z" },
 ]
 
 [[package]]
@@ -1762,14 +1762,14 @@ wheels = [
 
 [[package]]
 name = "tqdm"
-version = "4.68.1"
+version = "4.68.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/06/b3/36c8ecf72e8925200671613332db156d84b99b3aee742a41c1938ebb0808/tqdm-4.68.1.tar.gz", hash = "sha256:fc163d96b287bd031e1aa24421ce4411b25559bd0a1be4fe649bdaa4d2c02bf5", size = 171236, upload-time = "2026-06-05T17:23:15.267Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/05/0d5260f1f1ca784f4a4a0def9cbe6affe587f5b4025328d446c3d67765f4/tqdm-4.68.2.tar.gz", hash = "sha256:89c230e8dbc67c7615c142487111222f878c77427ea09549960f62389e258add", size = 171923, upload-time = "2026-06-09T13:26:42.539Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/aa/218a0eb34de1f753c83e4d0d1c8e7c4cef27f20dcb8342e024f63a80dc86/tqdm-4.68.1-py3-none-any.whl", hash = "sha256:fea4a90e4023f764914569f7802a297277c5ab1a66be5144143e142e1a4031d8", size = 78354, upload-time = "2026-06-05T17:23:13.654Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/75/1a0392bcc21c44dcdf87b3cf2d137e7829be2c083a1e38d44efca3d57a16/tqdm-4.68.2-py3-none-any.whl", hash = "sha256:d4240441fb5353290b87d6a85968c9decc131a99b8c7faa28269d829de669ede", size = 78578, upload-time = "2026-06-09T13:26:40.731Z" },
 ]
 
 [[package]]
@@ -1841,7 +1841,7 @@ wheels = [
 
 [[package]]
 name = "valmer-connectors"
-version = "0.1.11"
+version = "0.1.12"
 source = { editable = "." }
 dependencies = [
     { name = "mainsequence" },
@@ -1852,8 +1852,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mainsequence", specifier = ">=4.3.14" },
-    { name = "ms-markets", specifier = ">=0.0.34" },
+    { name = "mainsequence", specifier = ">=4.3.18" },
+    { name = "ms-markets", specifier = ">=0.0.45" },
     { name = "streamlit", specifier = ">=1.58.0" },
     { name = "xlrd", specifier = ">=2.0.2" },
 ]

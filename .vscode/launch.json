@@ -58,9 +58,10 @@
         "--message",
         "migration",
         "--timeout",
-        "900",
+        "60",
         "--ttl-seconds",
-        "900"
+        "120",
+        "--json"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",

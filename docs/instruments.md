@@ -58,8 +58,9 @@ Supported rows are selected before instrument construction by:
 
 - `ImportValmer._get_target_bonds(...)`
 
-Rows that are not selected can still be published in the Valmer vector DataNode.
-They simply do not receive current pricing details.
+Rows that are not selected are ignored by the default vector update. They can
+still be registered and published with
+`valmer-connectors vector update --register-all-assets`.
 
 ## Convention Rules
 
