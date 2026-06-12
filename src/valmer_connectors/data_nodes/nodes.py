@@ -1,6 +1,5 @@
 import os
 import re
-import json
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, List, Union
@@ -16,6 +15,7 @@ from msm.data_nodes.assets import AssetSnapshot
 from msm.repositories.base import compile_markets_statement
 from msm.repositories.base import execute_markets_operation
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm_pricing.api import add_many_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from pydantic import Field
 from sqlalchemy import select
@@ -38,6 +38,7 @@ from valmer_connectors.meta_tables.valmer_asset_details import (
     upsert_valmer_asset_details,
 )
 from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
+from valmer_connectors.settings import resolve_valmer_pricing_details_batch_size
 
 
 @dataclass(frozen=True)
@@ -95,35 +96,6 @@ def _pricing_detail_face_value(instrument_dump: dict) -> object:
     return None
 
 
-def persist_current_pricing_details(
-    *,
-    asset: MarketsAsset,
-    instrument: Any,
-    pricing_details_date,
-    source: str | None = None,
-    metadata_json: dict[str, Any] | None = None,
-) -> AssetCurrentPricingDetails:
-    instrument.validate_asset(asset)
-    payload = json.loads(instrument.serialize_for_backend())
-    instrument_type = payload.get("instrument_type")
-    instrument_dump = payload.get("instrument")
-    if not isinstance(instrument_type, str) or not instrument_type:
-        raise ValueError("Instrument serialization must include a non-empty instrument_type.")
-    if not isinstance(instrument_dump, dict):
-        raise ValueError("Instrument serialization must include an instrument object.")
-
-    row = AssetCurrentPricingDetails.upsert(
-        asset_uid=asset.uid,
-        instrument_type=instrument_type,
-        instrument_dump=instrument_dump,
-        pricing_details_date=pricing_details_date,
-        source=source,
-        metadata_json=metadata_json,
-    )
-    instrument._asset_uid = asset.uid
-    return row
-
-
 def _build_open_time_series(time_index: pd.Series) -> pd.Series:
     open_time = pd.Series(pd.NA, index=time_index.index, dtype="Int64")
     valid = time_index.notna()
@@ -168,6 +140,64 @@ def _summarize_uid_asset_pairs(
     if len(uids) > limit:
         sample = f"{sample}, ... (+{len(uids) - limit} more)"
     return sample
+
+
+def _summarize_failure_reasons(
+    failures: dict[str, str],
+    *,
+    limit: int = 5,
+) -> str:
+    if not failures:
+        return ""
+    pairs = [
+        f"{uid}: {reason}"
+        for uid, reason in list(failures.items())[:limit]
+    ]
+    sample = "; ".join(pairs)
+    if len(failures) > limit:
+        sample = f"{sample}; ... (+{len(failures) - limit} more)"
+    return sample
+
+
+def _pricing_detail_failure_summary(
+    *,
+    missing_latest_rows: list[str],
+    instrument_build_failures: dict[str, str],
+    missing_assets_for_pricing: list[str],
+    missing_instruments_for_pricing: list[str],
+    missing_after_persist: list[str],
+    assets_for_update: dict[str, MarketsAsset],
+) -> str:
+    parts: list[str] = []
+    if missing_latest_rows:
+        parts.append(
+            "missing latest vector rows "
+            f"({len(missing_latest_rows)}): {_summarize_uids(missing_latest_rows)}"
+        )
+    if instrument_build_failures:
+        parts.append(
+            "instrument build failures "
+            f"({len(instrument_build_failures)}): "
+            f"{_summarize_failure_reasons(instrument_build_failures)}"
+        )
+    if missing_assets_for_pricing:
+        parts.append(
+            "missing Asset rows "
+            f"({len(missing_assets_for_pricing)}): {_summarize_uids(missing_assets_for_pricing)}"
+        )
+    if missing_instruments_for_pricing:
+        parts.append(
+            "missing instrument payloads "
+            f"({len(missing_instruments_for_pricing)}): "
+            f"{_summarize_uids(missing_instruments_for_pricing)}"
+        )
+    if missing_after_persist:
+        parts.append(
+            "current pricing rows missing after persist/readback "
+            f"({len(missing_after_persist)}): "
+            f"{_summarize_uid_asset_pairs(missing_after_persist, assets_for_update)}"
+        )
+    return "Failure categories: " + " | ".join(parts)
 
 
 def _build_valmer_asset_snapshot_rows(
@@ -241,14 +271,14 @@ def _publish_valmer_asset_snapshots(
 
     result = node.set_snapshots(snapshot_rows).run(force_update=True)
     if isinstance(result, tuple) and len(result) == 2:
-        error, frame = result
+        error_on_last_update, frame = result
     else:
-        error, frame = None, result
-    if error is not None:
+        error_on_last_update, frame = False, result
+    if error_on_last_update:
         message = f"Valmer asset snapshot update failed for {len(snapshot_rows)} rows."
-        if isinstance(error, BaseException):
-            raise RuntimeError(message) from error
-        raise RuntimeError(f"{message} {error}")
+        if isinstance(error_on_last_update, BaseException):
+            raise RuntimeError(message) from error_on_last_update
+        raise RuntimeError(f"{message} {error_on_last_update}")
     row_count = len(frame) if isinstance(frame, pd.DataFrame) else len(snapshot_rows)
     logger.info(f"Published {row_count} Valmer asset snapshot rows.")
     return row_count
@@ -260,6 +290,9 @@ def _drop_existing_valmer_asset_snapshot_rows(
     node: AssetSnapshot,
     logger,
 ) -> list[dict[str, object]]:
+    if not _asset_snapshot_backend_update_exists(node=node, logger=logger):
+        return snapshot_rows
+
     frame = AssetSnapshot.build_frame(snapshot_rows)
     flat = frame.reset_index()
     existing_keys: set[tuple[pd.Timestamp, str]] = set()
@@ -294,6 +327,20 @@ def _drop_existing_valmer_asset_snapshot_rows(
     ]
 
 
+def _asset_snapshot_backend_update_exists(
+    *,
+    node: AssetSnapshot,
+    logger,
+) -> bool:
+    if node.data_node_update is not None:
+        return True
+    logger.info(
+        "No existing AssetSnapshot backend update found; "
+        "publishing Valmer asset snapshot rows without pre-read dedupe."
+    )
+    return False
+
+
 def _asset_snapshot_keys(frame: pd.DataFrame | None) -> set[tuple[pd.Timestamp, str]]:
     if frame is None or frame.empty:
         return set()
@@ -319,6 +366,80 @@ def _valmer_snapshot_time_index(value: object) -> pd.Timestamp | None:
     if pd.isna(valuation_date):
         return None
     return valuation_date + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+
+
+def _pricing_details_datetime(value: object):
+    timestamp = pd.Timestamp(value)
+    if pd.isna(timestamp):
+        raise ValueError("pricing_details_date cannot be missing.")
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.tz_localize("UTC")
+    else:
+        timestamp = timestamp.tz_convert("UTC")
+    return timestamp.to_pydatetime()
+
+
+def _persist_valmer_pricing_details_batch(
+    *,
+    assets_for_update: dict[str, MarketsAsset],
+    instrument_pricing_detail_map: dict[str, dict],
+    batch_size: int,
+    logger,
+) -> list[str]:
+    date_groups: dict[Any, list[tuple[str, MarketsAsset, Any]]] = {}
+    for uid, asset in assets_for_update.items():
+        pricing_details = instrument_pricing_detail_map[uid]
+        pricing_details_date = _pricing_details_datetime(
+            pricing_details["pricing_details_date"]
+        )
+        date_groups.setdefault(pricing_details_date, []).append(
+            (uid, asset, pricing_details["instrument"])
+        )
+
+    total_items = sum(len(group) for group in date_groups.values())
+    logger.info(
+        "Persisting Valmer pricing details in bulk: "
+        f"{total_items} items, {len(date_groups)} date groups, "
+        f"batch size {batch_size}."
+    )
+
+    persisted_uids: list[str] = []
+    for pricing_details_date, group in date_groups.items():
+        group_uids = [uid for uid, _, _ in group]
+        items = [
+            {
+                "asset": asset,
+                "instrument": instrument,
+                "source": "valmer",
+                "metadata_json": {"valmer_unique_identifier": uid},
+            }
+            for uid, asset, instrument in group
+        ]
+        result = add_many_pricing_details(
+            items,
+            pricing_details_date=pricing_details_date,
+            batch_size=batch_size,
+        )
+        pricing_detail_rows = getattr(result, "pricing_details", None)
+        returned_row_count = "unknown" if pricing_detail_rows is None else len(pricing_detail_rows)
+        if pricing_detail_rows is not None and len(pricing_detail_rows) != len(items):
+            raise RuntimeError(
+                "msm_pricing.add_many_pricing_details returned an incomplete "
+                "timestamped pricing-details result for Valmer batch dated "
+                f"{pricing_details_date.isoformat()}: submitted {len(items)} items, "
+                f"returned {len(pricing_detail_rows)} rows. "
+                f"Submitted UIDs: {_summarize_uids(group_uids)}"
+            )
+
+        persisted_uids.extend(group_uids)
+        logger.info(
+            "Persisted Valmer pricing-details batch dated "
+            f"{pricing_details_date.isoformat()}: {len(group_uids)} timestamped rows, "
+            f"{getattr(result, 'updated_current_count', 0)} current rows updated, "
+            f"{returned_row_count} rows returned by msm_pricing."
+        )
+
+    return persisted_uids
 
 
 VALMER_DERIVED_COLUMN_SPECS = (
@@ -1380,36 +1501,12 @@ class ImportValmer(AssetIndexedDataNode):
                     f"{_summarize_uids(missing_instruments_for_pricing)}"
                 )
 
-            persist_progress = _ProgressLogger(
-                self.logger,
-                "Persisting current pricing details",
-                len(assets_for_update),
+            persisted_uids = _persist_valmer_pricing_details_batch(
+                assets_for_update=assets_for_update,
+                instrument_pricing_detail_map=instrument_pricing_detail_map,
+                batch_size=resolve_valmer_pricing_details_batch_size(),
+                logger=self.logger,
             )
-            persisted_uids: list[str] = []
-            persist_failures: dict[str, str] = {}
-            for uid, asset in assets_for_update.items():
-                try:
-                    pricing_details = instrument_pricing_detail_map[uid]
-                    row = persist_current_pricing_details(
-                        asset=asset,
-                        instrument=pricing_details["instrument"],
-                        pricing_details_date=pricing_details["pricing_details_date"],
-                        source="valmer",
-                        metadata_json={"valmer_unique_identifier": uid},
-                    )
-                    persisted_uids.append(uid)
-                    self.logger.info(
-                        "Persisted current pricing details for "
-                        f"{uid} on asset {asset.uid} dated {row.pricing_details_date}."
-                    )
-                except Exception as e:
-                    persist_failures[uid] = str(e)
-                    self.logger.error(
-                        "Failed to update current pricing details for "
-                        f"{uid} on asset {asset.uid}: {e}"
-                    )
-                finally:
-                    persist_progress.advance()
 
             verified_uids: set[str] = set()
             if persisted_uids:
@@ -1426,7 +1523,7 @@ class ImportValmer(AssetIndexedDataNode):
             ]
             if missing_after_persist:
                 self.logger.error(
-                    "Current pricing details were persisted but not visible on readback for "
+                    "Pricing details were persisted but current rows were not visible on readback for "
                     f"{len(missing_after_persist)} target UIDs/assets: "
                     f"{_summarize_uid_asset_pairs(missing_after_persist, assets_for_update)}"
                 )
@@ -1438,23 +1535,32 @@ class ImportValmer(AssetIndexedDataNode):
                         *instrument_build_failures.keys(),
                         *missing_assets_for_pricing,
                         *missing_instruments_for_pricing,
-                        *persist_failures.keys(),
                         *missing_after_persist,
                     ]
                 )
             )
             if failed_uids:
+                failure_summary = _pricing_detail_failure_summary(
+                    missing_latest_rows=missing_latest_rows,
+                    instrument_build_failures=instrument_build_failures,
+                    missing_assets_for_pricing=missing_assets_for_pricing,
+                    missing_instruments_for_pricing=missing_instruments_for_pricing,
+                    missing_after_persist=missing_after_persist,
+                    assets_for_update=assets_for_update,
+                )
                 self.logger.error(
-                    "Current pricing detail insertion incomplete: "
-                    f"{len(failed_uids)} failed of {len(pricing_uid_list)} target refreshes."
+                    "Pricing detail insertion incomplete: "
+                    f"{len(failed_uids)} failed of {len(pricing_uid_list)} target refreshes. "
+                    f"{failure_summary}"
                 )
                 raise RuntimeError(
-                    "Current pricing detail insertion failed for "
-                    f"{len(failed_uids)} target UIDs: {_summarize_uids(failed_uids)}"
+                    "Pricing detail insertion failed for "
+                    f"{len(failed_uids)} target UIDs: {_summarize_uids(failed_uids)}. "
+                    f"{failure_summary}"
                 )
 
             self.logger.info(
-                "Current pricing detail insertion complete: "
+                "Pricing detail insertion complete: "
                 f"{len(persisted_uids)} persisted, {len(verified_uids)} verified."
             )
 

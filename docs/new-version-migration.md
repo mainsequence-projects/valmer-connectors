@@ -42,8 +42,8 @@ Relevant repository skills:
 
 Current declared package constraints:
 
-- `mainsequence>=4.3.14`
-- `ms-markets>=0.0.34`
+- `mainsequence>=4.3.18`
+- `ms-markets>=0.0.65`
 - `streamlit>=1.58.0`
 - `xlrd>=2.0.2`
 
@@ -55,10 +55,10 @@ Current declared package constraints:
 | DataNode storage | `ValmerVectorPricesStorage` owns the time-series table contract | live namespaced write |
 | Asset registration | `upsert_valmer_assets(...)` is the single Valmer asset upsert helper | wrong-type and missing-asset regression tests |
 | Static details | `ValmerAssetDetailsTable.asset_uid` is a 1:1 FK to `AssetTable.uid` | live row link validation |
-| Pricing hydration | `prepare_for_update()` calls `_sync_asset_registry_and_pricing(...)` before `run()` | live `AssetCurrentPricingDetails` write validation |
+| Pricing hydration | `prepare_for_update()` calls `_sync_asset_registry_and_pricing(...)` before `run()` and writes through `msm_pricing.api.add_many_pricing_details(...)` | live pricing-details write validation, including incomplete-result failure behavior |
 | Runtime bootstrap | `bootstrap_runtime()` is the single project runtime entry point | live idempotency validation |
 | Project migrations | `migrations:migration` uses SDK migration helper machinery | live revision/current/upgrade check |
-| Curves | Valmer TIIE curve publishes through `DiscountCurvesNode` | live curve update |
+| Curves | Valmer TIIE and MXN government curves publish through `DiscountCurvesNode` | live curve updates |
 | Fixings | no project-owned fixing ETL exists | remains out of scope |
 | Dashboard | monitors source, pricing hydration, and curve health | run with valid credentials |
 
@@ -156,6 +156,7 @@ After migrations and credentials are available:
 valmer-connectors runtime validate
 valmer-connectors vector update
 valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-mxn-government
 ```
 
 The first live backend validation should run in an explicit namespace if the

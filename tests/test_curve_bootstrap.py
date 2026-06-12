@@ -18,6 +18,7 @@ from valmer_connectors.instruments.curve_bootstrap import (
     configure_valmer_discount_curves_cadence,
     create_valmer_curve_pricing_schemas,
     mexican_reference_index_payloads,
+    valmer_pricing_runtime_models,
 )
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 
@@ -126,14 +127,17 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
     def test_curve_runtime_attach_includes_valmer_details_by_default(self):
         with (
             patch("msm.start_engine") as start_engine,
-            patch("msm_pricing.bootstrap.create_pricing_schemas", return_value="pricing-runtime")
+            patch("msm_pricing.bootstrap.attach_pricing_schemas", return_value="pricing-runtime")
             as pricing_bootstrap,
         ):
             result = attach_valmer_curve_pricing_runtime(timeout=15)
 
         models = start_engine.call_args.kwargs["models"]
         self.assertIn(ValmerAssetDetailsTable, models)
-        pricing_bootstrap.assert_called_once_with(timeout=15)
+        pricing_bootstrap.assert_called_once_with(
+            models=valmer_pricing_runtime_models(),
+            timeout=15,
+        )
         self.assertEqual(result, "pricing-runtime")
 
     def test_curve_runtime_sets_discount_curve_storage_cadence(self):

@@ -51,6 +51,7 @@ vector_de_precios_valmer  current pricing details
 
 ## Operational Files
 
-- `.agents/tasks.md` tracks open agent work.
+- `.agents/tasks.md` tracks open agent work when that file exists in the
+  checkout.
 - `.agents/journal.md` and related `.agents/` files preserve project-state
-  history when the maintenance flow updates them.
+  history when those files exist and the maintenance flow updates them.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted / Implemented
 
 ## Date
 
@@ -22,11 +22,8 @@ Current Main Sequence and `ms-markets` behavior makes those boundaries explicit:
   public-master assets such as FIGI-backed equities.
 - Core bond pricing instruments in `msm_pricing` require the attached asset to
   expose `asset_type == msm.constants.ASSET_TYPE_BOND`.
-- Current pricing details are no longer read from `asset.current_pricing_detail`
-  on the typed `msm.api.assets.Asset` row. They live in
-  `AssetCurrentPricingDetailsTable` and are written through the local
-  `persist_current_pricing_details(...)` wrapper backed by
-  `msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)`.
+- Current pricing details live in the core `msm_pricing` pricing-details tables
+  and are written through `msm_pricing.api.add_many_pricing_details(...)`.
 
 ADR 0000 owns the pricing-library boundary and the pricing-detail write path.
 This ADR owns the Valmer asset identity and asset registration boundary.
@@ -40,7 +37,7 @@ References:
 - Current typed asset API:
   `msm.api.assets.Asset`
 - Current core pricing write API:
-  `msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)`
+  `msm_pricing.api.add_many_pricing_details(...)`
 
 ## Decision
 
@@ -57,22 +54,20 @@ The canonical Valmer bond asset registration target is:
 Do not use `asset_type="mexican_fixed_income"`. That value is incompatible with
 the current core bond pricing validation.
 
-This migration will introduce:
+This migration introduced:
 
 - `src/valmer_connectors/instruments/asset_identity.py` for Valmer identity construction, typed
   asset lookup, and idempotent typed asset upsert
 - `src/valmer_connectors/meta_tables/valmer_asset_details.py` for Valmer source fields that
   describe the asset rather than a daily price observation
-- a batched typed lookup helper because `msm.api.assets.Asset.filter(...)` does
-  not support the legacy `unique_identifier__in` shape
+- batched typed lookup helpers for Valmer asset existence and UID projection
 - pricing refresh planning that reads current pricing details from
-  `AssetCurrentPricingDetailsTable`, not from `asset.current_pricing_detail`
+  `AssetCurrentPricingDetailsTable`
 
 `msm.api.assets.Bond.upsert(...)` is not required for this migration because it
-requires issuer and currency detail rows that this Valmer adapter does not yet
-derive as part of asset registration. A future issuer/currency enrichment can
-upgrade the asset detail model without changing the stable Valmer
-`unique_identifier`.
+requires issuer and currency detail rows that this Valmer adapter does not
+derive as part of asset registration. Issuer and currency enrichment remains
+outside the current registration boundary.
 
 ## Registration Boundary
 
@@ -98,8 +93,8 @@ Pricing hydration remains a separate phase:
 - choose the subset of Valmer assets that the project can currently price
 - build a normalized pricing payload and concrete instrument from source terms
 - decide whether existing pricing details are missing or stale
-- persist current pricing details through
-  `persist_current_pricing_details(...)`
+- persist timestamped pricing details and reconcile current rows through
+  `msm_pricing.api.add_many_pricing_details(...)`
 
 Asset detail persistence is also separate from price-vector publishing:
 
@@ -119,10 +114,9 @@ Asset detail persistence is also separate from price-vector publishing:
 - [x] Replace legacy custom asset registration with typed Asset upsert using
   `msm.constants.ASSET_TYPE_BOND`.
 - [x] Split registration planning from pricing-refresh planning.
-- [x] Replace pricing-refresh checks based on `asset.current_pricing_detail`
-  with `AssetCurrentPricingDetailsTable` lookups.
+- [x] Use `AssetCurrentPricingDetailsTable` lookups for pricing-refresh checks.
 - [x] Keep pricing-detail writes isolated and routed through
-  `persist_current_pricing_details(...)`.
+  `msm_pricing.api.add_many_pricing_details(...)`.
 - [x] Replace `build_position_from_sheet(...)` asset lookup with the typed
   Valmer asset resolver.
 - [x] Replace dashboard Valmer asset lookup and pricing-health inspection with
@@ -139,10 +133,6 @@ Asset detail persistence is also separate from price-vector publishing:
   `ImportValmer.get_asset_list()` and into the explicit
   `ImportValmer.prepare_for_update()` phase.
 
-Curve and reference-rate asset lookup, including
-`MexDerTIIE28Zero.get_asset_list()`, is intentionally out of scope for this ADR.
-It belongs to the later curve refactor.
-
 ## Non-Goals
 
 This ADR does not decide to:
@@ -156,9 +146,7 @@ This ADR does not decide to:
 - enrich Valmer assets into `BondDetailsTable`
 - refactor curve or reference-rate registration
 
-## Verification Plan
-
-Before marking the implementation complete:
+## Verification Evidence
 
 - run syntax checks for touched modules
 - run focused asset identity tests if local test dependencies are available
@@ -173,5 +161,4 @@ Before marking the implementation complete:
 - verify sample Valmer assets have
   `asset_type == msm.constants.ASSET_TYPE_BOND`
 - verify pricing-detail hydration writes through
-  `persist_current_pricing_details(...)` and
-  `AssetCurrentPricingDetails.upsert(...)`
+  `msm_pricing.api.add_many_pricing_details(...)`

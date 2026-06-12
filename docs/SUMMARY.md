@@ -13,8 +13,8 @@
 - `docs/pricing.md`: pricing runtime bootstrap, target-bond hydration, and curve
   publication.
 - `docs/instruments.md`: Valmer row-to-`msm_pricing` instrument mapping.
-- `docs/metatable-query-optimization.md`: implementation plan for replacing
-  full-row MetaTable validation reads with thin projection queries.
+- `docs/metatable-query-optimization.md`: current thin-projection MetaTable
+  read contract for hot Valmer validation paths.
 - `docs/dashboards.md`: Streamlit dashboard pages and monitoring purpose.
 - `docs/deployment.md`: deployment and verification commands.
 - `docs/new-version-migration.md`: migration status against current SDK and

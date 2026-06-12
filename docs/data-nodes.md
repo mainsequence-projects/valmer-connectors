@@ -20,9 +20,17 @@ The storage class lives in:
 
 - `src/valmer_connectors/data_nodes/valmer_vector_storage.py`
 
-The updater is built by:
+The updater is built by the package service:
 
-- `scripts/update_vector_valmer.py`
+- `src/valmer_connectors/services/vector_update.py`
+- `build_import_valmer(...)`
+
+The operational entry point is:
+
+- `valmer-connectors vector update`
+
+`scripts/update_vector_valmer.py` is only a compatibility wrapper around the
+package service.
 
 ## Storage Relationship
 

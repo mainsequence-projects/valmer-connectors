@@ -108,18 +108,21 @@ identity override.
 rows describe which convention/index the curve belongs to and how to interpret
 published curve observations.
 
-Pricing runtime attachment order matters. `create_pricing_schemas(...)` is a
-legacy-named startup entrypoint; in current code it attaches already-registered
-pricing MetaTables and configures pricing market-data bindings. It does not
-create schemas or register missing MetaTables at runtime:
+Pricing runtime attachment order matters. Extension and project code should use
+`attach_pricing_schemas(...)` with an explicit `models=[...]` list. The
+`create_pricing_schemas(...)` function remains only for legacy compatibility
+and for callers that intentionally want startup market-data binding seeding.
+Project code must not use it as the normal pricing runtime contract:
 
 ```python
-from msm_pricing.bootstrap import create_pricing_schemas
+from msm_pricing.bootstrap import attach_pricing_schemas
+from msm_pricing.models.curves import CurveTable
+from msm_pricing.models.index_convention_details import IndexConventionDetailsTable
 
-create_pricing_schemas()
+attach_pricing_schemas(models=[IndexConventionDetailsTable, CurveTable])
 ```
 
-`create_pricing_schemas(...)` uses the same direct runtime attachment path as
+`attach_pricing_schemas(...)` uses the same direct runtime attachment path as
 `msm.start_engine(...)`: already-registered tables are attached, and dependency
 order is resolved before runtime binding. The dependency order includes
 `AssetTable`, `IndexTypeTable`, `IndexTable`, `IndexConventionDetailsTable`,

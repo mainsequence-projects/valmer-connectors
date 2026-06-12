@@ -295,7 +295,7 @@ def attach_valmer_curve_pricing_runtime(
     """Attach markets/pricing runtime objects needed by Valmer curve bootstrap."""
 
     import msm
-    from msm_pricing.bootstrap import create_pricing_schemas
+    from msm_pricing.bootstrap import attach_pricing_schemas
 
     configure_valmer_discount_curves_cadence()
     models = ["AssetType", "Asset", "IndexType", "Index"]
@@ -306,7 +306,30 @@ def attach_valmer_curve_pricing_runtime(
     if markets_models is not None:
         models.extend(markets_models)
     msm.start_engine(models=models, **runtime_kwargs)
-    return create_pricing_schemas(**runtime_kwargs)
+    return attach_pricing_schemas(
+        models=valmer_pricing_runtime_models(),
+        **runtime_kwargs,
+    )
+
+
+def valmer_pricing_runtime_models() -> list[type[Any]]:
+    """Pricing MetaTables required by Valmer instrument and curve workflows."""
+
+    from msm.models import AssetTable, IndexTable, IndexTypeTable
+    from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
+    from msm_pricing.models.curves import CurveTable
+    from msm_pricing.models.index_convention_details import IndexConventionDetailsTable
+    from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
+
+    return [
+        AssetTable,
+        IndexTypeTable,
+        IndexTable,
+        IndexConventionDetailsTable,
+        CurveTable,
+        AssetCurrentPricingDetailsTable,
+        AssetPricingDetailsStorage,
+    ]
 
 
 def configure_valmer_discount_curves_cadence(

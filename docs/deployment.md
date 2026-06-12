@@ -25,6 +25,8 @@ mainsequence project project_resource list 113 --path . --timeout 60
 mainsequence project images list 113 --timeout 60
 mainsequence markets portfolios list --timeout 60
 valmer-connectors runtime validate
+valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-mxn-government
 ```
 
 Use the dashboard after deployment to confirm:

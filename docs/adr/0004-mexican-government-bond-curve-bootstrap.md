@@ -10,10 +10,9 @@ Implemented
 
 ## Success Criteria
 
-This ADR is successful when it gives the implementation agent a precise plan to
-build a Valmer-driven Mexican government bond curve bootstrap without mixing it
-with asset registration, vector price publication, or the existing Valmer TIIE
-CSV curve path.
+This ADR records the implemented Valmer-driven Mexican government bond curve
+bootstrap. The path is separate from asset registration, vector price
+publication, bond pricing hydration, and the Valmer TIIE CSV curve path.
 
 The implementation that follows this ADR must:
 
@@ -91,10 +90,9 @@ Rows must also satisfy:
 - maturity date `fechavcto` is present and parseable
 - price fields needed by the selected QuantLib helper are present
 
-If `sector` is present, the selector should require `sector == "GUBERNAMENTAL"`
-for these first instruments. If a future Valmer file omits `sector`, the
-selector may proceed only for the explicit `(tipovalor, emisora)` allow-list
-above and should log that the sector guard was unavailable.
+If `sector` is present, the selector requires `sector == "GUBERNAMENTAL"`.
+If a Valmer file omits `sector`, the selector proceeds only for the explicit
+`(tipovalor, emisora)` allow-list above.
 
 ## Source Row Contract
 
@@ -117,12 +115,12 @@ implementation needs these fields:
 | `reglacupon` | M Bonos | Coupon rule |
 | `valornominal` | all rows | Face value when available |
 
-The builder should preserve `unique_identifier = tipovalor_emisora_serie` for
+The builder preserves `unique_identifier = tipovalor_emisora_serie` for
 diagnostics and helper attribution, but curve storage must not be asset-indexed.
 
 ## Issuer And Valuation Standards
 
-The first implementation must follow the official SHCP/Banco de Mexico
+The implementation follows the official SHCP/Banco de Mexico
 technical notes for CETES and BONOS rather than generic bond defaults.
 
 Source documents:
@@ -136,8 +134,7 @@ Source documents:
 ### Common MXN Government Convention
 
 Use these conventions for the `MXN_GOVERNMENT_BOND`
-`IndexConventionDetails.convention_dump` unless a later source-specific
-validation proves a more precise value:
+`IndexConventionDetails.convention_dump`:
 
 | Convention Field | Value | Rationale |
 | --- | --- | --- |
@@ -150,11 +147,10 @@ validation proves a more precise value:
 | `date_generation_rule` | `Backward` for generated fallback schedules | M Bonos series identify maturity; coupon schedules should be generated backward from maturity when source coupon dates are unavailable. |
 | `end_of_month` | `False` | The official descriptions use fixed day terms and 182-day periods, not end-of-month scheduling. |
 
-The implementation should prefer explicit Valmer coupon schedule fields if they
-exist in a future source. If the source does not provide coupon dates, generate
-a backward 182-day schedule using the Mexico/BMV calendar and the configured
-business-day convention. If generated dates cannot reproduce Valmer accrued
-interest within tolerance, fail instead of silently publishing a curve.
+The implementation generates a backward 182-day schedule using the Mexico/BMV
+calendar and the configured business-day convention. If generated dates cannot
+reproduce Valmer accrued interest within tolerance, it fails instead of silently
+publishing a curve.
 
 ### CETES Standard
 
@@ -232,14 +228,12 @@ end_of_month = false
 not be reused as a blanket trading settlement convention for every Mexican
 fixed-income workflow.
 
-The `Curve` row should use:
+The `Curve` row uses:
 
 - `curve_type = "discount"`
 - `source = "valmer"`
-- `interpolation_method = "log_linear_discount"` unless core pricing exposes a
-  stricter supported identifier before implementation
-- `compounding = "compounded_annual"` unless core pricing conventions require a
-  different MXN government convention
+- `interpolation_method = "log_linear_discount"`
+- `compounding = "compounded_annual"`
 - metadata only for stable source descriptors, not per-file observations
 
 Do not register CETES, M Bonos, or this curve as `Index` rows individually.
@@ -389,14 +383,9 @@ preferring CETES over M Bonos for that maturity. The resulting helper set still
 must have strictly increasing pillars. This keeps the curve publishable for real
 Valmer files where a CETES row and an M Bono row can share the same maturity.
 
-If a source file has only CETES or only M Bonos, the first implementation should
-either:
-
-- fail with a clear "insufficient bootstrap instruments" error, or
-- emit a partial curve only when an explicit configuration flag enables partial
-  publication
-
-The default should be fail closed.
+If a source file has only CETES or only M Bonos, the builder fails with a clear
+"insufficient bootstrap instruments" error. There is no partial-curve
+publication mode.
 
 ## Relationship To Asset Registration
 
@@ -423,14 +412,13 @@ ValmerAssetDetailsTable.asset_uid
     +-- issuer
 ```
 
-The curve bootstrap may use `ValmerAssetDetailsTable` for diagnostics or
-pre-filtering after it has been populated, but the first builder should be able
-to operate directly from normalized vector rows so historical files can be
-rebuilt deterministically.
+The curve bootstrap operates directly from normalized vector rows so historical
+files can be rebuilt deterministically. It does not require
+`ValmerAssetDetailsTable`.
 
-## Current Code To Extend
+## Implemented Code
 
-Suggested implementation locations:
+Implementation locations:
 
 - `src/valmer_connectors/instruments/mexican_government_bond_curve.py`
   for row selection, source validation, QuantLib helper creation, and curve
@@ -441,14 +429,13 @@ Suggested implementation locations:
 - `src/valmer_connectors/services/curve_update.py`
   for a service function that runs the new `DiscountCurvesNode`
 - `src/valmer_connectors/cli/main.py`
-  for a later CLI command such as:
+  for the CLI command:
 
 ```bash
 valmer-connectors curves update-mxn-government
 ```
 
-The existing `build_tiie_valmer(...)` function should remain focused on the
-Valmer MexDer TIIE CSV source.
+`build_tiie_valmer(...)` remains focused on the Valmer MexDer TIIE CSV source.
 
 ## Implementation Tasks
 
@@ -461,7 +448,7 @@ Valmer MexDer TIIE CSV source.
   `date_generation_rule = Backward`, and `end_of_month = false`.
 - [x] Add a vector-date extraction helper that mirrors vector price `fecha` to
   end-of-day `time_index` behavior.
-- [x] Add `select_mxn_government_bootstrap_instruments(...)` with the initial
+- [x] Add `select_mxn_government_bootstrap_instruments(...)` with the
   allow-list:
   `(tipovalor, emisora) in {("BI", "CETES"), ("M", "BONOS")}` and
   `monedaemision == "MPS"`.

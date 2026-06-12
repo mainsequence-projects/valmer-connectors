@@ -10,7 +10,7 @@ Accepted / Implemented
 
 ## Context
 
-The project currently exposes operational behavior through loose scripts under
+The project previously exposed operational behavior through loose scripts under
 `scripts/`:
 
 - `scripts/update_vector_valmer.py`
@@ -36,7 +36,7 @@ the migration providers:
 Add a project CLI entry point named `valmer-connectors` backed by package code
 under `src/valmer_connectors`.
 
-Initial package shape:
+Current package shape:
 
 ```text
 src/valmer_connectors/
@@ -58,12 +58,12 @@ Packaging entry point:
 valmer-connectors = "valmer_connectors.cli.main:main"
 ```
 
-Use Python stdlib `argparse` for the first implementation. Do not add `click` or
-`typer` until the command surface is large enough to justify a new dependency.
+The CLI uses Python stdlib `argparse`. The project does not depend on `click`
+or `typer`.
 
-`cli/main.py` should only parse arguments and dispatch. Operational behavior
-belongs in `valmer_connectors.services.*` so scripts, tests, jobs, and future
-APIs can reuse the same functions.
+`cli/main.py` only parses arguments and dispatches. Operational behavior lives
+in `valmer_connectors.services.*` so scripts, tests, jobs, and APIs can reuse
+the same functions.
 
 ## Command Surface
 
@@ -104,7 +104,7 @@ This command requires platform credentials and already migrated MetaTables.
 
 ### `valmer-connectors vector update`
 
-Replace the behavior currently in `scripts/update_vector_valmer.py`.
+Own the behavior previously exposed by `scripts/update_vector_valmer.py`.
 
 Default behavior:
 
@@ -115,26 +115,49 @@ Default behavior:
   current pricing details;
 - run the Valmer vector DataNode update with `run(force_update=True)`.
 
-Initial options:
+Options:
 
 ```text
 --bucket-name TEXT
 --debug-artifact-path PATH
 --first-loop-count INT
+--register-all-assets
 ```
 
 If `--bucket-name` is omitted, resolve the platform source bucket from
 `VALMER_VECTOR_BUCKET_NAME`. The legacy bucket name constant is only a
 backwards-compatible fallback.
 
-Do not expose `--force` / `--no-force` in the first CLI version.
+Do not expose `--force` / `--no-force`.
 `force_update=True` is the current script behavior and the intended default.
-If non-forced update behavior becomes useful later, define what "new work"
-means for Valmer inputs before adding a separate option.
+Define what "new work" means for Valmer inputs before adding any non-forced
+update mode.
+
+### `valmer-connectors curves update-mxn-government`
+
+Run the Valmer MXN government bond discount-curve update.
+
+Default behavior:
+
+- call `bootstrap_runtime()`;
+- import Valmer Vector Analitico rows without running asset registration,
+  asset-detail sync, vector publication, or bond pricing hydration;
+- select CETES and M Bonos MXN government bootstrap rows;
+- build the curve frame for `VALMER_MXN_GOVERNMENT_BOND`;
+- publish through `msm_pricing.data_nodes.DiscountCurvesNode` with
+  `run(force_update=True)`.
+
+Options:
+
+```text
+--curve-identifier TEXT
+--bucket-name TEXT
+--debug-artifact-path PATH
+```
 
 ### `valmer-connectors curves update-tiie-zero`
 
-Replace the behavior currently in `scripts/update_tiie_zero_curve.py`.
+Own the behavior previously exposed by `scripts/update_tiie_zero_curve.py`.
 
 Default behavior:
 
@@ -144,21 +167,21 @@ Default behavior:
 - run the curve DataNode update with the current script behavior,
   `run(force_update=True)`.
 
-Initial options:
+Options:
 
 ```text
 --curve-identifier TEXT
 ```
 
-The default curve identifier should remain
+The default curve identifier is
 `VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER`.
 
-Do not expose `--force` / `--no-force` in the first CLI version.
+Do not expose `--force` / `--no-force`.
 `force_update=True` is the current script behavior and the intended default.
 
 ## Script Compatibility
 
-Keep existing `scripts/*.py` files temporarily as thin compatibility wrappers.
+Keep existing operational `scripts/*.py` files as thin compatibility wrappers.
 
 Example:
 
@@ -169,9 +192,6 @@ from valmer_connectors.services.vector_update import run_vector_update
 if __name__ == "__main__":
     run_vector_update()
 ```
-
-After the CLI is validated in local and deployed environments, the wrappers may
-either be deleted or kept as minimal examples.
 
 `scripts/test_script.py` is not a durable operational command and should not be
 promoted into the CLI.
@@ -192,16 +212,14 @@ This ADR does not:
 - [x] Add `src/valmer_connectors/services/`.
 - [x] Add reusable service functions for runtime validation, vector update,
       TIIE zero curve update, and migration command rendering.
+- [x] Add reusable service function for the MXN government bond curve update.
 - [x] Add `src/valmer_connectors/cli/main.py` using `argparse`.
 - [x] Add `[project.scripts] valmer-connectors = "valmer_connectors.cli.main:main"`.
 - [x] Convert `scripts/update_vector_valmer.py` into a thin wrapper.
 - [x] Convert `scripts/update_tiie_zero_curve.py` into a thin wrapper.
 - [x] Convert `scripts/validate_runtime.py` into a thin wrapper.
+- [x] Add `valmer-connectors curves update-mxn-government`.
 - [x] Document CLI usage in project docs after implementation.
-- [ ] Add offline metadata inspection command if the project needs an explicit
-      schema-audit CLI.
-- [ ] Add CLI unit tests for offline commands.
-- [ ] Add tests that the script wrappers call the package operations.
 
 ## Validation
 
@@ -219,6 +237,7 @@ Live validation after credentials and migrations:
 valmer-connectors runtime validate
 valmer-connectors vector update
 valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-mxn-government
 ```
 
 ## Consequences

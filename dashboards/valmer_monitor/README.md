@@ -12,7 +12,7 @@ The dashboard now exposes:
   source exploration for a focused asset
 - `pages/2_Pricing_Hydration.py`: asset pricing-detail hydration status
 - `pages/3_Curve_Health.py`: canonical `discount_curves` DataNode checks for
-  the Valmer TIIE curve
+  the Valmer TIIE and MXN government curves
 
 The app reuses MainSequence Streamlit scaffolding and sidebar components for
 logged-user context and asset search.

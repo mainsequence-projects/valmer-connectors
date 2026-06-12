@@ -509,7 +509,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.3.18"
+version = "4.3.24"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -533,9 +533,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/fb/0893968fc32adb9d5ab994fbd3f32f074eb1761c944034d94036f8e24d21/mainsequence-4.3.18.tar.gz", hash = "sha256:e20f3e267a398df3f8aac48e0e913b8ab544f404ab20b6a58b4222c660d4c1e1", size = 496298, upload-time = "2026-06-09T19:54:09.233Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/4c/ca098c695c808c32a12cab8ec7ea421422a55fb0e6b198fae4a6d1a17e2b/mainsequence-4.3.24.tar.gz", hash = "sha256:817aefeb0135e4e988c11e72338187de080235b49971f72e6b4b59da3d404db6", size = 500006, upload-time = "2026-06-11T13:47:35.998Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c5/7b/e03ed8f055868fdbb19ce1c7b91b2b17ba289432ceec3c6c76a4886ef601/mainsequence-4.3.18-py3-none-any.whl", hash = "sha256:2933bfe442892805805f19e516c8242cc8743068a1478c58f84d0af69ee07331", size = 426666, upload-time = "2026-06-09T19:54:07.393Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/ff/1dbdc1fa93ee9c439fbb2bffa21d82b8e0e7f1935e00a06ceda0f41c1122/mainsequence-4.3.24-py3-none-any.whl", hash = "sha256:f3125a3cd997ae3c7cf08f1cbedd7f20b3990d0b57639cdf8ca7b4ab254ce80c", size = 428959, upload-time = "2026-06-11T13:47:34.496Z" },
 ]
 
 [[package]]
@@ -647,7 +647,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.57"
+version = "0.0.65"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -665,9 +665,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/b9/be0173b63086fa93d854ca845a3243e563b8b8aa786e693607065664ff5f/ms_markets-0.0.57.tar.gz", hash = "sha256:f5911a3d352c8fa10c305fabc6b38881257b75d41066961eb26d238c0198491f", size = 605057, upload-time = "2026-06-10T18:16:57.036Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/01/03c4c7fba17193de9150730138d42414d6f8b7cb5ca05ddd4a7cdf3976e6/ms_markets-0.0.65.tar.gz", hash = "sha256:d1a54ca70287e4ba25193f0220d6fd4977fbfea003a96e856c9a28e45c1d05fe", size = 1822603, upload-time = "2026-06-11T09:56:52.878Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/41/6af26e6170837ff5013d0b31a313eb7e0bbcfd4d246905c084d8537af896/ms_markets-0.0.57-py3-none-any.whl", hash = "sha256:96d40b1db9f889511078e140d1c4e4174720e53879d3ad0f17ee8c47116cf05e", size = 438191, upload-time = "2026-06-10T18:16:55.416Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/e3/a8c9bd0c6526cd4c04e95cb10fc09cc3c63ed37b4f8f066974341a2387ef/ms_markets-0.0.65-py3-none-any.whl", hash = "sha256:4fe801f6854b9c462afb11f913b37387a58d85b02c8e47f92a85253cc5c91378", size = 446827, upload-time = "2026-06-11T09:56:51.044Z" },
 ]
 
 [[package]]
@@ -1687,15 +1687,15 @@ wheels = [
 
 [[package]]
 name = "starlette"
-version = "1.2.1"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/44/ec35f1b6e83094b997da438a02c8c9b0ade2b1e84cfc48bd4656780760a6/starlette-1.2.1.tar.gz", hash = "sha256:9b9b5ebb992e67d6093741e63c2f59e4f6fff986f81163c087867bd7b924b3f6", size = 2701854, upload-time = "2026-05-31T01:07:51.847Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c1/37/cc24e33974e1439cf5ca62b0735b63026eabb768f472d8775f52d5851ed9/starlette-1.3.0.tar.gz", hash = "sha256:bb58cbb7a699da4ee4be9ed4cdfe4bc5b0390aa6dac1d1ac714ebebe8dc3c8df", size = 2702493, upload-time = "2026-06-11T06:27:41.869Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1c/54/196d0c1db10af76baa4f64894448505d60d3cdf70ef92cbb35f46a4e4c71/starlette-1.2.1-py3-none-any.whl", hash = "sha256:4de0082d08c8f6764a85a54cf1120d6939507a19905c7768acad2a9f875d2b89", size = 73350, upload-time = "2026-05-31T01:07:50.09Z" },
+    { url = "https://files.pythonhosted.org/packages/16/42/56d31c5ee52dab0ad893d67d4f9c00f5ba2b4c5d87f392eca2c3fdce01cf/starlette-1.3.0-py3-none-any.whl", hash = "sha256:ff4ca1bc23de6a45cdfbbeb9b3caaea524c9221cdd8a6684ad7a4f651a83890b", size = 73492, upload-time = "2026-06-11T06:27:40.444Z" },
 ]
 
 [[package]]
@@ -1841,7 +1841,7 @@ wheels = [
 
 [[package]]
 name = "valmer-connectors"
-version = "0.1.12"
+version = "0.1.13"
 source = { editable = "." }
 dependencies = [
     { name = "mainsequence" },
@@ -1853,7 +1853,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "mainsequence", specifier = ">=4.3.18" },
-    { name = "ms-markets", specifier = ">=0.0.45" },
+    { name = "ms-markets", specifier = ">=0.0.65" },
     { name = "streamlit", specifier = ">=1.58.0" },
     { name = "xlrd", specifier = ">=2.0.2" },
 ]

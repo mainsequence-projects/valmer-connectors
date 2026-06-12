@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted / Implemented Locally; Live Validation Pending
 
 ## Date
 
@@ -192,6 +192,7 @@ from msm.settings import (
     markets_identifier,
 )
 
+from msm.models.assets import AssetTable
 from migrations.registry import metatable_provider_models
 from valmer_connectors.markets import (
     VALMER_MARKETS_NAMESPACE,
@@ -200,7 +201,19 @@ from valmer_connectors.markets import (
 
 
 VALMER_MIGRATION_MODELS = tuple(metatable_provider_models())
+VALMER_REFERENCE_MODELS = (AssetTable,)
+VALMER_TARGET_METADATA = metadata_for_models(
+    (*VALMER_MIGRATION_MODELS, *VALMER_REFERENCE_MODELS)
+)
 VALMER_TABLE_APP = VALMER_MARKETS_STORAGE_APP
+
+
+def _include_valmer_name(name, type_, parent_names):
+    ...
+
+
+def _include_valmer_object(object_, name, type_, reflected, compare_to):
+    ...
 
 
 ValmerAlembicVersion = build_alembic_version_metatable(
@@ -223,9 +236,11 @@ migration = build_metatable_migration_provider(
     package="valmer_connectors",
     migration_namespace=VALMER_MARKETS_NAMESPACE,
     script_location="migrations:",
-    target_metadata=metadata_for_models(VALMER_MIGRATION_MODELS),
+    target_metadata=VALMER_TARGET_METADATA,
     alembic_registry=ValmerAlembicVersion,
     metatable_models=VALMER_MIGRATION_MODELS,
+    include_name_hook=_include_valmer_name,
+    include_object_hook=_include_valmer_object,
 )
 ```
 
@@ -244,12 +259,15 @@ must not register or mutate built-in ms-markets models.
 
 Because the current Valmer project tables subclass `MarketsBase`, the provider
 must prevent Alembic autogenerate from emitting built-in ms-markets tables. The
-implementation uses `metadata_for_models(VALMER_MIGRATION_MODELS)` so the
-provider target metadata contains only project-owned Valmer tables. Initial
-table creation for provider-scoped platform MetaTables happens through
-`metatable_models` registration in the SDK migration lifecycle, not through
-hand-written `op.create_table(...)` statements. Alembic revisions should contain
-explicit DDL only when a later in-place schema evolution requires it.
+implementation includes `AssetTable` in target metadata only so Valmer foreign
+keys can resolve during Alembic comparison. DDL emission is scoped back to
+Valmer-owned tables through `include_name_hook` and `include_object_hook`.
+
+The current baseline revision under
+`src/migrations/versions/valmer_connectors/0001_migration.py` contains
+Alembic-generated DDL for the two Valmer-owned project tables. It must not be
+expanded to built-in ms-markets tables, and future revisions should contain
+explicit DDL only when a later in-place Valmer schema evolution requires it.
 
 The project provider must not include:
 
@@ -269,23 +287,16 @@ Valmer must not call built-in ms-markets migration catalog refresh logic. That
 logic is reserved for the full core ms-markets migration model registry, not for
 project-local extension models.
 
-## Runtime Bootstrap Refactor
+## Runtime Bootstrap Contract
 
-Current project bootstrap names are misleading under the new architecture.
+`bootstrap_runtime()` is the project runtime entry point. It attaches runtime
+tables and seeds static rows; it does not create schemas, run migrations, or
+register MetaTables.
 
-Refactor the bootstrap surface so that code names reflect runtime attachment and
-static seeding, not schema registration.
+Compatibility helpers such as `register_all()` delegate to
+`bootstrap_runtime()` and must not be used to imply schema creation.
 
-Required changes:
-
-- Rename or deprecate `register_all()` so it no longer implies schema creation.
-- Rename or deprecate helpers such as `create_valmer_curve_pricing_schemas(...)`
-  if they only attach pricing runtime objects or seed pricing configuration.
-- Keep any compatibility wrapper temporary and make the deprecation explicit.
-- Remove documentation language that says runtime code "registers schemas".
-- Ensure DataNode update paths do not depend on implicit storage registration.
-
-Runtime attachment should include the project extension tables when needed:
+Runtime attachment includes the project extension tables:
 
 ```python
 msm.start_engine(
@@ -357,8 +368,9 @@ The correct migration and runtime workflow is:
    Do not run `mainsequence migrations revision` as part of normal setup. Use
    it only after changing the Valmer SQLAlchemy table contract and expecting an
    in-place Alembic DDL delta. Initial table registration and physical table
-   creation are driven by `metatable_models` during `upgrade`; the baseline
-   `0001` revision intentionally has no `op.create_table(...)` statements.
+   registration are driven by the project migration provider during `upgrade`;
+   the current baseline `0001` revision contains Alembic-generated DDL only for
+   Valmer-owned project tables.
 
 4. Start or run project code that attaches runtime tables.
 5. Seed static rows such as reference indexes and Valmer asset details.

@@ -20,14 +20,15 @@ The project-specific dashboard now includes:
 - recent `vector_de_precios_valmer` coverage
 - focused source exploration for a selected Valmer asset or `unique_identifier`
 - target-bond pricing-detail hydration gaps
-- canonical `discount_curves` DataNode health for the Valmer TIIE curve
+- canonical `discount_curves` DataNode health for the Valmer TIIE and MXN
+  government curves
 
 The dashboard reuses MainSequence Streamlit scaffolding plus sidebar components
 for authenticated-user display and asset lookup, then layers Valmer-specific
 charts and tables on top of the stored DataNode schema.
 
-The curve page monitors the `msm_pricing.data_nodes.DiscountCurvesNode` output.
-It no longer reads the old standalone curve table.
+The curve page monitors `msm_pricing.data_nodes.DiscountCurvesNode` output. It
+no longer reads the old standalone curve table.
 
 ## Failure Handling
 

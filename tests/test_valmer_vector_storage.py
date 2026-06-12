@@ -21,6 +21,7 @@ from valmer_connectors.data_nodes.nodes import (
     ImportValmer,
     ImportValmerConfig,
     _build_valmer_asset_snapshot_rows,
+    _persist_valmer_pricing_details_batch,
     _publish_valmer_asset_snapshots,
 )
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
@@ -261,7 +262,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
         snapshot_node = Mock()
         snapshot_node.get_df_between_dates.return_value = pd.DataFrame()
         snapshot_node.set_snapshots.return_value = snapshot_node
-        snapshot_node.run.return_value = (None, pd.DataFrame([{"name": "BONOS 241205 FULL NAME"}]))
+        snapshot_node.run.return_value = (False, pd.DataFrame([{"name": "BONOS 241205 FULL NAME"}]))
 
         with patch("valmer_connectors.data_nodes.nodes.AssetSnapshot") as asset_snapshot_class:
             asset_snapshot_class.return_value = snapshot_node
@@ -273,6 +274,48 @@ class ValmerVectorStorageTest(unittest.TestCase):
                 logger=Mock(),
             )
 
+        snapshot_node.set_snapshots.assert_called_once_with(
+            [
+                {
+                    "time_index": pd.Timestamp("2024-01-02T23:59:59Z"),
+                    ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205",
+                    "name": "BONOS 241205 FULL NAME",
+                }
+            ]
+        )
+        snapshot_node.run.assert_called_once_with(force_update=True)
+        self.assertEqual(published, 1)
+
+    def test_publish_valmer_asset_snapshots_handles_missing_backend_update(self):
+        latest = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "M_BONOS_241205",
+                    "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
+                    "nombrecompleto": "BONOS 241205 FULL NAME",
+                }
+            ]
+        )
+        asset = SimpleNamespace(
+            uid=uuid.uuid4(),
+            unique_identifier="M_BONOS_241205",
+            asset_type=ASSET_TYPE_BOND,
+        )
+        snapshot_node = Mock()
+        snapshot_node.data_node_update = None
+        snapshot_node.set_snapshots.return_value = snapshot_node
+        snapshot_node.run.return_value = (False, pd.DataFrame([{"name": "BONOS 241205 FULL NAME"}]))
+
+        with patch("valmer_connectors.data_nodes.nodes.AssetSnapshot") as asset_snapshot_class:
+            asset_snapshot_class.return_value = snapshot_node
+
+            published = _publish_valmer_asset_snapshots(
+                latest,
+                {"M_BONOS_241205": asset},
+                logger=Mock(),
+            )
+
+        snapshot_node.get_df_between_dates.assert_not_called()
         snapshot_node.set_snapshots.assert_called_once_with(
             [
                 {
@@ -390,6 +433,94 @@ class ValmerVectorStorageTest(unittest.TestCase):
 
         self.assertEqual(refreshes, ["LD_BONDESD_250101"])
 
+    def test_persist_valmer_pricing_details_batches_by_pricing_date(self):
+        asset_a = SimpleNamespace(uid=uuid.uuid4(), unique_identifier="M_BONOS_241205")
+        asset_b = SimpleNamespace(uid=uuid.uuid4(), unique_identifier="LD_BONDESD_250101")
+        instrument_a = object()
+        instrument_b = object()
+        details = {
+            "M_BONOS_241205": {
+                "instrument": instrument_a,
+                "pricing_details_date": pd.Timestamp("2024-01-02T00:00:00Z"),
+            },
+            "LD_BONDESD_250101": {
+                "instrument": instrument_b,
+                "pricing_details_date": pd.Timestamp("2024-01-03T00:00:00Z"),
+            },
+        }
+
+        with patch(
+            "valmer_connectors.data_nodes.nodes.add_many_pricing_details",
+            side_effect=[
+                SimpleNamespace(pricing_details=[object()], updated_current_count=1),
+                SimpleNamespace(pricing_details=[object()], updated_current_count=1),
+            ],
+        ) as add_many:
+            persisted_uids = _persist_valmer_pricing_details_batch(
+                assets_for_update={
+                    "M_BONOS_241205": asset_a,
+                    "LD_BONDESD_250101": asset_b,
+                },
+                instrument_pricing_detail_map=details,
+                batch_size=5000,
+                logger=Mock(),
+            )
+
+        self.assertEqual(persisted_uids, ["M_BONOS_241205", "LD_BONDESD_250101"])
+        self.assertEqual(add_many.call_count, 2)
+        first_items = add_many.call_args_list[0].args[0]
+        self.assertEqual(add_many.call_args_list[0].kwargs["batch_size"], 5000)
+        self.assertEqual(
+            add_many.call_args_list[0].kwargs["pricing_details_date"].isoformat(),
+            "2024-01-02T00:00:00+00:00",
+        )
+        self.assertEqual(
+            first_items,
+            [
+                {
+                    "asset": asset_a,
+                    "instrument": instrument_a,
+                    "source": "valmer",
+                    "metadata_json": {"valmer_unique_identifier": "M_BONOS_241205"},
+                }
+            ],
+        )
+
+    def test_persist_valmer_pricing_details_raises_on_incomplete_batch_result(self):
+        asset_a = SimpleNamespace(uid=uuid.uuid4(), unique_identifier="M_BONOS_241205")
+        asset_b = SimpleNamespace(uid=uuid.uuid4(), unique_identifier="LD_BONDESD_250101")
+        details = {
+            "M_BONOS_241205": {
+                "instrument": object(),
+                "pricing_details_date": pd.Timestamp("2024-01-02T00:00:00Z"),
+            },
+            "LD_BONDESD_250101": {
+                "instrument": object(),
+                "pricing_details_date": pd.Timestamp("2024-01-02T00:00:00Z"),
+            },
+        }
+
+        with patch(
+            "valmer_connectors.data_nodes.nodes.add_many_pricing_details",
+            return_value=SimpleNamespace(
+                pricing_details=[object()],
+                updated_current_count=1,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "submitted 2 items, returned 1 rows",
+            ):
+                _persist_valmer_pricing_details_batch(
+                    assets_for_update={
+                        "M_BONOS_241205": asset_a,
+                        "LD_BONDESD_250101": asset_b,
+                    },
+                    instrument_pricing_detail_map=details,
+                    batch_size=5000,
+                    logger=Mock(),
+                )
+
     def test_sync_asset_registry_defaults_to_pricing_target_registration_scope(self):
         asset_uid = uuid.uuid4()
         asset = SimpleNamespace(
@@ -467,9 +598,10 @@ class ValmerVectorStorageTest(unittest.TestCase):
             )
             stack.enter_context(
                 patch(
-                    "valmer_connectors.data_nodes.nodes.persist_current_pricing_details",
+                    "valmer_connectors.data_nodes.nodes.add_many_pricing_details",
                     return_value=SimpleNamespace(
-                        pricing_details_date=pd.Timestamp("2024-01-02T00:00:00Z")
+                        pricing_details=[object()],
+                        updated_current_count=1,
                     ),
                 )
             )
@@ -635,7 +767,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             )
             stack.enter_context(
                 patch(
-                    "valmer_connectors.data_nodes.nodes.persist_current_pricing_details",
+                    "valmer_connectors.data_nodes.nodes.add_many_pricing_details",
                     side_effect=RuntimeError("backend insert failed"),
                 )
             )
@@ -648,7 +780,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
                 )
             )
 
-            with self.assertRaisesRegex(RuntimeError, "M_BONOS_241205"):
+            with self.assertRaisesRegex(RuntimeError, "backend insert failed"):
                 ImportValmer._sync_asset_registry_and_pricing(
                     node,
                     ["M_BONOS_241205"],
@@ -720,9 +852,10 @@ class ValmerVectorStorageTest(unittest.TestCase):
             )
             stack.enter_context(
                 patch(
-                    "valmer_connectors.data_nodes.nodes.persist_current_pricing_details",
+                    "valmer_connectors.data_nodes.nodes.add_many_pricing_details",
                     return_value=SimpleNamespace(
-                        pricing_details_date=pd.Timestamp("2024-01-02T00:00:00Z")
+                        pricing_details=[object()],
+                        updated_current_count=1,
                     ),
                 )
             )

@@ -1,8 +1,8 @@
-# MetaTable Query Optimization Implementation Plan
+# MetaTable Query Optimization
 
-This document defines the implementation plan for making the Valmer vector
-update path stop using full-row MetaTable reads when the workflow only needs
-existence checks, row identifiers, or freshness metadata.
+This document records the current Valmer vector update optimization that avoids
+full-row MetaTable reads when the workflow only needs existence checks, row
+identifiers, or freshness metadata.
 
 The current problem is not only logging. The backend is doing unnecessary work
 because `msm.repositories.crud.search_model(...)` compiles `select(model)`,
@@ -10,9 +10,9 @@ which returns every mapped column for that model. The Valmer update path calls
 that generic helper on high-cardinality batches where the code usually needs
 only two or three fields.
 
-## Success Criteria
+## Current Contract
 
-The implementation is complete when:
+The implemented contract is:
 
 - asset validation queries return only the columns needed for asset existence,
   UID mapping, and asset type correction;
@@ -22,12 +22,15 @@ The implementation is complete when:
   whether an instrument must be rebuilt;
 - position-building asset lookup returns only `unique_identifier` and `uid`;
 - logs show row counts for fetched, skipped, missing, stale, and written rows;
-- tests prove that equal or older `details_asof` values skip asset detail
+- tests prove that equal or older `details_asof` values skip asset-detail
   upserts and strictly newer values write;
 - the vector update does not call full-row `search_model(...)` in the hot
-  validation paths listed below.
+  validation paths listed below;
+- pricing details are persisted through
+  `msm_pricing.api.add_many_pricing_details(...)`, and incomplete timestamped
+  results raise instead of being accepted.
 
-## Current Bottleneck Map
+## Current Hot Path Map
 
 ```text
 +-------------------------------------------------------------+
@@ -39,37 +42,32 @@ The implementation is complete when:
 | ImportValmer.prepare_for_update()                          |
 +-------------------------------------------------------------+
         |
-        +-- resolve_valmer_assets(...)
-        |      current: full AssetTable rows
-        |      needed: unique_identifier, uid, asset_type
+        +-- resolve_valmer_asset_refs(...)
+        |      projection: unique_identifier, uid, asset_type
         |
-        +-- _get_current_pricing_details_by_uid(...)
-        |      current: full AssetCurrentPricingDetails rows
-        |      needed: asset_uid, instrument_dump face_value
+        +-- _get_current_pricing_face_values_by_uid(...)
+        |      projection: asset_uid, instrument_dump
         |
         +-- upsert_valmer_asset_details(...)
-        |      current: full ValmerAssetDetailsTable rows
-        |      needed: asset_uid, valmer_unique_identifier, details_asof
+        |      projection gate: asset_uid, valmer_unique_identifier, details_asof
         |
         +-- build_qll_bond_from_row(...)
         |
-        +-- persist_current_pricing_details(...)
-               current: one backend upsert per asset
-               needed: separate bulk-write implementation after projection reads
+        +-- _persist_valmer_pricing_details_batch(...)
+               msm_pricing bulk timestamped upsert + strict-date current reconciliation
 ```
 
 The log line below is from the last phase, not from asset/detail resolution:
 
 ```text
-Persisting current pricing details: starting 1757 items.
+Persisting Valmer pricing details in bulk: 1757 items, 1 date groups, batch size 5000.
 ```
 
-That phase is still slow because `persist_current_pricing_details(...)` performs
-one `AssetCurrentPricingDetails.upsert(...)` per asset. Thin projection reads
-will make earlier phases faster, but this final persistence phase needs its own
-bulk-write task if the end-to-end update is still too slow.
+That phase uses `msm_pricing.api.add_many_pricing_details(...)`, so it should
+not emit one backend write per asset. Thin projection reads are already used
+for the earlier validation phases.
 
-## Query Sites To Replace
+## Implemented Projection Sites
 
 ### 1. Asset Resolution
 
@@ -85,7 +83,7 @@ Current function:
 resolve_valmer_assets(...)
 ```
 
-Current behavior:
+Legacy behavior:
 
 ```text
 search_model(
@@ -110,7 +108,7 @@ uid
 asset_type
 ```
 
-Implementation:
+Implemented helper:
 
 ```text
 resolve_valmer_asset_refs(...)
@@ -132,8 +130,8 @@ class ValmerAssetRef:
     asset_type: str | None
 ```
 
-Keep `resolve_valmer_assets(...)` only for callers that need typed
-`msm.api.assets.Asset` objects. The vector update hot path should use
+`resolve_valmer_assets(...)` remains only for callers that need typed
+`msm.api.assets.Asset` objects. The vector update hot path uses
 `resolve_valmer_asset_refs(...)`.
 
 ### 2. Asset UID Only Lookup
@@ -150,7 +148,7 @@ Current call site:
 build_position_from_sheet(...)
 ```
 
-Current behavior:
+Legacy behavior:
 
 ```text
 resolve_valmer_assets(df_out["UID"].to_list())
@@ -164,7 +162,7 @@ This materializes asset objects only to map:
 UID -> asset.uid
 ```
 
-Implementation:
+Implemented helper:
 
 ```text
 resolve_valmer_asset_uids(...)
@@ -195,7 +193,7 @@ Current function:
 resolve_valmer_asset_details(...)
 ```
 
-Current behavior:
+Legacy behavior:
 
 ```text
 search_model(
@@ -217,7 +215,7 @@ details_asof
 It should not fetch static descriptor columns such as issuer, sector, coupon
 fields, maturity, or placement terms.
 
-Implementation:
+Implemented helper:
 
 ```text
 resolve_valmer_asset_detail_versions(...)
@@ -260,13 +258,13 @@ Current file:
 src/valmer_connectors/data_nodes/nodes.py
 ```
 
-Current function:
+Implemented function:
 
 ```text
-ImportValmer._get_current_pricing_details_by_uid(...)
+ImportValmer._get_current_pricing_face_values_by_uid(...)
 ```
 
-Current behavior:
+Legacy behavior:
 
 ```text
 search_model(
@@ -280,25 +278,17 @@ Problem:
 The refresh decision only checks whether the previous instrument face value
 matches the latest Valmer row.
 
-Current code reads a full `AssetCurrentPricingDetails` object, but the decision
-only needs:
+The current code reads only:
 
 ```text
 asset_uid
 instrument_dump
 ```
 
-Better target if supported cleanly by compiled SQL:
+Implemented projection:
 
 ```text
-asset_uid
-instrument_dump["face_value"]
-```
-
-Implementation:
-
-```text
-resolve_current_pricing_face_values(...)
+_get_current_pricing_face_values_by_uid(...)
     SELECT
         AssetCurrentPricingDetailsTable.asset_uid,
         AssetCurrentPricingDetailsTable.instrument_dump
@@ -341,7 +331,7 @@ Each helper should:
 - log batches and summary counts when a logger is provided;
 - keep the existing full-object resolver available for non-hot paths.
 
-Expected helper locations:
+Implemented helper locations:
 
 ```text
 src/valmer_connectors/instruments/asset_identity.py
@@ -389,7 +379,8 @@ ImportValmer._sync_asset_registry_and_pricing(...)
     |
     +-- build_qll_bond_from_row(...)
     |
-    +-- persist current pricing details
+    +-- _persist_valmer_pricing_details_batch(...)
+          -> msm_pricing.api.add_many_pricing_details(...)
 ```
 
 ## Logging Requirements
@@ -421,65 +412,58 @@ Pricing refresh decision: 1757 target assets, 0 missing details, 0 changed face 
 Pricing persistence:
 
 ```text
-Persisting current pricing details: starting 1757 items.
+Persisting Valmer pricing details in bulk: 1757 items, 1 date groups, batch size 5000.
 ```
 
-If this phase is still slow after the projection work, that is expected. It is
-the one-row-at-a-time pricing upsert path and must be addressed separately with
-a bulk pricing-details writer.
+This phase now uses the core `msm_pricing` bulk writer. It should emit one
+message per Valmer pricing-date group instead of one backend write per asset.
 
-## Pricing Persistence Follow-Up
+## Pricing Persistence
 
-The existing pricing persistence path calls:
+Pricing persistence now calls:
 
 ```text
-valmer_connectors.data_nodes.nodes.persist_current_pricing_details(...)
-    -> msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)
+valmer_connectors.data_nodes.nodes._persist_valmer_pricing_details_batch(...)
+    -> msm_pricing.api.add_many_pricing_details(...)
 ```
 
-inside a loop. That performs one backend upsert per asset.
-
-After projection reads are implemented, the next performance task should be:
-
-```text
-bulk_persist_current_pricing_details(...)
-```
+for each explicit Valmer pricing date. The `msm_pricing` batch API always
+upserts timestamped pricing-detail rows. It updates current rows only if the
+incoming explicit date is strictly newer than the stored current row, or when no
+current row exists.
 
 Expected behavior:
 
-- build instrument backend payloads locally;
-- validate each instrument against its asset;
-- bulk upsert `AssetCurrentPricingDetailsTable` rows;
-- return or log only the minimal result needed by this project;
-- log one completion message per batch, not one message per asset.
-
-This is intentionally separate from the projection-read task because it changes
-write semantics and should be validated independently.
+- validate each instrument against its asset through `msm_pricing`;
+- bulk upsert timestamped pricing-detail rows;
+- reconcile current rows through the core strict-date policy;
+- raise if the timestamped result is incomplete for the submitted Valmer UIDs;
+- log one completion message per date group, not one message per asset.
 
 ## Implementation Checklist
 
-- [ ] Add `ValmerAssetRef` dataclass.
-- [ ] Add `resolve_valmer_asset_refs(...)` projection query.
-- [ ] Add `resolve_valmer_asset_uids(...)` projection query.
-- [ ] Update `ImportValmer._sync_asset_registry_and_pricing(...)` to use asset
+- [x] Add `ValmerAssetRef` dataclass.
+- [x] Add `resolve_valmer_asset_refs(...)` projection query.
+- [x] Add `resolve_valmer_asset_uids(...)` projection query.
+- [x] Update `ImportValmer._sync_asset_registry_and_pricing(...)` to use asset
       refs for existence and asset type checks.
-- [ ] Keep `resolve_valmer_assets(...)` for callers that really need typed
+- [x] Keep `resolve_valmer_assets(...)` for callers that really need typed
       `Asset` objects.
-- [ ] Add `ValmerAssetDetailVersion` dataclass.
-- [ ] Add `resolve_valmer_asset_detail_versions(...)` projection query.
-- [ ] Update `upsert_valmer_asset_details(...)` to use only detail versions for
+- [x] Add `ValmerAssetDetailVersion` dataclass.
+- [x] Add `resolve_valmer_asset_detail_versions(...)` projection query.
+- [x] Update `upsert_valmer_asset_details(...)` to use only detail versions for
       the freshness gate.
-- [ ] Add `_get_current_pricing_face_values_by_uid(...)`.
-- [ ] Update `_get_pricing_refresh_uids(...)` to consume face values rather than
+- [x] Add `_get_current_pricing_face_values_by_uid(...)`.
+- [x] Update `_get_pricing_refresh_uids(...)` to consume face values rather than
       full `AssetCurrentPricingDetails` models.
-- [ ] Update `build_position_from_sheet(...)` to use
+- [x] Update `build_position_from_sheet(...)` to use
       `resolve_valmer_asset_uids(...)`.
-- [ ] Add tests for projection helpers and strict detail freshness behavior.
-- [ ] Add tests proving full `search_model(...)` is not used in the hot paths.
+- [x] Add tests for projection helpers and strict detail freshness behavior.
+- [x] Add tests proving full `search_model(...)` is not used in the hot paths.
 - [ ] Run the vector update against a local sample and confirm logs show skip
       counts before pricing persistence starts.
-- [ ] Decide whether to implement `bulk_persist_current_pricing_details(...)` as
-      the next task.
+- [x] Replace one-row pricing-detail writes with
+      `msm_pricing.api.add_many_pricing_details(...)`.
 
 ## Validation Commands
 
@@ -508,5 +492,5 @@ Expected runtime evidence:
   newer;
 - pricing refresh logs show target count and refresh count before instrument
   construction;
-- if the run stalls at `Persisting current pricing details`, the remaining
-  bottleneck is the one-row-at-a-time pricing write path.
+- pricing persistence logs show the `add_many_pricing_details(...)` batch size,
+  date-group count, timestamped-row count, and current-row update count.

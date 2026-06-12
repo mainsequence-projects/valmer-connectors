@@ -20,6 +20,9 @@ MAX_VALMER_META_OPERATION_BATCH_SIZE = 1000
 VALMER_ASSET_UPSERT_BATCH_SIZE_ENV = "VALMER_ASSET_UPSERT_BATCH_SIZE"
 DEFAULT_VALMER_ASSET_UPSERT_BATCH_SIZE = 500
 MAX_VALMER_ASSET_UPSERT_BATCH_SIZE = 500
+VALMER_PRICING_DETAILS_BATCH_SIZE_ENV = "VALMER_PRICING_DETAILS_BATCH_SIZE"
+DEFAULT_VALMER_PRICING_DETAILS_BATCH_SIZE = 5000
+MAX_VALMER_PRICING_DETAILS_BATCH_SIZE = 5000
 
 
 def resolve_valmer_vector_bucket_name(bucket_name: str | None = None) -> str:
@@ -53,6 +56,19 @@ def resolve_valmer_asset_upsert_batch_size(batch_size: int | None = None) -> int
     if batch_size <= 0:
         raise ValueError("Valmer asset upsert batch size must be positive.")
     return min(batch_size, MAX_VALMER_ASSET_UPSERT_BATCH_SIZE)
+
+
+def resolve_valmer_pricing_details_batch_size(batch_size: int | None = None) -> int:
+    if batch_size is None:
+        batch_size = int(
+            os.environ.get(
+                VALMER_PRICING_DETAILS_BATCH_SIZE_ENV,
+                DEFAULT_VALMER_PRICING_DETAILS_BATCH_SIZE,
+            )
+        )
+    if batch_size <= 0:
+        raise ValueError("Valmer pricing-details batch size must be positive.")
+    return min(batch_size, MAX_VALMER_PRICING_DETAILS_BATCH_SIZE)
 
 
 BUCKET_NAME_HISTORICAL_VECTORS = resolve_valmer_vector_bucket_name()

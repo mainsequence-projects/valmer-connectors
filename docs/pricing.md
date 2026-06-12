@@ -28,7 +28,7 @@ msm.start_engine(...)
     +-- ValmerVectorPricesStorage
     |
     v
-msm_pricing.bootstrap.create_pricing_schemas(...)
+msm_pricing.bootstrap.attach_pricing_schemas(models=[...])
     |
     v
 seed static pricing rows
@@ -36,9 +36,16 @@ seed static pricing rows
 
 ## Static Pricing Rows
 
-`src/valmer_connectors/instruments/curve_bootstrap.py` seeds the Mexican
+`src/valmer_connectors/instruments/curve_bootstrap.py` attaches the explicit
+pricing runtime models needed by this project, then seeds the Mexican
 reference-index, convention, and Valmer curve rows required by core
 `ms-markets` / `msm_pricing`.
+
+The project uses `attach_pricing_schemas(models=[...])`, not the legacy
+`create_pricing_schemas(...)` entry point. This avoids default
+`PricingMarketDataSet` / `PricingMarketDataBinding` seeding during vector
+updates. If this project later overrides default curve or fixing DataNodes, it
+must do that explicitly in a separate pricing market-data configuration flow.
 
 Reference indexes:
 
@@ -121,20 +128,29 @@ _sync_asset_registry_and_pricing(...)
     +-- upsert ValmerAssetDetailsTable rows for registered assets
     +-- decide which target bonds need pricing refresh
     +-- build_qll_bond_from_row(...)
-    +-- persist_current_pricing_details(...)
+    +-- add_many_pricing_details(...)
 ```
 
 Pricing hydration writes through:
 
 ```text
-valmer_connectors.data_nodes.nodes.persist_current_pricing_details(...)
+valmer_connectors.data_nodes.nodes._persist_valmer_pricing_details_batch(...)
     |
     v
-msm_pricing.api.pricing_details.AssetCurrentPricingDetails.upsert(...)
+msm_pricing.api.add_many_pricing_details(...)
 ```
 
-It links the current instrument/pricing payload to the canonical `AssetTable`
-row through the asset object.
+It writes timestamped pricing-detail rows and lets `msm_pricing` reconcile the
+current pricing projection. With an explicit `pricing_details_date`, the
+timestamped row is always upserted, while the current row is updated only when
+there is no current row or the incoming date is strictly newer than the current
+date. Equal or older dates do not replace current rows.
+
+The Valmer wrapper does not suppress `msm_pricing` write errors. It also treats
+an incomplete timestamped result as a hard failure: if
+`add_many_pricing_details(...)` returns fewer pricing-detail rows than the
+submitted batch, the vector update raises with the submitted Valmer UIDs instead
+of silently accepting a partial hydration.
 
 By default, the asset registration universe and current pricing-detail universe
 are the same: both use the target-bond subset selected by

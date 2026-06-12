@@ -4,8 +4,9 @@
 with Valmer market data for Mexican fixed income. The repository imports Valmer
 vector source rows, registers or reuses Valmer bond assets, stores static Valmer
 asset descriptors, publishes source vector observations, hydrates supported bond
-pricing details, and publishes a Valmer TIIE 28 curve from the public Valmer
-MexDer benchmark CSV.
+pricing details, publishes a Valmer TIIE 28 curve from the public Valmer
+MexDer benchmark CSV, and publishes a Valmer MXN government discount curve from
+Vector Analitico CETES and M Bonos rows.
 
 ## What The Project Does
 
@@ -19,9 +20,13 @@ MexDer benchmark CSV.
 - Attaches `msm_pricing` pricing details for the supported Mexican bond
   universe.
 - Registers Mexican TIIE/CETE index identities, pricing conventions, and the
-  `VALMER_TIIE_28` curve identity through `src/valmer_connectors/instruments/bootstrap.py`.
+  `VALMER_TIIE_28` and `VALMER_MXN_GOVERNMENT_BOND` curve identities through
+  `bootstrap_runtime()` and
+  `src/valmer_connectors/instruments/curve_bootstrap.py`.
 - Publishes the Valmer TIIE curve through the canonical
   `msm_pricing.data_nodes.DiscountCurvesNode` path.
+- Publishes the Valmer MXN government curve through the same
+  `DiscountCurvesNode` path from CETES and M Bonos Vector Analitico rows.
 - Includes a project-specific multipage Streamlit dashboard under
   `dashboards/valmer_monitor/`.
 
@@ -115,9 +120,10 @@ from `src/migrations`.
 
 Do not run `mainsequence migrations revision` during normal setup. Use
 `revision` only after changing the Valmer SQLAlchemy table contract and
-expecting an in-place Alembic DDL delta. Initial MetaTable registration is
-handled by `mainsequence migrations upgrade` through the provider
-`metatable_models`.
+expecting an in-place Alembic DDL delta. Project table DDL and MetaTable
+catalog registration are applied by `mainsequence migrations upgrade` through
+the Valmer migration provider. Do not hand-author DDL for built-in ms-markets
+tables in this project.
 
 ### Project CLI Surface
 
@@ -136,6 +142,7 @@ valmer-connectors migrations commands
 valmer-connectors runtime validate
 valmer-connectors vector update
 valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-mxn-government
 ```
 
 The current `scripts/*.py` files are compatibility wrappers around package
@@ -147,6 +154,7 @@ services.
 valmer-connectors runtime validate
 valmer-connectors vector update
 valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-mxn-government
 ```
 
 ## Compatibility Scripts
@@ -169,13 +177,14 @@ for MkDocs through `mkdocs.yml`.
 - `docs/markets.md`: AssetTable and ValmerAssetDetailsTable relationships
 - `docs/pricing.md`: pricing hydration, reference indexes, and curve publication
 - `docs/instruments.md`: row-to-instrument mapping rules
-- `docs/metatable-query-optimization.md`: implementation plan for thin
-  MetaTable projection reads and the remaining pricing persistence bottleneck
+- `docs/metatable-query-optimization.md`: thin MetaTable projection reads and
+  bulk pricing-details persistence behavior
 - `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up
 - `docs/dashboards.md`: dashboards currently shipped by the project
 - `docs/SUMMARY.md`: documentation map required by the project instructions
-- `.agents/tasks.md`: current open tasks only
-- `.agents/journal.md`: historical implementation and failure log
+- `.agents/tasks.md`: current open tasks, when that file exists in the checkout
+- `.agents/journal.md`: historical implementation and failure log, when that
+  file exists in the checkout
 
 ## Current Scope
 
