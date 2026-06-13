@@ -45,12 +45,10 @@ def prepare_import_valmer(
     *,
     bucket_name: str | None = None,
     force_pricing_update: bool = False,
-    register_pricing_target_assets_only: bool = True,
 ) -> ImportValmer:
     updater = build_import_valmer(bucket_name=bucket_name)
     updater.prepare_for_update(
         force_pricing_update=force_pricing_update,
-        register_pricing_target_assets_only=register_pricing_target_assets_only,
     )
     return updater
 
@@ -68,7 +66,6 @@ def run_vector_update(
     bucket_name: str | None = None,
     first_loop_count: int = DEFAULT_FIRST_LOOP_COUNT,
     debug_artifact_path: str | None = None,
-    register_pricing_target_assets_only: bool = True,
 ) -> None:
     """Run the Valmer vector update through the package service boundary."""
 
@@ -84,7 +81,6 @@ def run_vector_update(
                 updater = prepare_import_valmer(
                     bucket_name=bucket_name,
                     force_pricing_update=True,
-                    register_pricing_target_assets_only=register_pricing_target_assets_only,
                 )
                 updater.run(force_update=True)
             return
@@ -92,6 +88,5 @@ def run_vector_update(
         updater = prepare_import_valmer(
             bucket_name=bucket_name,
             force_pricing_update=True,
-            register_pricing_target_assets_only=register_pricing_target_assets_only,
         )
         updater.run(force_update=True)

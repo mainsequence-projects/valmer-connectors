@@ -304,9 +304,23 @@ msm.start_engine(
         ...,
         ValmerAssetDetailsTable,
         ValmerVectorPricesStorage,
+        *extra_markets_models,
     ],
 )
 ```
+
+`bootstrap_runtime(extra_markets_models=[...])` is the supported extension hook
+for downstream libraries that need to compose portfolio, account, signal, or
+project-local market tables into the same process runtime. Those extra models
+must be included in the first shared markets runtime startup. A later
+`msm.start_engine(...)` or `msm_portfolios.start_engine(...)` call with a
+different model list conflicts with the existing runtime configuration.
+
+Pricing string selectors belong to `msm_pricing` resolution. Do not pass pricing
+strings such as `"Curve"` or `"AssetCurrentPricingDetails"` through a portfolio
+startup wrapper. Concrete pricing SQLAlchemy classes are valid `MarketsBase`
+models if they are intentionally included in shared markets startup, but pricing
+behavior still needs `msm_pricing.bootstrap.attach_pricing_schemas(...)`.
 
 That call is valid only after both migration providers have been applied.
 

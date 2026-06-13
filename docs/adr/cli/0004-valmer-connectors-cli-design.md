@@ -121,7 +121,6 @@ Options:
 --bucket-name TEXT
 --debug-artifact-path PATH
 --first-loop-count INT
---register-all-assets
 ```
 
 If `--bucket-name` is omitted, resolve the platform source bucket from
@@ -132,6 +131,11 @@ Do not expose `--force` / `--no-force`.
 `force_update=True` is the current script behavior and the intended default.
 Define what "new work" means for Valmer inputs before adding any non-forced
 update mode.
+
+Do not expose full-source asset registration until the project has a real
+Valmer asset-type classifier. The Valmer vector contains multiple instrument
+types; the current asset registration path only registers rows selected by the
+target-bond pricing filter.
 
 ### `valmer-connectors curves update-mxn-government`
 

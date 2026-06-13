@@ -355,13 +355,15 @@ ImportValmer._sync_asset_registry_and_pricing(...)
     +-- resolve_valmer_asset_refs(...)
     |      returns uid + asset_type only
     |
-    +-- missing_assets = source ids not in refs
+    +-- missing_assets = target-bond ids not in refs
     |
-    +-- assets_needing_type_update =
+    +-- asset_type_conflicts =
     |      existing refs where asset_type != bond
     |
-    +-- upsert_valmer_assets(...)
-    |      only for missing or wrong-type assets
+    +-- raise on asset_type_conflicts
+    |
+    +-- _upsert_asset_table_rows(...)  [private AssetTable write helper]
+    |      only for missing assets, with explicit asset_type=bond
     |
     +-- asset_refs.update(upserted refs)
     |
@@ -488,6 +490,7 @@ valmer-connectors vector update
 Expected runtime evidence:
 
 - asset ref resolution logs include existing, missing, and wrong-type counts;
+  wrong-type rows raise because they indicate identity collisions;
 - detail sync logs show how many rows were skipped because source date was not
   newer;
 - pricing refresh logs show target count and refresh count before instrument

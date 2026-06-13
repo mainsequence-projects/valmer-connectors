@@ -59,8 +59,15 @@ Supported rows are selected before instrument construction by:
 - `ImportValmer._get_target_bonds(...)`
 
 Rows that are not selected are ignored by the default vector update. They can
-still be registered and published with
-`valmer-connectors vector update --register-all-assets`.
+only be registered after the project has an explicit Valmer asset-type
+classifier for the broader source universe.
+
+Do not extend asset registration by widening `build_qll_bond_from_row(...)` or
+the pricing adapter. A different vector or non-bond Valmer family needs its own
+asset classifier first. After the classifier assigns `unique_identifier` and an
+explicit `asset_type`, that extension can register assets through its own
+service layer and then call its own instrument/pricing adapter if pricing
+hydration is required.
 
 ## Convention Rules
 

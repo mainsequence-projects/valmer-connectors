@@ -23,10 +23,10 @@ from tqdm import tqdm
 
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.asset_identity import (
+    _upsert_asset_table_rows,
     add_valmer_unique_identifier,
     batched_values,
     resolve_valmer_asset_refs,
-    upsert_valmer_assets,
 )
 from valmer_connectors.instruments.vector_to_asset import (
     build_qll_bond_from_row,
@@ -1336,22 +1336,16 @@ class ImportValmer(AssetIndexedDataNode):
         all_target_bonds: pd.DataFrame,
         *,
         force_update: bool = False,
-        register_pricing_target_assets_only: bool = True,
     ) -> list:
         """Sync Valmer asset rows, Valmer asset details, and current pricing details."""
         per_page_assets = resolve_valmer_meta_operation_batch_size()
         target_uids = set(all_target_bonds["unique_identifier"].dropna().unique())
-        registration_unique_identifiers = (
-            [uid for uid in unique_identifiers if uid in target_uids]
-            if register_pricing_target_assets_only
-            else unique_identifiers
-        )
+        registration_unique_identifiers = [uid for uid in unique_identifiers if uid in target_uids]
         self.logger.info(
             "Starting Valmer asset registry and pricing sync: "
             f"{len(unique_identifiers)} source assets, "
             f"{len(target_uids)} target pricing assets, "
             f"{len(registration_unique_identifiers)} registration-scope assets, "
-            f"target-only registration={register_pricing_target_assets_only}, "
             f"batch size {per_page_assets}."
         )
         if not registration_unique_identifiers:
@@ -1367,7 +1361,7 @@ class ImportValmer(AssetIndexedDataNode):
             uid: asset_ref.as_asset()
             for uid, asset_ref in existing_asset_refs.items()
         }
-        assets_needing_type_update = [
+        asset_type_conflicts = [
             uid
             for uid, asset_ref in existing_asset_refs.items()
             if asset_ref.asset_type != ASSET_TYPE_BOND
@@ -1376,8 +1370,16 @@ class ImportValmer(AssetIndexedDataNode):
             "Valmer asset registry decision: "
             f"{len(existing_assets)} existing, "
             f"{len(registration_unique_identifiers) - len(existing_assets)} missing, "
-            f"{len(assets_needing_type_update)} wrong asset_type."
+            f"{len(asset_type_conflicts)} wrong asset_type."
         )
+        if asset_type_conflicts:
+            raise RuntimeError(
+                "Valmer target-bond asset type conflict for "
+                f"{len(asset_type_conflicts)} existing assets: "
+                f"{_summarize_uids(asset_type_conflicts)}. "
+                f"Expected asset_type={ASSET_TYPE_BOND!r}; refusing to overwrite existing "
+                "AssetTable.asset_type values."
+            )
         existing_target_assets = {
             uid: asset for uid, asset in existing_assets.items() if uid in target_uids
         }
@@ -1403,13 +1405,14 @@ class ImportValmer(AssetIndexedDataNode):
             "unique_identifier"
         )
 
-        assets_to_upsert = list(dict.fromkeys([*missing_assets, *assets_needing_type_update]))
+        assets_to_upsert = list(dict.fromkeys(missing_assets))
         if assets_to_upsert:
             self.logger.info(
-                f"Upserting {len(assets_to_upsert)} Valmer assets as {ASSET_TYPE_BOND!r}."
+                f"Upserting {len(assets_to_upsert)} Valmer target-bond assets "
+                f"as {ASSET_TYPE_BOND!r}."
             )
-            upserted_assets = upsert_valmer_assets(
-                assets_to_upsert,
+            upserted_assets = _upsert_asset_table_rows(
+                {uid: ASSET_TYPE_BOND for uid in assets_to_upsert},
                 batch_size=per_page_assets,
                 logger=self.logger,
             )
@@ -1569,8 +1572,6 @@ class ImportValmer(AssetIndexedDataNode):
     def update_pricing_details_from_last_vector(
         self,
         force_update=False,
-        *,
-        register_pricing_target_assets_only: bool = True,
     ):
         artifacts, artifact_dates = self._get_artifacts(self.logger, self.bucket_name)
         if not artifacts:
@@ -1593,7 +1594,6 @@ class ImportValmer(AssetIndexedDataNode):
             df_latest,
             all_target_bonds,
             force_update=force_update,
-            register_pricing_target_assets_only=register_pricing_target_assets_only,
         )
 
     def _prepare_latest_inputs(self, df: pd.DataFrame):
@@ -1621,7 +1621,6 @@ class ImportValmer(AssetIndexedDataNode):
         self,
         *,
         force_pricing_update: bool = False,
-        register_pricing_target_assets_only: bool = True,
     ) -> list:
         """
         Prepare the Valmer update explicitly before the DataNode run.
@@ -1642,19 +1641,15 @@ class ImportValmer(AssetIndexedDataNode):
             df_latest,
             all_target_bonds,
             force_update=force_pricing_update,
-            register_pricing_target_assets_only=register_pricing_target_assets_only,
         )
-        if register_pricing_target_assets_only:
-            target_uids = set(all_target_bonds["unique_identifier"].dropna().unique())
-            self.source_data = source_data[
-                source_data["unique_identifier"].isin(target_uids)
-            ].copy()
-            self.logger.info(
-                "Scoped Valmer vector publication to pricing-target assets: "
-                f"{len(self.source_data)} rows for {len(target_uids)} assets."
-            )
-            if self.source_data.empty:
-                self.asset_list = None
+        target_uids = set(all_target_bonds["unique_identifier"].dropna().unique())
+        self.source_data = source_data[source_data["unique_identifier"].isin(target_uids)].copy()
+        self.logger.info(
+            "Scoped Valmer vector publication to pricing-target assets: "
+            f"{len(self.source_data)} rows for {len(target_uids)} assets."
+        )
+        if self.source_data.empty:
+            self.asset_list = None
         return self.asset_list
 
     def get_asset_list(self) -> Union[None, list]:

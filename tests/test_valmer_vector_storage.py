@@ -561,7 +561,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             )
             upsert_assets = stack.enter_context(
                 patch(
-                    "valmer_connectors.data_nodes.nodes.upsert_valmer_assets",
+                    "valmer_connectors.data_nodes.nodes._upsert_asset_table_rows",
                     return_value={"M_BONOS_241205": asset},
                 )
             )
@@ -627,7 +627,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             logger=logger,
         )
         upsert_assets.assert_called_once_with(
-            ["M_BONOS_241205"],
+            {"M_BONOS_241205": ASSET_TYPE_BOND},
             batch_size=1000,
             logger=logger,
         )
@@ -640,6 +640,63 @@ class ValmerVectorStorageTest(unittest.TestCase):
             ["M_BONOS_241205"],
         )
         self.assertEqual(asset_scope, [asset])
+
+    def test_sync_asset_registry_raises_on_asset_type_conflict(self):
+        asset = SimpleNamespace(
+            uid=uuid.uuid4(),
+            unique_identifier="M_BONOS_241205",
+            asset_type="future",
+        )
+        node = ImportValmer.__new__(ImportValmer)
+        latest = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "M_BONOS_241205",
+                    "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
+                    "valornominalactualizado": 100.0,
+                }
+            ]
+        )
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_meta_operation_batch_size",
+                    return_value=1000,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_asset_refs",
+                    return_value={
+                        "M_BONOS_241205": SimpleNamespace(
+                            asset_type="future",
+                            as_asset=lambda: asset,
+                        )
+                    },
+                )
+            )
+            upsert_assets = stack.enter_context(
+                patch("valmer_connectors.data_nodes.nodes._upsert_asset_table_rows")
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "logger",
+                    new_callable=PropertyMock,
+                    return_value=Mock(),
+                )
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "asset type conflict"):
+                ImportValmer._sync_asset_registry_and_pricing(
+                    node,
+                    ["M_BONOS_241205"],
+                    latest,
+                    latest,
+                )
+
+        upsert_assets.assert_not_called()
 
     def test_prepare_for_update_scopes_vector_source_to_pricing_targets_by_default(self):
         node = ImportValmer.__new__(ImportValmer)
@@ -701,7 +758,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
         self.assertEqual(asset_scope, [asset])
         self.assertEqual(node.source_data["unique_identifier"].tolist(), ["M_BONOS_241205"])
         sync.assert_called_once()
-        self.assertTrue(sync.call_args.kwargs["register_pricing_target_assets_only"])
+        self.assertNotIn("register_pricing_target_assets_only", sync.call_args.kwargs)
 
     def test_sync_asset_registry_raises_when_current_pricing_persist_fails(self):
         asset_uid = uuid.uuid4()
@@ -736,7 +793,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             )
             stack.enter_context(
                 patch(
-                    "valmer_connectors.data_nodes.nodes.upsert_valmer_assets",
+                    "valmer_connectors.data_nodes.nodes._upsert_asset_table_rows",
                     return_value={"M_BONOS_241205": asset},
                 )
             )
@@ -821,7 +878,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             )
             stack.enter_context(
                 patch(
-                    "valmer_connectors.data_nodes.nodes.upsert_valmer_assets",
+                    "valmer_connectors.data_nodes.nodes._upsert_asset_table_rows",
                     return_value={"M_BONOS_241205": asset},
                 )
             )

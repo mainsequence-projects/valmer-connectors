@@ -145,20 +145,23 @@ run(force_update=True)
 `get_asset_list()` must stay a scope handoff. It should not register assets,
 upsert detail rows, or persist pricing details.
 
-By default, `valmer-connectors vector update` registers and publishes only the
-assets that pass the pricing-detail target filter. This keeps the
+`valmer-connectors vector update` registers and publishes only the assets that
+pass the pricing-detail target filter. This keeps the
 `AssetTable` registration scope aligned with the storage table foreign key:
 `ValmerVectorPricesStorage.asset_identifier` points to
 `AssetTable.unique_identifier`.
 
-For diagnostics or a deliberate full-source import, run:
+The broader Valmer source universe is not registered by this project. The
+Valmer vector contains multiple instrument types, so full-source registration
+requires a separate asset-type classifier before rows can be safely written to
+`AssetTable`.
 
-```bash
-valmer-connectors vector update --register-all-assets
-```
-
-That option restores the broader registration scope and publishes all source
-rows loaded by the vector updater.
+Other extension libraries should not use `ImportValmer` as a generic vector
+registration pipeline. A different vector DataNode should first normalize its
+own source rows, classify each row into an explicit `asset_type`, upsert the
+canonical `AssetTable` rows, write any static fields to that extension's own
+detail table, and only then publish time-varying observations keyed by
+`asset_identifier = AssetTable.unique_identifier`.
 
 ## Source Rows
 

@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import uuid
 
 import pandas as pd
-from msm.constants import ASSET_TYPE_BOND
 from sqlalchemy import select
 from valmer_connectors.settings import resolve_valmer_asset_upsert_batch_size
 from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
@@ -249,17 +248,17 @@ def resolve_valmer_asset_uids(
     return uid_map
 
 
-def upsert_valmer_assets(
-    unique_identifiers: Sequence[object],
+def _upsert_asset_table_rows(
+    asset_type_by_identifier: Mapping[object, object] | Sequence[tuple[object, object]],
     *,
     batch_size: int | None = None,
     ensure_schemas: bool = True,
     logger=None,
 ) -> dict[str, Asset]:
-    """Idempotently create or update Valmer assets as typed bond assets."""
+    """Idempotently create or update AssetTable rows with explicit asset types."""
 
-    identifiers = normalize_valmer_unique_identifiers(unique_identifiers)
-    if not identifiers:
+    asset_types = _normalize_asset_type_map(asset_type_by_identifier)
+    if not asset_types:
         return {}
     if ensure_schemas:
         ensure_valmer_asset_runtime()
@@ -271,13 +270,14 @@ def upsert_valmer_assets(
     context = Asset._active_context()
     assets: dict[str, Asset] = {}
     resolved_batch_size = resolve_valmer_asset_upsert_batch_size(batch_size)
+    identifiers = list(asset_types)
     batches = batched_values(identifiers, resolved_batch_size)
     if logger is not None:
         logger.info(
-            f"Upserting {len(identifiers)} Valmer assets in {len(batches)} batches "
+            f"Upserting {len(identifiers)} AssetTable rows in {len(batches)} batches "
             f"of up to {resolved_batch_size}."
         )
-    progress = _ProgressMilestones(logger, "Upserting Valmer assets", len(identifiers))
+    progress = _ProgressMilestones(logger, "Upserting AssetTable rows", len(identifiers))
     for batch_index, batch in enumerate(batches, start=1):
         result = bulk_upsert_model(
             context,
@@ -285,7 +285,7 @@ def upsert_valmer_assets(
             values=[
                 {
                     "unique_identifier": unique_identifier,
-                    "asset_type": ASSET_TYPE_BOND,
+                    "asset_type": asset_types[unique_identifier],
                 }
                 for unique_identifier in batch
             ],
@@ -297,11 +297,43 @@ def upsert_valmer_assets(
         progress.advance(len(batch))
         if logger is not None:
             logger.info(
-                "Completed Valmer asset bulk upsert batch "
+                "Completed AssetTable bulk upsert batch "
                 f"{batch_index}/{len(batches)} ({len(batch)} assets, "
                 f"{progress.completed}/{len(identifiers)} total)."
             )
     return assets
+
+
+def _normalize_asset_type_map(
+    asset_type_by_identifier: Mapping[object, object] | Sequence[tuple[object, object]],
+) -> dict[str, str]:
+    """Normalize an explicit AssetTable asset-type assignment map."""
+
+    raw_items = (
+        asset_type_by_identifier.items()
+        if isinstance(asset_type_by_identifier, Mapping)
+        else asset_type_by_identifier
+    )
+    normalized: dict[str, str] = {}
+    for raw_identifier, raw_asset_type in raw_items:
+        if pd.isna(raw_identifier):
+            continue
+        unique_identifier = str(raw_identifier)
+        if not unique_identifier:
+            continue
+        if pd.isna(raw_asset_type):
+            raise ValueError(f"Asset type for {unique_identifier!r} cannot be null")
+        asset_type = str(raw_asset_type).strip()
+        if not asset_type:
+            raise ValueError(f"Asset type for {unique_identifier!r} cannot be empty")
+        existing_asset_type = normalized.get(unique_identifier)
+        if existing_asset_type is not None and existing_asset_type != asset_type:
+            raise ValueError(
+                f"Conflicting asset_type for {unique_identifier!r}: "
+                f"{existing_asset_type!r} != {asset_type!r}"
+            )
+        normalized[unique_identifier] = asset_type
+    return normalized
 
 
 def _required_identity_part(row: Mapping[str, object], field: str) -> str:
@@ -372,5 +404,4 @@ __all__ = [
     "resolve_valmer_assets",
     "resolve_valmer_asset_refs",
     "resolve_valmer_asset_uids",
-    "upsert_valmer_assets",
 ]

@@ -31,13 +31,19 @@ asset_type = bond
 
 The asset type constant comes from `msm.constants`.
 
-## Single Asset Registration Helper
+## Current Registration Boundary
 
 Asset registration is centralized in:
 
 - `src/valmer_connectors/instruments/asset_identity.py`
-- `upsert_valmer_assets(...)`
 - `resolve_valmer_assets(...)`
+- `resolve_valmer_asset_refs(...)`
+- `resolve_valmer_asset_uids(...)`
+
+`asset_identity.py` exposes Valmer identity builders and thin lookup helpers.
+It does not expose a public helper that fully registers arbitrary Valmer assets.
+The internal `_upsert_asset_table_rows(...)` helper writes only minimal
+`AssetTable` rows and is not a Valmer registration API.
 
 `ImportValmer.prepare_for_update()` calls those helpers before the DataNode run.
 `ImportValmer.get_asset_list()` only returns the prepared scope.
@@ -45,17 +51,255 @@ Asset registration is centralized in:
 Asset registration is not the same as current pricing-detail hydration.
 
 During `valmer-connectors vector update`, `ImportValmer.prepare_for_update()`
-registers or resolves assets from the supported target-pricing subset selected
-by `ImportValmer._get_target_bonds(...)`. Current pricing details and
-`ValmerAssetDetailsTable` rows are hydrated for that same default registration
-scope.
+registers or resolves assets only from the supported target-pricing subset
+selected by `ImportValmer._get_target_bonds(...)`. Current pricing details and
+`ValmerAssetDetailsTable` rows are hydrated for that same registration scope.
 
-The broader imported Valmer source universe is available only through the
-explicit diagnostic path:
+The broader imported Valmer source universe is intentionally not registered as
+`AssetTable` rows. The Valmer vector contains multiple instrument types, and
+this project only classifies the target bond subset today.
 
-```bash
-valmer-connectors vector update --register-all-assets
+```text
++--------------------------------------------------------------+
+| Valmer Vector Source                                        |
+|--------------------------------------------------------------|
+| bonds, government instruments, floating bonds, derivatives,  |
+| reference rows, and other vendor instrument families         |
++-----------------------------+--------------------------------+
+                              |
+                              | target-bond classifier only
+                              v
++--------------------------------------------------------------+
+| Valmer Target-Bond Registration                              |
+|--------------------------------------------------------------|
+| unique_identifier = tipovalor_emisora_serie                  |
+| asset_type        = msm.constants.ASSET_TYPE_BOND            |
++-----------------------------+--------------------------------+
+                              |
+                              v
++--------------------------------------------------------------+
+| AssetTable + ValmerAssetDetailsTable + pricing hydration     |
++--------------------------------------------------------------+
 ```
+
+The package exposes thin Valmer identity and lookup helpers that can be reused
+when the source rows use the same Valmer identity convention:
+
+- `build_valmer_unique_identifier(...)`
+- `add_valmer_unique_identifier(...)`
+- `normalize_valmer_unique_identifiers(...)`
+- `resolve_valmer_asset_refs(...)`
+- `resolve_valmer_asset_uids(...)`
+
+Those helpers do not decide asset type. They only build or resolve identity.
+
+The current target-bond flow delegates the final missing-asset insert to the
+private `_upsert_asset_table_rows(...)` implementation detail after
+`ImportValmer._get_target_bonds(...)` has classified the row as a supported
+bond.
+
+## Public Valmer Registration API
+
+The public API is a batch Valmer registration service, not a raw `AssetTable`
+helper. It accepts Valmer source rows and runs the full supported Valmer asset
+workflow:
+
+```text
+normalized Valmer rows
+    |
+    v
+derive unique_identifier = tipovalor_emisora_serie
+    |
+    v
+classify supported Valmer asset type
+    |
+    v
+resolve existing AssetTable refs
+    |
+    +-- raise on asset_type conflicts
+    |
+    v
+upsert missing AssetTable rows
+    |
+    v
+upsert ValmerAssetDetailsTable rows
+    |
+    v
+publish AssetSnapshot rows
+    |
+    v
+build and persist pricing details when requested and when a supported pricing
+adapter exists
+```
+
+Import path:
+
+```python
+from valmer_connectors.assets import register_valmer_assets_from_rows
+```
+
+Call shape:
+
+```python
+result = register_valmer_assets_from_rows(
+    rows,
+    *,
+    asset_type_classifier=None,
+    include_pricing_details=True,
+    publish_snapshots=True,
+    strict_unsupported=False,
+    strict_pricing=False,
+    batch_size=None,
+    logger=None,
+)
+```
+
+Default classification is Valmer-specific. It classifies the currently
+supported Valmer bond families as `msm.constants.ASSET_TYPE_BOND`, including
+M BONOS, CETES, BONDESD, supported TIIE/CETE-linked rows, BPAS, and the existing
+project-supported zero-coupon families. Unsupported rows are skipped by default
+and returned in `result.skipped_unsupported`.
+
+Callers that import a different vector or broaden the Valmer universe must pass
+their own classifier:
+
+```python
+from msm.constants import ASSET_TYPE_BOND
+
+
+def classify_asset_type(row):
+    if (row["tipovalor"], row["emisora"]) in {("M", "BONOS"), ("BI", "CETE")}:
+        return ASSET_TYPE_BOND
+    return None
+
+
+result = register_valmer_assets_from_rows(
+    rows,
+    asset_type_classifier=classify_asset_type,
+)
+```
+
+Validation happens per stage:
+
+```text
+identity:
+  requires tipovalor, emisora, serie
+  creates unique_identifier = tipovalor_emisora_serie
+
+classification:
+  classifier must return an explicit non-empty asset_type for registered rows
+  unsupported rows are skipped or raise when strict_unsupported=True
+
+details:
+  requires fecha for details_asof
+  writes static Valmer descriptors to ValmerAssetDetailsTable
+
+snapshot:
+  requires unique_identifier, fecha, nombrecompleto when publish_snapshots=True
+  maps nombrecompleto to AssetSnapshot.name
+
+pricing:
+  uses the instrument adapter as validator
+  failures are returned in result.pricing_failed
+  failures raise when strict_pricing=True
+```
+
+The result is structured enough for callers and tests to prove each layer:
+
+- assets resolved or created by Valmer `unique_identifier`
+- static detail rows upserted or skipped by `details_asof`
+- snapshot rows published
+- pricing details written, skipped, or failed
+- unsupported rows reported explicitly
+- type conflicts raised explicitly
+
+Batch machinery:
+
+```text
+AssetTable:
+  _upsert_asset_table_rows(...) [private helper]
+
+ValmerAssetDetailsTable:
+  upsert_valmer_asset_details(...)
+
+AssetSnapshot:
+  AssetSnapshot.set_snapshots(...).run(...)
+
+Pricing details:
+  _persist_valmer_pricing_details_batch(...)
+  -> msm_pricing.api.add_many_pricing_details(...)
+```
+
+The API still does not claim support for the full Valmer vector universe.
+Support is limited to rows that the classifier accepts and that have a pricing
+adapter when pricing details are requested.
+
+## Extension Library Contract
+
+Another extension library that imports a different vector, or a broader Valmer
+vector universe, must own its own asset classifier before writing to
+`AssetTable`.
+
+The required flow is:
+
+```text
+Other vector source
+    |
+    v
+extension-owned parser and normalizer
+    |
+    v
+extension-owned classifier
+    |
+    +-- unique_identifier
+    +-- explicit asset_type
+    +-- optional static detail payload
+    |
+    v
+upsert AssetType rows when the asset type is project-owned
+    |
+    v
+upsert AssetTable rows with explicit asset_type
+    |
+    v
+upsert extension-owned detail table rows keyed by AssetTable.uid
+    |
+    v
+publish time-varying rows through that extension's DataNode
+```
+
+Extension libraries should not import this package's private
+`_upsert_asset_table_rows(...)` helper. A different vector should expose its own
+service layer and use the canonical `ms-markets` asset model rule:
+
+```text
+AssetTable
+  unique_identifier = stable canonical key
+  asset_type        = explicit registered type
+
+ExtensionDetailsTable
+  asset_uid         = FK to AssetTable.uid
+  static fields     = instrument/provider/reference fields owned by extension
+
+ExtensionDataNodeStorage
+  time_index
+  asset_identifier  = AssetTable.unique_identifier
+  time-varying observations only
+```
+
+If the extension introduces a new `asset_type`, it should register that type
+through `ms-markets` before inserting assets of that type. `Asset.asset_type` is
+a logical classification string; static instrument data still belongs in a
+detail table, not in `AssetTable`.
+
+Type conflicts must be treated as data errors. If an existing
+`AssetTable.unique_identifier` is already registered with a different
+`asset_type`, an extension should raise and investigate the identity collision
+instead of silently overwriting the type.
+
+Pricing hydration is a separate step. Asset registration should produce the
+canonical asset row and static details; pricing details should be written only
+after the instrument-specific pricing adapter has built a valid pricing payload.
 
 ## ValmerAssetDetailsTable
 

@@ -55,7 +55,6 @@ def _vector_update_command(args: argparse.Namespace) -> int:
         bucket_name=args.bucket_name,
         first_loop_count=args.first_loop_count,
         debug_artifact_path=args.debug_artifact_path,
-        register_pricing_target_assets_only=args.register_pricing_target_assets_only,
     )
     return 0
 
@@ -140,16 +139,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_VECTOR_FIRST_LOOP_COUNT,
         help="Number of compatibility loop runs when update statistics are missing.",
     )
-    vector_update_parser.add_argument(
-        "--register-all-assets",
-        action="store_false",
-        dest="register_pricing_target_assets_only",
-        help=(
-            "Register every Valmer source asset. By default only assets that pass "
-            "the pricing-detail target filter are registered and published."
-        ),
-    )
-    vector_update_parser.set_defaults(register_pricing_target_assets_only=True)
     vector_update_parser.set_defaults(func=_vector_update_command)
 
     curves_parser = subcommands.add_parser("curves", help="Valmer curve commands.")

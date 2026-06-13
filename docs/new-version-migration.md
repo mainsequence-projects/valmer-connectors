@@ -53,7 +53,7 @@ Current declared package constraints:
 | --- | --- | --- |
 | Source import | `ImportValmer.prepare_source_data()` selects platform Artifact bucket or local `DEBUG_ARTIFACT_PATH` | run both paths with representative files |
 | DataNode storage | `ValmerVectorPricesStorage` owns the time-series table contract | live namespaced write |
-| Asset registration | `upsert_valmer_assets(...)` is the single Valmer asset upsert helper | wrong-type and missing-asset regression tests |
+| Asset registration | `valmer_connectors.assets.register_valmer_assets_from_rows(...)` is the public batch row-registration API; the minimal `AssetTable` write helper is private and requires explicit asset types | live row-registration run with representative Valmer rows |
 | Static details | `ValmerAssetDetailsTable.asset_uid` is a 1:1 FK to `AssetTable.uid` | live row link validation |
 | Pricing hydration | `prepare_for_update()` calls `_sync_asset_registry_and_pricing(...)` before `run()` and writes through `msm_pricing.api.add_many_pricing_details(...)` | live pricing-details write validation, including incomplete-result failure behavior |
 | Runtime bootstrap | `bootstrap_runtime()` is the single project runtime entry point | live idempotency validation |

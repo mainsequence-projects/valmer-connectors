@@ -27,34 +27,6 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
         self.assertEqual(build_import.call_count, 2)
         updater.prepare_for_update.assert_called_once_with(
             force_pricing_update=True,
-            register_pricing_target_assets_only=True,
-        )
-        updater.run.assert_called_once_with(force_update=True)
-
-    def test_vector_update_can_register_full_source_universe(self):
-        stats_updater = Mock()
-        stats_updater.get_update_statistics.return_value = object()
-        updater = Mock()
-
-        with (
-            patch("valmer_connectors.services.vector_update.bootstrap_runtime"),
-            patch("valmer_connectors.services.vector_update._debug_artifact_path") as debug_path,
-            patch(
-                "valmer_connectors.services.vector_update.build_import_valmer",
-                side_effect=[stats_updater, updater],
-            ),
-        ):
-            debug_path.return_value.__enter__.return_value = None
-            debug_path.return_value.__exit__.return_value = False
-
-            vector_update.run_vector_update(
-                bucket_name="Vector Bucket",
-                register_pricing_target_assets_only=False,
-            )
-
-        updater.prepare_for_update.assert_called_once_with(
-            force_pricing_update=True,
-            register_pricing_target_assets_only=False,
         )
         updater.run.assert_called_once_with(force_update=True)
 

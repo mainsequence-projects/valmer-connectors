@@ -8,8 +8,9 @@
   local `DEBUG_ARTIFACT_PATH` import.
 - `docs/data-nodes.md`: DataNode output boundary and
   `ValmerVectorPricesStorage` contract.
-- `docs/markets.md`: AssetTable registration, Valmer asset identity, and
-  `ValmerAssetDetailsTable`.
+- `docs/markets.md`: AssetTable registration, Valmer asset identity,
+  `ValmerAssetDetailsTable`, and extension-library asset registration
+  boundaries.
 - `docs/pricing.md`: pricing runtime bootstrap, target-bond hydration, and curve
   publication.
 - `docs/instruments.md`: Valmer row-to-`msm_pricing` instrument mapping.

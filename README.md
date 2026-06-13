@@ -59,10 +59,18 @@ ValmerVectorPricesStorage
 the asset-indexed DataNode lifecycle. It does not own registration or pricing
 hydration.
 
-By default, the vector update registers and publishes only rows that pass the
-supported instrument-mapping filter. Use
-`valmer-connectors vector update --register-all-assets` only when the broader
-Valmer source universe should be registered and published deliberately.
+The vector update registers and publishes only rows that pass the supported
+target-bond instrument-mapping filter. The broader Valmer vector universe is not
+registered as `AssetTable` rows because the source file contains multiple
+instrument types and this project does not yet own a full Valmer asset-type
+classifier.
+
+The public batch API for source rows is
+`valmer_connectors.assets.register_valmer_assets_from_rows(...)`. It normalizes
+Valmer rows, classifies supported asset types, writes `AssetTable`,
+`ValmerAssetDetailsTable`, `AssetSnapshot`, and optionally persists pricing
+details through the batch `msm_pricing` machinery. See `docs/markets.md` for
+validation rules and extension-library boundaries.
 
 ## How To Extend The Mapping
 
@@ -83,7 +91,8 @@ Detailed guides:
 
 - `docs/source-import.md`: bucket versus local file import
 - `docs/data-nodes.md`: Valmer vector DataNode publication
-- `docs/markets.md`: AssetTable and ValmerAssetDetailsTable relationships
+- `docs/markets.md`: AssetTable, ValmerAssetDetailsTable, and
+  extension-library asset registration boundaries
 - `docs/pricing.md`: pricing hydration and curve publication
 - `docs/instruments.md`: Valmer row-to-instrument mapping
 
@@ -174,7 +183,8 @@ for MkDocs through `mkdocs.yml`.
 - `docs/introduction.md`: project overview and runtime flow
 - `docs/source-import.md`: source selection, bucket import, and local debug import
 - `docs/data-nodes.md`: Valmer vector DataNode publication boundary
-- `docs/markets.md`: AssetTable and ValmerAssetDetailsTable relationships
+- `docs/markets.md`: AssetTable, ValmerAssetDetailsTable, and
+  extension-library asset registration boundaries
 - `docs/pricing.md`: pricing hydration, reference indexes, and curve publication
 - `docs/instruments.md`: row-to-instrument mapping rules
 - `docs/metatable-query-optimization.md`: thin MetaTable projection reads and

@@ -5,6 +5,10 @@ This is the MkDocs-compatible documentation root for `valmer-connectors`.
 The documentation is organized by responsibility. Do not use one page to infer
 another workflow boundary.
 
+For asset registration, use [Markets And Asset Details](markets.md). That page
+defines the Valmer target-bond scope and the contract other extension libraries
+must follow when registering assets from different vector sources.
+
 ## Architecture Pages
 
 - [Introduction](introduction.md)

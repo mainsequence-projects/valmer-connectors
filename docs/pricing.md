@@ -12,13 +12,15 @@ valmer_connectors.instruments.bootstrap.bootstrap_runtime()
 ```
 
 It attaches already-migrated runtime tables and seeds static pricing reference
-rows. It does not create schemas at runtime.
+rows. It does not create schemas at runtime. It is also the composition point
+for downstream libraries that need additional shared `ms-markets` runtime
+models.
 
 ```text
 bootstrap_runtime()
     |
     v
-msm.start_engine(...)
+msm.start_engine(...) or a wrapper over the same shared runtime
     |
     +-- AssetType
     +-- Asset
@@ -26,6 +28,7 @@ msm.start_engine(...)
     +-- Index
     +-- ValmerAssetDetailsTable
     +-- ValmerVectorPricesStorage
+    +-- optional extra_markets_models
     |
     v
 msm_pricing.bootstrap.attach_pricing_schemas(models=[...])
@@ -33,6 +36,33 @@ msm_pricing.bootstrap.attach_pricing_schemas(models=[...])
     v
 seed static pricing rows
 ```
+
+Callers that extend Valmer with portfolio or project-local market tables must
+compose those tables into the first Valmer bootstrap call:
+
+```python
+from valmer_connectors.instruments.bootstrap import bootstrap_runtime
+
+bootstrap_runtime(
+    extra_markets_models=[
+        # portfolio, account, signal, or project-local SQLAlchemy models
+    ],
+)
+```
+
+Do not call `msm.start_engine(...)` or `msm_portfolios.start_engine(...)` later
+with a different model list in the same process. The shared `ms-markets`
+runtime only accepts one startup configuration per process.
+
+Pricing model selectors need precise handling:
+
+- pricing string selectors such as `"Curve"` or
+  `"AssetCurrentPricingDetails"` belong to `msm_pricing` resolution and should
+  not be passed through `msm_portfolios.start_engine(...)`
+- concrete pricing SQLAlchemy classes are valid `MarketsBase` models for the
+  shared markets runtime if they must be included there intentionally
+- pricing runtime behavior still requires
+  `msm_pricing.bootstrap.attach_pricing_schemas(models=[...])`
 
 ## Static Pricing Rows
 
@@ -119,12 +149,11 @@ _prepare_latest_inputs(...)
     |
     +-- latest Valmer row per unique_identifier
     +-- target-bond subset
-    +-- full source UID list for optional full-source registration
     |
     v
 _sync_asset_registry_and_pricing(...)
     |
-    +-- resolve/upsert AssetTable rows for pricing targets by default
+    +-- resolve/upsert AssetTable rows for target bonds
     +-- upsert ValmerAssetDetailsTable rows for registered assets
     +-- decide which target bonds need pricing refresh
     +-- build_qll_bond_from_row(...)
@@ -152,15 +181,15 @@ an incomplete timestamped result as a hard failure: if
 submitted batch, the vector update raises with the submitted Valmer UIDs instead
 of silently accepting a partial hydration.
 
-By default, the asset registration universe and current pricing-detail universe
-are the same: both use the target-bond subset selected by
+The asset registration universe and current pricing-detail universe are the
+same: both use the target-bond subset selected by
 `ImportValmer._get_target_bonds(...)`. The vector publication is also scoped to
 those asset identifiers so `ValmerVectorPricesStorage.asset_identifier` always
 has a matching `AssetTable.unique_identifier`.
 
-The full-source registration mode remains available through
-`valmer-connectors vector update --register-all-assets`. Use it only when the
-broader source universe should be registered and published intentionally.
+The broader source universe is not registered. The Valmer vector contains
+multiple instrument types, and this project does not yet own a full Valmer
+asset-type classifier.
 
 ## Target Bond Selection
 
@@ -172,7 +201,6 @@ Target bond selection is implemented in:
 
 The source vector table is broader than the supported pricing surface. A row
 outside the supported pricing surface is ignored by the default vector update.
-It can still be registered and published with `--register-all-assets`.
 
 ## Instrument Construction
 
