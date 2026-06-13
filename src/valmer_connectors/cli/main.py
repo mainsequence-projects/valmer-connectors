@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import sys
 from collections.abc import Sequence
+from importlib import resources
 from importlib.metadata import PackageNotFoundError, version
+from importlib.resources.abc import Traversable
+from pathlib import Path
+from typing import Any
 
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
@@ -11,6 +17,9 @@ from valmer_connectors.instruments.curve_bootstrap import (
 )
 from valmer_connectors.settings import DEFAULT_VECTOR_FIRST_LOOP_COUNT
 from valmer_connectors.settings import VALMER_VECTOR_BUCKET_NAME_ENV
+
+SOURCE_VALMER_SKILLS_PATH = (".agents", "skills", "valmer-connectors")
+PACKAGE_VALMER_SKILLS_PATH = ("agent_skills", "valmer-connectors")
 
 
 def _package_version() -> str:
@@ -84,6 +93,145 @@ def _migrations_commands_command(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _copy_valmer_skills_command(args: argparse.Namespace) -> int:
+    return copy_valmer_skills_command(
+        path=Path(args.path),
+        dry_run=args.dry_run,
+        emit_json=args.emit_json,
+    )
+
+
+def copy_valmer_skills_command(
+    *,
+    path: Path,
+    dry_run: bool = False,
+    emit_json: bool = False,
+) -> int:
+    source_root = bundled_valmer_skills_root()
+    if not _traversable_exists(source_root) or not source_root.is_dir():
+        raise SystemExit(f"Packaged valmer-connectors skill bundle is missing: {source_root}")
+
+    project_dir = path.expanduser().resolve()
+    destination_root = project_dir / ".agents" / "skills" / "valmer-connectors"
+    source_label = _source_root_label(source_root)
+    block_reason = _copy_valmer_skills_block_reason(
+        project_dir=project_dir,
+        destination_root=destination_root,
+        source_root=source_root,
+    )
+    if block_reason is not None:
+        payload = {
+            "blocked": True,
+            "destination_root": str(destination_root),
+            "dry_run": dry_run,
+            "project": str(project_dir),
+            "reason": block_reason,
+            "source": source_label,
+            "updated": [],
+            "updated_count": 0,
+        }
+        if emit_json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(block_reason, file=sys.stderr)
+        return 2
+
+    skill_sources = _iter_skill_roots(source_root)
+    copied = [
+        {
+            "name": source.name,
+            "source": f"{source_label}/{source.name}",
+            "destination": str(destination_root / source.name),
+        }
+        for source in skill_sources
+    ]
+    payload = {
+        "project": str(project_dir),
+        "source": source_label,
+        "destination_root": str(destination_root),
+        "dry_run": dry_run,
+        "updated_count": len(copied),
+        "updated": copied,
+    }
+
+    if not dry_run:
+        for source in skill_sources:
+            destination = destination_root / source.name
+            _copy_traversable_tree(source, destination)
+
+    if emit_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    action = "Would update" if dry_run else "Updated"
+    print(f"{action} .agents/skills/valmer-connectors from packaged Valmer skills.")
+    _print_table(
+        "Valmer Connectors Skills",
+        ["Skill Folder", "Destination"],
+        [[item["name"], item["destination"]] for item in copied],
+    )
+    return 0
+
+
+def bundled_valmer_skills_root() -> Traversable:
+    source_root = source_tree_valmer_skills_root()
+    if source_root.is_dir():
+        return source_root
+    return package_tree_valmer_skills_root()
+
+
+def source_tree_valmer_skills_root() -> Path:
+    return _valmer_connectors_source_checkout_root().joinpath(*SOURCE_VALMER_SKILLS_PATH)
+
+
+def package_tree_valmer_skills_root() -> Traversable:
+    return resources.files("valmer_connectors").joinpath(*PACKAGE_VALMER_SKILLS_PATH)
+
+
+def _valmer_connectors_source_checkout_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _copy_valmer_skills_block_reason(
+    *,
+    project_dir: Path,
+    destination_root: Path,
+    source_root: Traversable,
+) -> str | None:
+    if _same_resolved_path(
+        project_dir, _valmer_connectors_source_checkout_root()
+    ) or _is_valmer_connectors_source_checkout(project_dir):
+        return (
+            "Blocked: valmer-connectors copy-valmer-skills cannot run inside "
+            "the valmer-connectors source checkout. Use this command only from "
+            "a separate host project."
+        )
+
+    source_path = _traversable_path(source_root)
+    if source_path is not None and _same_resolved_path(destination_root, source_path):
+        return (
+            "Blocked: destination .agents/skills/valmer-connectors is the packaged "
+            "Valmer skill source. Copying here would delete source skills."
+        )
+
+    return None
+
+
+def _is_valmer_connectors_source_checkout(path: Path) -> bool:
+    pyproject = path / "pyproject.toml"
+    if not pyproject.is_file():
+        return False
+    try:
+        project_config = pyproject.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return (
+        'name = "valmer-connectors"' in project_config
+        and (path / "src" / "valmer_connectors").is_dir()
+        and (path / ".agents" / "skills" / "valmer-connectors").is_dir()
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="valmer-connectors",
@@ -99,6 +247,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     version_parser = subcommands.add_parser("version", help="Print package version.")
     version_parser.set_defaults(func=_version_command)
+
+    copy_skills_parser = subcommands.add_parser(
+        "copy-valmer-skills",
+        help="Copy packaged Valmer connector agent skills into a host project.",
+    )
+    copy_skills_parser.add_argument(
+        "--path",
+        default=".",
+        help="Host project directory. Defaults to the current directory.",
+    )
+    copy_skills_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be copied without writing files.",
+    )
+    copy_skills_parser.add_argument(
+        "--json",
+        dest="emit_json",
+        action="store_true",
+        help="Emit machine-readable JSON.",
+    )
+    copy_skills_parser.set_defaults(func=_copy_valmer_skills_command)
 
     runtime_parser = subcommands.add_parser("runtime", help="Runtime commands.")
     runtime_subcommands = runtime_parser.add_subparsers(
@@ -202,6 +372,77 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
+
+
+def _source_root_label(source_root: Traversable) -> str:
+    source_path = _traversable_path(source_root)
+    if source_path is not None and _same_resolved_path(
+        source_path,
+        source_tree_valmer_skills_root(),
+    ):
+        return "/".join(SOURCE_VALMER_SKILLS_PATH)
+    return "/".join(("valmer_connectors", *PACKAGE_VALMER_SKILLS_PATH))
+
+
+def _iter_skill_roots(source_root: Traversable) -> list[Traversable]:
+    return [
+        item
+        for item in sorted(source_root.iterdir(), key=lambda child: child.name)
+        if item.is_dir() and not item.name.startswith(".") and not item.name.startswith("__")
+    ]
+
+
+def _copy_traversable_tree(source: Traversable, destination: Path) -> None:
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+
+    for child in source.iterdir():
+        child_destination = destination / child.name
+        if child.is_dir():
+            _copy_traversable_tree(child, child_destination)
+            continue
+        if child.is_file():
+            child_destination.parent.mkdir(parents=True, exist_ok=True)
+            child_destination.write_bytes(child.read_bytes())
+
+
+def _traversable_exists(item: Traversable) -> bool:
+    try:
+        return item.exists()
+    except FileNotFoundError:
+        return False
+
+
+def _traversable_path(item: Traversable) -> Path | None:
+    return item if isinstance(item, Path) else None
+
+
+def _same_resolved_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except FileNotFoundError:
+        return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
+
+
+def _print_table(title: str, headers: list[str], rows: list[list[Any]]) -> None:
+    print(title)
+    if not rows:
+        print("  (no rows)")
+        return
+
+    widths = [
+        max(len(str(value)) for value in [header, *(row[index] for row in rows)])
+        for index, header in enumerate(headers)
+    ]
+    header_line = "  " + "  ".join(
+        str(header).ljust(widths[index]) for index, header in enumerate(headers)
+    )
+    separator = "  " + "  ".join("-" * width for width in widths)
+    print(header_line)
+    print(separator)
+    for row in rows:
+        print("  " + "  ".join(str(value).ljust(widths[index]) for index, value in enumerate(row)))
 
 
 if __name__ == "__main__":

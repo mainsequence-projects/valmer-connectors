@@ -102,6 +102,34 @@ bootstrap result:
 
 This command requires platform credentials and already migrated MetaTables.
 
+### `valmer-connectors copy-valmer-skills`
+
+Copy packaged `valmer-connectors` Codex skills into a downstream host project:
+
+```bash
+valmer-connectors copy-valmer-skills --path /path/to/host-project
+```
+
+The command writes only:
+
+```text
+<host-project>/.agents/skills/valmer-connectors
+```
+
+Options:
+
+```text
+--path TEXT
+--dry-run
+--json
+```
+
+The command must refuse to run when `--path` points at the
+`valmer-connectors` source checkout, and it must also refuse to copy when the
+destination resolves to the packaged skill source. This matches the defensive
+behavior used by `msm copy-msm-skills` and prevents deleting the source skill
+bundle.
+
 ### `valmer-connectors vector update`
 
 Own the behavior previously exposed by `scripts/update_vector_valmer.py`.
@@ -219,6 +247,7 @@ This ADR does not:
 - [x] Add reusable service function for the MXN government bond curve update.
 - [x] Add `src/valmer_connectors/cli/main.py` using `argparse`.
 - [x] Add `[project.scripts] valmer-connectors = "valmer_connectors.cli.main:main"`.
+- [x] Add `valmer-connectors copy-valmer-skills`.
 - [x] Convert `scripts/update_vector_valmer.py` into a thin wrapper.
 - [x] Convert `scripts/update_tiie_zero_curve.py` into a thin wrapper.
 - [x] Convert `scripts/validate_runtime.py` into a thin wrapper.

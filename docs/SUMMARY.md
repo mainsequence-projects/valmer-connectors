@@ -16,6 +16,8 @@
 - `docs/instruments.md`: Valmer row-to-`msm_pricing` instrument mapping.
 - `docs/metatable-query-optimization.md`: current thin-projection MetaTable
   read contract for hot Valmer validation paths.
+- `docs/agent-skills.md`: copying bundled Valmer Codex skills into downstream
+  host projects.
 - `docs/dashboards.md`: Streamlit dashboard pages and monitoring purpose.
 - `docs/deployment.md`: deployment and verification commands.
 - `docs/new-version-migration.md`: migration status against current SDK and

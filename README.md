@@ -149,6 +149,7 @@ Current commands:
 valmer-connectors version
 valmer-connectors migrations commands
 valmer-connectors runtime validate
+valmer-connectors copy-valmer-skills --path .
 valmer-connectors vector update
 valmer-connectors curves update-tiie-zero
 valmer-connectors curves update-mxn-government
@@ -156,6 +157,24 @@ valmer-connectors curves update-mxn-government
 
 The current `scripts/*.py` files are compatibility wrappers around package
 services.
+
+### Agent Skills
+
+Downstream projects that depend on `valmer-connectors` can import the bundled
+Valmer-specific Codex skills into their local `.agents/skills/` tree:
+
+```bash
+valmer-connectors copy-valmer-skills --path /path/to/host-project
+```
+
+The command writes only:
+
+```text
+<host-project>/.agents/skills/valmer-connectors
+```
+
+It refuses to run against the `valmer-connectors` source checkout so the
+library cannot accidentally overwrite its own skill bundle.
 
 ### Current Operations
 
@@ -189,6 +208,8 @@ for MkDocs through `mkdocs.yml`.
 - `docs/instruments.md`: row-to-instrument mapping rules
 - `docs/metatable-query-optimization.md`: thin MetaTable projection reads and
   bulk pricing-details persistence behavior
+- `docs/agent-skills.md`: importing bundled Valmer Codex skills into host
+  projects
 - `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up
 - `docs/dashboards.md`: dashboards currently shipped by the project
 - `docs/SUMMARY.md`: documentation map required by the project instructions
