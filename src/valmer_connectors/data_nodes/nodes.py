@@ -96,26 +96,6 @@ def _pricing_detail_face_value(instrument_dump: dict) -> object:
     return None
 
 
-def _build_open_time_series(time_index: pd.Series) -> pd.Series:
-    open_time = pd.Series(pd.NA, index=time_index.index, dtype="Int64")
-    valid = time_index.notna()
-    if valid.any():
-        open_time.loc[valid] = (time_index.loc[valid].astype("int64") // 10**9).astype("Int64")
-    return open_time
-
-
-def _coerce_nullable_integer_for_storage(series: pd.Series) -> pd.Series:
-    return pd.to_numeric(series, errors="coerce").astype("Int64")
-
-
-def _normalize_nullable_integer_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    normalized = frame.copy()
-    for column in columns:
-        if column in normalized.columns:
-            normalized[column] = _coerce_nullable_integer_for_storage(normalized[column])
-    return normalized
-
-
 def _summarize_uids(uids: list[str], *, limit: int = 10) -> str:
     if not uids:
         return ""
@@ -442,56 +422,7 @@ def _persist_valmer_pricing_details_batch(
     return persisted_uids
 
 
-VALMER_DERIVED_COLUMN_SPECS = (
-    ValmerColumnSpec(
-        source_name=None,
-        column_name="open",
-        dtype="float",
-        transform="float",
-        label="Open",
-        description="Synthetic OHLC open copied from the Valmer dirty price.",
-    ),
-    ValmerColumnSpec(
-        source_name=None,
-        column_name="high",
-        dtype="float",
-        transform="float",
-        label="High",
-        description="Synthetic OHLC high copied from the Valmer dirty price.",
-    ),
-    ValmerColumnSpec(
-        source_name=None,
-        column_name="low",
-        dtype="float",
-        transform="float",
-        label="Low",
-        description="Synthetic OHLC low copied from the Valmer dirty price.",
-    ),
-    ValmerColumnSpec(
-        source_name=None,
-        column_name="close",
-        dtype="float",
-        transform="float",
-        label="Close",
-        description="Synthetic OHLC close copied from the Valmer dirty price.",
-    ),
-    ValmerColumnSpec(
-        source_name=None,
-        column_name="volume",
-        dtype="int",
-        transform="int",
-        label="Volume",
-        description="Synthetic volume placeholder published as 0.",
-    ),
-    ValmerColumnSpec(
-        source_name=None,
-        column_name="open_time",
-        dtype="int",
-        transform="int",
-        label="Open Time",
-        description="Unix timestamp in seconds for the published end-of-day bar.",
-    ),
-)
+VALMER_DERIVED_COLUMN_SPECS = ()
 
 
 VALMER_SOURCE_COLUMN_SPECS = (
@@ -1678,25 +1609,14 @@ class ImportValmer(AssetIndexedDataNode):
             )
 
         valuation_date = vector_df["valuation_date"]
-        dirty_price = vector_df["dirty_price"]
         time_index = _as_utc_ns(valuation_date + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
 
         vector_df["time_index"] = time_index
         vector_df[ASSET_IDENTIFIER_DIMENSION] = source_data["unique_identifier"].astype("string")
-        vector_df["open"] = dirty_price
-        vector_df["high"] = dirty_price
-        vector_df["low"] = dirty_price
-        vector_df["close"] = dirty_price
-        vector_df["volume"] = pd.Series(0, index=source_data.index, dtype="Int64")
-        vector_df["open_time"] = _build_open_time_series(time_index)
 
         ordered_columns = [spec.column_name for spec in VALMER_VECTOR_COLUMN_SPECS]
         vector_df = vector_df[["time_index", ASSET_IDENTIFIER_DIMENSION, *ordered_columns]]
         vector_df.set_index(["time_index", ASSET_IDENTIFIER_DIMENSION], inplace=True)
         vector_df = self.update_statistics.filter_df_by_latest_value(vector_df)
-        integer_columns = [
-            spec.column_name for spec in VALMER_VECTOR_COLUMN_SPECS if spec.dtype == "int"
-        ]
-        vector_df = _normalize_nullable_integer_columns(vector_df, integer_columns)
 
         return vector_df

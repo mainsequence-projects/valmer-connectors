@@ -447,8 +447,8 @@ is not required for moving Valmer pricing behavior out of this connector.
 
 The migration is valid only when all of these checks pass:
 
-- Valmer vector import still publishes `vector_de_precios_valmer` with the same
-  source fields and OHLC mapping.
+- Valmer vector import still publishes `vector_de_precios_valmer` with Valmer
+  source-field semantics and no synthetic OHLC/bar columns.
 - Supported Valmer bonds produce the same instrument hash before and after the
   migration, or any hash differences are explained by an intentional core
   serialization change.

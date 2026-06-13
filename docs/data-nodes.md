@@ -54,9 +54,9 @@ time-varying observations keyed by Valmer's canonical project asset identifier.
 |------------------------------------|
 | time_index                         |
 | asset_identifier                   |
-| open, high, low, close             |
 | valuation_date                     |
 | clean_price, dirty_price           |
+| accrued_interest                   |
 | yield, spread, duration, risk      |
 +------------------------------------+
 ```
@@ -83,8 +83,6 @@ dimension name follows the current `ms-markets` contract.
 The DataNode stores fields that can change from one Valmer vector date to the
 next:
 
-- synthetic OHLC fields copied from dirty price: `open`, `high`, `low`, `close`
-- execution placeholders: `volume`, `open_time`
 - valuation fields: `valuation_date`, `clean_price`, `dirty_price`,
   `accrued_interest`
 - coupon/current state: `current_coupon`, `spread`, `amount_outstanding`,

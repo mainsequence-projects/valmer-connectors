@@ -12,7 +12,7 @@ from msm.data_nodes.assets import AssetSnapshot as CoreAssetSnapshot
 from msm.models.assets import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm.settings import markets_auto_register_namespace
-from sqlalchemy import BigInteger, Float
+from sqlalchemy import Float
 
 from valmer_connectors.data_nodes.nodes import (
     VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
@@ -97,8 +97,8 @@ class ValmerVectorStorageTest(unittest.TestCase):
             ImportValmer.asset_identity_dimension,
             ValmerVectorPricesStorage.__index_names__,
         )
-        self.assertIsInstance(ValmerVectorPricesStorage.__table__.c.volume.type, BigInteger)
-        self.assertIsInstance(ValmerVectorPricesStorage.__table__.c.open_time.type, BigInteger)
+        for synthetic_column in ("open", "high", "low", "close", "volume", "open_time"):
+            self.assertNotIn(synthetic_column, storage_columns)
         self.assertIsInstance(
             ValmerVectorPricesStorage.__table__.c.days_since_coupon.type,
             Float,
@@ -184,11 +184,10 @@ class ValmerVectorStorageTest(unittest.TestCase):
         )
         self.assertEqual(str(result["days_since_coupon"].dtype), "float64")
         self.assertEqual(str(result["coupons_remaining"].dtype), "float64")
-        self.assertEqual(str(result["volume"].dtype), "Int64")
-        self.assertEqual(str(result["open_time"].dtype), "Int64")
         self.assertTrue(pd.isna(result_row["days_since_coupon"]))
         self.assertTrue(pd.isna(result_row["coupons_remaining"]))
-        self.assertEqual(result_row["volume"], 0)
+        for synthetic_column in ("open", "high", "low", "close", "volume", "open_time"):
+            self.assertNotIn(synthetic_column, result.columns)
         self.assertEqual(
             result.reset_index()[["days_since_coupon", "coupons_remaining"]].to_json(
                 orient="records"

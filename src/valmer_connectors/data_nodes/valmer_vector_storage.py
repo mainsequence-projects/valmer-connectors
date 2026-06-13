@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 from msm.base import MarketsBase
 from msm.models import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, String
+from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 from valmer_connectors.markets import ValmerMarketsTimeIndexMetaTableMixin
 
@@ -18,8 +18,8 @@ class ValmerVectorPricesStorage(ValmerMarketsTimeIndexMetaTableMixin, MarketsBas
     __metatable_description__ = (
         "Daily Valmer vector price storage keyed by (time_index, asset_identifier). "
         "Each row is one Valmer instrument observation with time-varying price, yield, "
-        "spread, rating, liquidity, and risk fields plus derived OHLC columns. Static "
-        "Valmer asset descriptors live in ValmerAssetDetailsTable."
+        "spread, rating, liquidity, and risk fields using Valmer source semantics. "
+        "Static Valmer asset descriptors live in ValmerAssetDetailsTable."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "vector_de_precios_valmer",
@@ -45,54 +45,6 @@ class ValmerVectorPricesStorage(ValmerMarketsTimeIndexMetaTableMixin, MarketsBas
         info={
             "label": "Asset Identifier",
             "description": "AssetTable.unique_identifier value for the Valmer asset.",
-        },
-    )
-    open: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Open",
-            "description": "Synthetic OHLC open copied from dirty price.",
-        },
-    )
-    high: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "High",
-            "description": "Synthetic OHLC high copied from dirty price.",
-        },
-    )
-    low: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Low",
-            "description": "Synthetic OHLC low copied from dirty price.",
-        },
-    )
-    close: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Close",
-            "description": "Synthetic OHLC close copied from dirty price.",
-        },
-    )
-    volume: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        info={
-            "label": "Volume",
-            "description": "Synthetic volume placeholder published as 0.",
-        },
-    )
-    open_time: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        info={
-            "label": "Open Time",
-            "description": "Unix timestamp in seconds for the bar.",
         },
     )
     valuation_date: Mapped[dt.datetime | None] = mapped_column(
