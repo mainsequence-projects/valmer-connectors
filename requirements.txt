@@ -44,6 +44,8 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   typer
 concurrent-log-handler==0.9.29
     # via mainsequence
+exchange-calendars==4.13.2
+    # via pandas-market-calendars
 fastapi==0.136.3
     # via ms-markets
 gitdb==4.0.12
@@ -76,6 +78,8 @@ jsonschema==4.26.0
     # via altair
 jsonschema-specifications==2025.9.1
     # via jsonschema
+korean-lunar-calendar==0.3.1
+    # via exchange-calendars
 mainsequence==4.4.5
     # via
     #   ms-markets
@@ -96,6 +100,7 @@ narwhals==2.22.1
     # via altair
 numpy==2.4.6
     # via
+    #   exchange-calendars
     #   mainsequence
     #   ms-markets
     #   pandas
@@ -136,9 +141,13 @@ packaging==26.2
     #   streamlit
 pandas==3.0.3
     # via
+    #   exchange-calendars
     #   mainsequence
     #   ms-markets
+    #   pandas-market-calendars
     #   streamlit
+pandas-market-calendars==5.4.0
+    # via valmer-connectors
 pillow==12.2.0
     # via streamlit
 pip==26.1.2
@@ -169,6 +178,8 @@ pydeck==0.9.2
     # via streamlit
 pygments==2.20.0
     # via rich
+pyluach==2.3.0
+    # via exchange-calendars
 python-dateutil==2.9.0.post0
     # via pandas
 python-multipart==0.0.32
@@ -182,7 +193,9 @@ pywin32==312 ; sys_platform == 'win32'
 pyyaml==6.0.3
     # via mainsequence
 quantlib==1.42.1
-    # via ms-markets
+    # via
+    #   ms-markets
+    #   valmer-connectors
 referencing==0.37.0
     # via
     #   jsonschema
@@ -222,6 +235,8 @@ tenacity==9.1.4
     # via streamlit
 toml==0.10.2
     # via streamlit
+toolz==1.1.0
+    # via exchange-calendars
 tqdm==4.68.2
     # via mainsequence
 typer==0.26.7
@@ -249,8 +264,10 @@ typing-inspection==0.4.2
     # via
     #   fastapi
     #   pydantic
-tzdata==2026.2 ; sys_platform == 'emscripten' or sys_platform == 'win32'
-    # via pandas
+tzdata==2026.2
+    # via
+    #   exchange-calendars
+    #   pandas
 urllib3==2.7.0
     # via
     #   mainsequence
