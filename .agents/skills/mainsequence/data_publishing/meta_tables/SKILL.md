@@ -128,9 +128,8 @@ For `platform_managed`, inherit from `PlatformManagedMetaTable`.
 
 Declare an explicit project-prefixed SQLAlchemy `__tablename__`. Use
 `schema_table_name(project_or_app, concept)` from `mainsequence.meta_tables` to
-generate that name. The mixin derives only the logical `storage_hash` from
-storage-relevant configuration and table shape; it must not use that hash as the
-SQLAlchemy table name.
+generate that name. Storage identity is derived from storage-relevant
+configuration and table shape; it must not be used as the SQLAlchemy table name.
 
 When a platform-managed table must support in-place contract migrations from its
 first version, use Alembic. Keep the SDK model as a normal
@@ -156,7 +155,7 @@ The column description must explain what the value means in this table and how
 it is used, not just restate the column name or dtype.
 
 Use `__metatable_extra_hash_components__` when two backend-managed tables could
-otherwise produce the same storage hash because their storage-relevant shape is
+otherwise produce the same storage identity because their storage-relevant shape is
 identical or intentionally generic. The value must be stable and deterministic,
 usually a small mapping such as `{"storage_name": "account_holdings"}`.
 

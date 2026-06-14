@@ -13,7 +13,7 @@
 - Added `src/instruments/bootstrap.py` and updated the ETL runners so runtime
   registration is explicit.
 - Added `scripts/validate_runtime.py` as a pricing-runtime smoke test.
-- Repaired `build_position_from_sheet()` so it imports a valid local
+- Repaired `build_valuation_position_from_sheet()` so it imports a valid local
   `PROJECT_BUCKET_NAME`.
 - Fixed `ImportValmer` metadata to match the stored schema and changed the table
   frequency to daily.

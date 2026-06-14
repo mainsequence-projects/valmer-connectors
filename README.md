@@ -85,7 +85,8 @@ owns the behavior:
   `get_instrument_conventions(...)`.
 - Add a new instrument-construction rule in `build_qll_bond_from_row(...)`.
 - Validate the change with `run_price_check(...)`,
-  `build_position_from_sheet(...)`, and `valmer-connectors runtime validate`.
+  `build_valuation_position_from_sheet(...)`, and
+  `valmer-connectors runtime validate`.
 
 Detailed guides:
 

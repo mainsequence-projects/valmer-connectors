@@ -63,7 +63,7 @@ render_kpi_cards(
         (
             "Vector Rows",
             str(len(vector_history.data.index)) if vector_history.error is None else "n/a",
-            vector_history.storage_hash or vector_history.error or "No vector storage resolved.",
+            vector_history.source_label or vector_history.error or "No vector source resolved.",
         ),
         (
             "Latest Assets",
@@ -85,7 +85,7 @@ render_kpi_cards(
         (
             "Curve Points",
             str(len(standard_curve_points.index)) if not standard_curve_points.empty else "0",
-            discount_curve_result.storage_hash
+            discount_curve_result.source_label
             or discount_curve_result.error
             or "Discount curve path unavailable.",
         ),
@@ -180,7 +180,7 @@ with right:
             continue
         latest_row = result.data.sort_values("time_index").iloc[-1]
         st.success(
-            f"{label.title()} path updated at {latest_row['time_index']} with storage `{result.storage_hash}`."
+            f"{label.title()} path updated at {latest_row['time_index']} via {result.source_label}."
         )
 
     st.subheader("Runtime Notes")

@@ -68,7 +68,7 @@ DATETIME_VECTOR_COLUMNS = (
 class QueryResult:
     data: pd.DataFrame
     error: str | None = None
-    storage_hash: str | None = None
+    source_label: str | None = None
 
 
 def utc_now() -> datetime:
@@ -244,7 +244,7 @@ def _query_node_by_identifier(
         )
         return QueryResult(
             data=_prepare_vector_frame(frame),
-            storage_hash=getattr(node, "storage_hash", None),
+            source_label=f"DataNode: {node_identifier}",
         )
     except Exception as exc:
         return QueryResult(data=pd.DataFrame(), error=str(exc))
@@ -258,7 +258,7 @@ def load_vector_history(lookback_days: int = 14) -> QueryResult:
     return QueryResult(
         data=enrich_valmer_vector_with_details(result.data),
         error=result.error,
-        storage_hash=result.storage_hash,
+        source_label=result.source_label,
     )
 
 
@@ -469,7 +469,7 @@ def _load_discount_curve_history(lookback_days: int = 30) -> QueryResult:
         ).reset_index()
         if "time_index" in frame.columns:
             frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True, errors="coerce")
-        return QueryResult(data=frame, storage_hash=node.storage_hash)
+        return QueryResult(data=frame, source_label=f"DataNode: {DISCOUNT_CURVE_NODE_IDENTIFIER}")
     except Exception as exc:
         return QueryResult(data=pd.DataFrame(), error=str(exc))
 

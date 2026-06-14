@@ -25,6 +25,9 @@ IndexTable.unique_identifier
 
 Use these skills first when the task crosses their boundaries:
 
+- Generic pricing runtime, pricing details, market-data-set, or valuation-basket
+  behavior:
+  `.agents/skills/ms_markets/pricing/general_pricing/SKILL.md`
 - Generic Main Sequence DataNode behavior:
   `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
 - Generic Main Sequence MetaTable behavior:
@@ -108,18 +111,15 @@ identity override.
 rows describe which convention/index the curve belongs to and how to interpret
 published curve observations.
 
-Pricing runtime attachment order matters. Extension and project code should use
-`attach_pricing_schemas(...)` with an explicit `models=[...]` list. The
-`create_pricing_schemas(...)` function remains only for legacy compatibility
-and for callers that intentionally want startup market-data binding seeding.
-Project code must not use it as the normal pricing runtime contract:
+Pricing runtime attachment order matters. `attach_pricing_schemas(...)` is the
+startup entrypoint; it attaches already-registered pricing MetaTables and
+configures pricing market-data bindings. It does not create schemas or register
+missing MetaTables at runtime:
 
 ```python
 from msm_pricing.bootstrap import attach_pricing_schemas
-from msm_pricing.models.curves import CurveTable
-from msm_pricing.models.index_convention_details import IndexConventionDetailsTable
 
-attach_pricing_schemas(models=[IndexConventionDetailsTable, CurveTable])
+attach_pricing_schemas(seed_default_market_data_bindings=True)
 ```
 
 `attach_pricing_schemas(...)` uses the same direct runtime attachment path as
@@ -219,6 +219,14 @@ Rules:
   when a caller wants the latest available curve snapshot for one curve
   identity. Do not use `USE_LAST_OBSERVATION_MS_INSTRUMENT` as normal
   application control flow.
+- Persist pricing details for one asset with `instrument.attach_to_asset(asset)`
+  or `msm_pricing.api.add_pricing_details(...)`. For thousands of assets, use
+  `msm_pricing.api.add_many_pricing_details(...)` so instruments are serialized
+  once and pricing-detail/current rows are written through chunked bulk upserts.
+  Do not loop single-asset writes for large universes. Explicit
+  `pricing_details_date` writes must still reconcile the current projection:
+  update current when no current row exists or when the new date is newer than
+  current.
 
 ## Fixings Pattern
 

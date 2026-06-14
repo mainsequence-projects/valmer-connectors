@@ -145,7 +145,7 @@ src/valmer_connectors/instruments/vector_to_asset.py
 Current call site:
 
 ```text
-build_position_from_sheet(...)
+build_valuation_position_from_sheet(...)
 ```
 
 Legacy behavior:
@@ -458,7 +458,7 @@ Expected behavior:
 - [x] Add `_get_current_pricing_face_values_by_uid(...)`.
 - [x] Update `_get_pricing_refresh_uids(...)` to consume face values rather than
       full `AssetCurrentPricingDetails` models.
-- [x] Update `build_position_from_sheet(...)` to use
+- [x] Update `build_valuation_position_from_sheet(...)` to use
       `resolve_valmer_asset_uids(...)`.
 - [x] Add tests for projection helpers and strict detail freshness behavior.
 - [x] Add tests proving full `search_model(...)` is not used in the hot paths.

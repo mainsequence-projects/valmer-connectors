@@ -117,8 +117,8 @@ Asset detail persistence is also separate from price-vector publishing:
 - [x] Use `AssetCurrentPricingDetailsTable` lookups for pricing-refresh checks.
 - [x] Keep pricing-detail writes isolated and routed through
   `msm_pricing.api.add_many_pricing_details(...)`.
-- [x] Replace `build_position_from_sheet(...)` asset lookup with the typed
-  Valmer asset resolver.
+- [x] Replace `build_valuation_position_from_sheet(...)` asset lookup with the
+  typed Valmer asset resolver.
 - [x] Replace dashboard Valmer asset lookup and pricing-health inspection with
   typed asset lookup plus `AssetCurrentPricingDetailsTable` reads.
 - [x] Add `src/valmer_connectors/meta_tables/valmer_asset_details.py` with

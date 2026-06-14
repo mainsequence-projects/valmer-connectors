@@ -16,11 +16,11 @@ import pandas as pd
 import pytz
 import QuantLib as ql
 from mainsequence.client.models_foundry import Artifact
-from msm_pricing.instruments import Position
 from msm_pricing.pricing_engine.bond_analytics import compare_bond_to_market_quote
 from msm_pricing.pricing_engine.coupon_schedules import (
     compute_coupon_schedule_force_match,
 )
+from msm_pricing.valuation import ValuationLine, ValuationPosition
 from tqdm import tqdm
 
 from valmer_connectors.instruments.asset_identity import resolve_valmer_asset_uids
@@ -62,6 +62,15 @@ class CoreBondPricingPayload:
     floating_rate_index_uid: uuid.UUID | None = None
     spread: float | None = None
     schedule: ql.Schedule | None = None
+
+
+@dataclass
+class ValmerValuationPositionBuildResult:
+    valuation_position: ValuationPosition
+    price_check_frame: pd.DataFrame
+    instrument_map: Dict[str, Dict[str, Any]]
+    report_artifact_uid: str | None = None
+    report_csv_path: str | None = None
 
 
 _REFERENCE_INDEX_UID_CACHE: dict[str, uuid.UUID] | None = None
@@ -871,9 +880,9 @@ def run_price_check(
     *,
     SPREAD_IS_PERCENT: bool = True,
     price_tol_bp: float = 2.0,
-) -> Tuple[pd.DataFrame, Dict[str, msi.Instrument]]:
+) -> Tuple[pd.DataFrame, Dict[str, Dict[str, Any]]]:
     results: List[Dict[str, Any]] = []
-    instrument_map: Dict[str, msi.Instrument] = {}
+    instrument_map: Dict[str, Dict[str, Any]] = {}
 
     for ix, row in tqdm(bonos_df.iterrows(), desc="building instruments"):
         eval_date = parse_val_date(row["fecha"])
@@ -976,18 +985,20 @@ def normalize_column_name(col_name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", cleaned_name.lower())
 
 
-def build_position_from_sheet(
+def build_valuation_position_from_sheet(
     sheet_path: str | Path,
     *,
     notional_per_line: float = 100_000_000.0,
     out_path: str | Path | None = None,
-) -> Tuple[Position, Dict[str, Any], str]:
+    market_data_set: Any = None,
+    publish_report_artifact: bool = True,
+) -> ValmerValuationPositionBuildResult:
     """
-    Build instruments from a vendor sheet and dump a 'position.json'-style file.
-    Returns (Position, cfg_dict, position_json_path, df_out_csv_path).
-    """
-    from valmer_connectors.settings import PROJECT_BUCKET_NAME
+    Build a transient ValuationPosition from a Valmer vendor sheet.
 
+    The generated basket is in-memory pricing input. It is not persisted as
+    account holdings, target positions, or any durable pricing position row.
+    """
     sheet_path = str(sheet_path)
     df = pd.read_excel(sheet_path)
     df.columns = [normalize_column_name(col) for col in df.columns]
@@ -1011,13 +1022,138 @@ def build_position_from_sheet(
     df_out["asset_uid"] = df_out["UID"].map(ms_assets_map)
     df_out["asset_id"] = df_out["asset_uid"]
 
-    with tempfile.NamedTemporaryFile(mode="w+", suffix=".csv", delete=True) as temp_csv:
-        temp_file_path = temp_csv.name
-        df_out.to_csv(temp_file_path, index=False)
+    valuation_position = _build_valuation_position_from_price_check(
+        df_out,
+        instrument_map,
+        notional_per_line=notional_per_line,
+        market_data_set=market_data_set,
+    )
+    report_csv_path, report_artifact_uid = _publish_price_check_report(
+        df_out,
+        out_path=out_path,
+        publish_report_artifact=publish_report_artifact,
+    )
 
-        scrap_source_artifact = Artifact.get_or_create(
+    return ValmerValuationPositionBuildResult(
+        valuation_position=valuation_position,
+        price_check_frame=df_out,
+        instrument_map=instrument_map,
+        report_artifact_uid=report_artifact_uid,
+        report_csv_path=report_csv_path,
+    )
+
+
+def _build_valuation_position_from_price_check(
+    price_check_frame: pd.DataFrame,
+    instrument_map: Dict[str, Dict[str, Any]],
+    *,
+    notional_per_line: float,
+    market_data_set: Any = None,
+) -> ValuationPosition:
+    if price_check_frame.empty:
+        raise ValueError("Cannot build a ValuationPosition from an empty price-check frame.")
+
+    valuation_dates = pd.to_datetime(
+        price_check_frame["FECHA"],
+        utc=True,
+        errors="coerce",
+    ).dropna()
+    unique_dates = valuation_dates.dt.normalize().unique()
+    if len(unique_dates) != 1:
+        raise ValueError(
+            "ValuationPosition requires exactly one valuation date per sheet; "
+            f"found {len(unique_dates)}."
+        )
+
+    lines: list[ValuationLine] = []
+    for row in price_check_frame.to_dict("records"):
+        instrument_hash = str(row["instrument_hash"])
+        try:
+            instrument_entry = instrument_map[instrument_hash]
+        except KeyError as exc:
+            raise KeyError(
+                f"Missing instrument for price-check row hash {instrument_hash!r}."
+            ) from exc
+
+        instrument = instrument_entry["instrument"]
+        face_value = float(getattr(instrument, "face_value"))
+        if face_value <= 0:
+            raise ValueError(
+                f"Instrument {instrument_hash!r} has non-positive face_value {face_value}."
+            )
+
+        asset_uid = _optional_uuid(row.get("asset_uid"))
+        extra_market_info = dict(instrument_entry.get("extra_market_info", {}))
+        lines.append(
+            ValuationLine(
+                instrument=instrument,
+                units=float(notional_per_line) / face_value,
+                asset_uid=asset_uid,
+                metadata_json={
+                    "valmer_unique_identifier": row.get("UID"),
+                    "instrument_hash": instrument_hash,
+                    "subyacente": row.get("SUBYACENTE"),
+                    "extra_market_info": extra_market_info,
+                },
+            )
+        )
+
+    valuation_date = pd.Timestamp(unique_dates[0]).to_pydatetime()
+    return ValuationPosition(
+        valuation_date=valuation_date,
+        market_data_set=market_data_set,
+        lines=lines,
+    )
+
+
+def _publish_price_check_report(
+    price_check_frame: pd.DataFrame,
+    *,
+    out_path: str | Path | None,
+    publish_report_artifact: bool,
+) -> tuple[str | None, str | None]:
+    report_csv_path: str | None = None
+
+    if out_path is not None:
+        path = Path(out_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        price_check_frame.to_csv(path, index=False)
+        report_csv_path = str(path)
+
+    if not publish_report_artifact:
+        return report_csv_path, None
+
+    from valmer_connectors.settings import PROJECT_BUCKET_NAME
+
+    if report_csv_path is not None:
+        artifact = Artifact.get_or_create(
             bucket_name=PROJECT_BUCKET_NAME,
             name="instrument_pricing_match",
             created_by_resource_name=__file__,
-            filepath=temp_file_path,
+            filepath=report_csv_path,
         )
+        return report_csv_path, _artifact_uid(artifact)
+
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".csv", delete=True) as temp_csv:
+        price_check_frame.to_csv(temp_csv.name, index=False)
+        artifact = Artifact.get_or_create(
+            bucket_name=PROJECT_BUCKET_NAME,
+            name="instrument_pricing_match",
+            created_by_resource_name=__file__,
+            filepath=temp_csv.name,
+        )
+        return None, _artifact_uid(artifact)
+
+
+def _optional_uuid(value: Any) -> uuid.UUID | None:
+    if value is None or pd.isna(value):
+        return None
+    return uuid.UUID(str(value))
+
+
+def _artifact_uid(artifact: Any) -> str | None:
+    for attribute in ("uid", "artifact_uid", "id"):
+        value = getattr(artifact, attribute, None)
+        if value is not None:
+            return str(value)
+    return None

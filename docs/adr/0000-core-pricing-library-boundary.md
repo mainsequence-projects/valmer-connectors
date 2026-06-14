@@ -129,8 +129,8 @@ Current locations:
   `src/valmer_connectors/instruments/vector_to_asset.py::get_instrument_conventions(...)`
 - Vendor price check loop:
   `src/valmer_connectors/instruments/vector_to_asset.py::run_price_check(...)`
-- Position-building demo or validation helper:
-  `src/valmer_connectors/instruments/vector_to_asset.py::build_position_from_sheet(...)`
+- Valuation-position demo or validation helper:
+  `src/valmer_connectors/instruments/vector_to_asset.py::build_valuation_position_from_sheet(...)`
 
 Target core responsibility:
 
