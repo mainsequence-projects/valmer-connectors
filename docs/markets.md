@@ -50,10 +50,12 @@ The internal `_upsert_asset_table_rows(...)` helper writes only minimal
 
 Asset registration is not the same as current pricing-detail hydration.
 
-During `valmer-connectors vector update`, `ImportValmer.prepare_for_update()`
-registers or resolves assets only from the supported target-pricing subset
-selected by `ImportValmer._get_target_bonds(...)`. Current pricing details and
-`ValmerAssetDetailsTable` rows are hydrated for that same registration scope.
+During `valmer-connectors vector update`, source rows are filtered from the last
+stored vector observation per `asset_identifier`. Then
+`ImportValmer.prepare_for_update()` registers or resolves assets only from the
+supported target-pricing subset selected by `ImportValmer._get_target_bonds(...)`.
+Current pricing details and `ValmerAssetDetailsTable` rows are hydrated for that
+same registration scope.
 
 The broader imported Valmer source universe is intentionally not registered as
 `AssetTable` rows. The Valmer vector contains multiple instrument types, and

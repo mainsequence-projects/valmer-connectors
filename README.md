@@ -44,6 +44,7 @@ bootstrap_runtime()
 ImportValmer.prepare_for_update()
     |
     +-- import source rows
+    +-- filter rows from the last vector observation per asset_identifier
     +-- sync AssetTable rows
     +-- sync ValmerAssetDetailsTable rows
     +-- hydrate supported bond pricing details
@@ -58,6 +59,12 @@ ValmerVectorPricesStorage
 `ImportValmer.get_asset_list()` is only the prepared asset-scope handoff for
 the asset-indexed DataNode lifecycle. It does not own registration or pricing
 hydration.
+
+The vector update uses the target vector table as the cursor. For every source
+row, the updater builds `asset_identifier = tipovalor_emisora_serie` and keeps
+the row only when its source `time_index` is strictly newer than the latest
+stored vector observation for that asset. Assets with no stored vector
+observation start from the beginning of the configured source rows.
 
 The vector update registers and publishes only rows that pass the supported
 target-bond instrument-mapping filter. The broader Valmer vector universe is not

@@ -23,6 +23,10 @@ must follow when registering assets from different vector sources.
 - [Deployment](deployment.md)
 - [New Version Migration](new-version-migration.md)
 
+## Implementation Plans
+
+- [MetaTable Source Import Plan](implementation/metatable-source-import-plan.md)
+
 ## Workflow Boundaries
 
 ```text

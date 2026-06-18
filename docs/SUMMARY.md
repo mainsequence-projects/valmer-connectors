@@ -23,6 +23,12 @@
 - `docs/new-version-migration.md`: migration status against current SDK and
   `ms-markets` architecture.
 
+## Implementation Plans
+
+- `docs/implementation/metatable-source-import-plan.md`: plan for adding a
+  one-or-many MetaTable-backed Valmer vector source alongside local files and
+  Artifact buckets.
+
 ## ADRs
 
 - `docs/adr/0000-core-pricing-library-boundary.md`

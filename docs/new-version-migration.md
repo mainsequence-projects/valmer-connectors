@@ -77,6 +77,7 @@ build_import_valmer()
 prepare_for_update()
     |
     +-- source import
+    +-- source rows filtered from last vector observation per asset_identifier
     +-- AssetTable sync
     +-- ValmerAssetDetailsTable sync
     +-- supported bond pricing hydration

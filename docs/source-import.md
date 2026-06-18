@@ -21,12 +21,26 @@ Actual source import happens later:
 ```text
 prepare_for_update()
     -> prepare_source_data()
-        -> _set_artifact_data()
+        -> _set_artifact_data() or _set_metatable_source_data()
 ```
+
+After source rows are loaded and normalized, `prepare_source_data()` filters
+rows against the target vector storage cursor per asset:
+
+```text
+asset_identifier = tipovalor_emisora_serie
+source time_index = Fecha + 1 day - 1 second
+
+keep row when source time_index > latest stored vector time_index for asset_identifier
+keep row when asset_identifier has no stored vector observation
+```
+
+This is the same asset-indexed update rule regardless of source type. There is
+no global latest-date source skip.
 
 ## Source Selection
 
-`_set_artifact_data()` has two source paths.
+`prepare_source_data()` has three source paths.
 
 ```text
 DEBUG_ARTIFACT_PATH set
@@ -34,6 +48,9 @@ DEBUG_ARTIFACT_PATH set
 
 DEBUG_ARTIFACT_PATH not set
     -> Main Sequence Artifact bucket import
+
+source_kind = "metatable"
+    -> configured MetaTable source list
 ```
 
 ## Platform Artifact Bucket Path
@@ -68,8 +85,44 @@ For each artifact, the importer:
 4. derives `unique_identifier` through `add_valmer_unique_identifier(...)`
 5. concatenates all accepted frames into `self.artifact_data`
 
-When update statistics already exist, artifacts are filtered to source dates
-newer than the latest stored update timestamp.
+Artifact rows are concatenated first and then filtered by the per-asset vector
+cursor described above.
+
+## MetaTable Source Path
+
+Run:
+
+```bash
+valmer-connectors vector update \
+  --source metatable \
+  --source-metatables-config-path configs/valmer_metatable_sources.json
+```
+
+The config file contains one or more `MetaTableValmerSource` entries:
+
+```json
+{
+  "sources": [
+    {
+      "source_name": "government_vector",
+      "metatable_identifier": "external.valmer_government_vector",
+      "column_map": {
+        "Fecha": "fecha",
+        "TV": "tipovalor",
+        "Emisora": "emisora",
+        "Serie": "serie",
+        "PrecioSucio": "preciosucio",
+        "PrecioLimpio": "preciolimpio"
+      }
+    }
+  ]
+}
+```
+
+Each source is read and normalized independently, filtered against the vector
+cursor per `asset_identifier`, and only then concatenated with the other source
+frames. Duplicate `(time_index, asset_identifier)` rows across MetaTable
+sources fail unless a source-priority rule is added in a later implementation.
 
 ## Local Debug Path
 

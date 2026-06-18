@@ -37,6 +37,7 @@ bootstrap_runtime()
 ImportValmer.prepare_for_update()
     |
     +-- import source rows
+    +-- filter rows from the last vector observation per asset_identifier
     +-- sync AssetTable rows
     +-- sync ValmerAssetDetailsTable rows
     +-- hydrate supported bond pricing details

@@ -2,10 +2,11 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, List, Union
+from pathlib import Path
+from typing import Any, List, Literal, Union
 
 import pandas as pd
-import structlog
+from mainsequence.client.metatables import MetaTable
 from mainsequence.client.models_foundry import Artifact
 from msm.api.assets import Asset as MarketsAsset
 from msm.api.base import operation_result_rows
@@ -17,7 +18,7 @@ from msm.repositories.base import execute_markets_operation
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_pricing.api import add_many_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
-from pydantic import Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from tqdm import tqdm
 
@@ -74,15 +75,35 @@ def _coerce_valmer_series(series: pd.Series, transform: str) -> pd.Series:
         return _as_utc_ns(pd.to_datetime(series, errors="coerce", utc=True))
 
     if transform == "date_ymd":
-        return _as_utc_ns(
-            pd.to_datetime(series.astype("string"), format="%Y%m%d", errors="coerce", utc=True)
-        )
+        return _parse_valmer_valuation_dates(series)
 
     raise ValueError(f"Unsupported Valmer transform: {transform}")
 
 
 def _as_utc_ns(series: pd.Series) -> pd.Series:
     return pd.Series(series, index=series.index).astype("datetime64[ns, UTC]")
+
+
+def _parse_valmer_valuation_dates(series: pd.Series) -> pd.Series:
+    strict_ymd = pd.to_datetime(
+        series.astype("string"),
+        format="%Y%m%d",
+        errors="coerce",
+        utc=True,
+    )
+    flexible = pd.to_datetime(series, errors="coerce", utc=True)
+    return _as_utc_ns(strict_ymd.fillna(flexible))
+
+
+def _as_utc_ns_timestamp(value: object) -> pd.Timestamp | None:
+    if value is None or pd.isna(value):
+        return None
+    timestamp = pd.Timestamp(value)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.tz_localize("UTC")
+    else:
+        timestamp = timestamp.tz_convert("UTC")
+    return pd.Series([timestamp]).astype("datetime64[ns, UTC]").iloc[0]
 
 
 def _pricing_detail_face_value(instrument_dump: dict) -> object:
@@ -346,6 +367,42 @@ def _valmer_snapshot_time_index(value: object) -> pd.Timestamp | None:
     if pd.isna(valuation_date):
         return None
     return valuation_date + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+
+
+def _source_vector_time_index(fecha: pd.Series) -> pd.Series:
+    valuation_date = _parse_valmer_valuation_dates(fecha)
+    return _as_utc_ns(
+        valuation_date.dt.normalize()
+        + pd.Timedelta(days=1)
+        - pd.Timedelta(seconds=1)
+    )
+
+
+def _asset_cursor_map_from_update_statistics(update_statistics: object) -> dict[str, pd.Timestamp]:
+    if update_statistics is None:
+        return {}
+
+    if hasattr(update_statistics, "iter_index_progress_coordinates"):
+        cursor_map: dict[str, pd.Timestamp] = {}
+        for coordinate, value in update_statistics.iter_index_progress_coordinates(
+            identity_dimensions=[ASSET_IDENTIFIER_DIMENSION]
+        ):
+            asset_identifier = coordinate.get(ASSET_IDENTIFIER_DIMENSION)
+            timestamp = _as_utc_ns_timestamp(value)
+            if asset_identifier is not None and timestamp is not None:
+                cursor_map[str(asset_identifier)] = timestamp
+        return cursor_map
+
+    index_progress = getattr(update_statistics, "index_progress", None)
+    if not isinstance(index_progress, dict):
+        return {}
+
+    cursor_map = {}
+    for asset_identifier, value in index_progress.items():
+        timestamp = _as_utc_ns_timestamp(value)
+        if timestamp is not None:
+            cursor_map[str(asset_identifier)] = timestamp
+    return cursor_map
 
 
 def _pricing_details_datetime(value: object):
@@ -768,7 +825,8 @@ VALMER_SOURCE_COLUMN_SPECS = (
 VALMER_TIMESERIES_SOURCE_COLUMN_SPECS = VALMER_SOURCE_COLUMN_SPECS
 VALMER_VECTOR_COLUMN_SPECS = VALMER_DERIVED_COLUMN_SPECS + VALMER_TIMESERIES_SOURCE_COLUMN_SPECS
 
-VALMER_REQUIRED_SOURCE_COLUMNS = tuple(
+VALMER_REQUIRED_IDENTITY_SOURCE_COLUMNS = ("fecha", "tipovalor", "emisora", "serie")
+VALMER_OPTIONAL_SOURCE_COLUMNS = tuple(
     dict.fromkeys(
         [
             *[
@@ -777,6 +835,14 @@ VALMER_REQUIRED_SOURCE_COLUMNS = tuple(
                 if spec.source_name is not None
             ],
             *sorted(VALMER_ASSET_DETAIL_SOURCE_COLUMNS),
+        ]
+    )
+)
+VALMER_REQUIRED_SOURCE_COLUMNS = tuple(
+    dict.fromkeys(
+        [
+            "unique_identifier",
+            *VALMER_REQUIRED_IDENTITY_SOURCE_COLUMNS,
         ]
     )
 )
@@ -801,6 +867,64 @@ def _prepare_frame_for_target_bond_rules(df: pd.DataFrame) -> pd.DataFrame:
     if not rename_map:
         return df.copy()
     return df.rename(columns=rename_map).copy()
+
+
+class MetaTableValmerSourceConfig(BaseModel):
+    source_name: str = Field(
+        ...,
+        description="Stable label used for diagnostics for this Valmer MetaTable source.",
+    )
+    metatable_identifier: str | None = Field(
+        default=None,
+        description="Logical MetaTable identifier to read from.",
+    )
+    metatable_uid: str | None = Field(
+        default=None,
+        description="MetaTable uid to read from. Use this when no identifier is available.",
+    )
+    column_map: dict[str, str] = Field(
+        ...,
+        description=(
+            "Strict source-column to normalized Valmer field mapping. "
+            "Example: {'Fecha': 'fecha', 'TV': 'tipovalor'}."
+        ),
+    )
+    sql_dialect: Literal["mssql", "postgresql"] = Field(
+        default="mssql",
+        description="SQL quoting/limit dialect used by MetaTable.run_query for this source.",
+    )
+    max_rows: int | None = Field(
+        default=None,
+        description="Optional read cap for exploratory runs. Production ingestion should omit it.",
+    )
+
+    @model_validator(mode="after")
+    def validate_source(self) -> "MetaTableValmerSourceConfig":
+        if not self.metatable_identifier and not self.metatable_uid:
+            raise ValueError("metatable_identifier or metatable_uid is required.")
+        if self.metatable_identifier and self.metatable_uid:
+            raise ValueError("Pass metatable_identifier or metatable_uid, not both.")
+        missing_targets = sorted(set(VALMER_REQUIRED_IDENTITY_SOURCE_COLUMNS) - set(self.column_map.values()))
+        if missing_targets:
+            raise ValueError(
+                f"MetaTableValmerSource {self.source_name!r} is missing required "
+                f"normalized targets: {missing_targets}."
+            )
+        duplicate_targets = sorted(
+            {
+                target
+                for target in self.column_map.values()
+                if list(self.column_map.values()).count(target) > 1
+            }
+        )
+        if duplicate_targets:
+            raise ValueError(
+                f"MetaTableValmerSource {self.source_name!r} maps multiple source "
+                f"columns to the same target(s): {duplicate_targets}."
+            )
+        if self.max_rows is not None and self.max_rows <= 0:
+            raise ValueError("max_rows must be positive when provided.")
+        return self
 
 
 class _ProgressLogger:
@@ -844,6 +968,26 @@ class ImportValmerConfig(AssetIndexedDataNodeConfiguration):
         description="Valmer artifact bucket used by this updater.",
         examples=["Hitorical Valmer Vector Analytico"],
     )
+    source_kind: Literal["artifact", "metatable"] = Field(
+        default="artifact",
+        description="Valmer source adapter to use for this updater run.",
+        examples=["artifact", "metatable"],
+    )
+    source_metatables: list[MetaTableValmerSourceConfig] | None = Field(
+        default=None,
+        description=(
+            "One or more MetaTable-backed Valmer source specifications. "
+            "Required when source_kind='metatable'."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_source_config(self) -> "ImportValmerConfig":
+        if self.source_kind == "metatable" and not self.source_metatables:
+            raise ValueError("source_metatables is required when source_kind='metatable'.")
+        if self.source_kind == "artifact" and self.source_metatables:
+            raise ValueError("source_metatables is only valid when source_kind='metatable'.")
+        return self
 
 
 class ImportValmer(AssetIndexedDataNode):
@@ -855,6 +999,8 @@ class ImportValmer(AssetIndexedDataNode):
             config: DataNode configuration including the source artifact bucket.
         """
         self.bucket_name = config.bucket_name
+        self.source_kind = config.source_kind
+        self.source_metatables = list(config.source_metatables or [])
         self.artifact_data = None
         self.source_data = None
         self.asset_list = None
@@ -876,69 +1022,282 @@ class ImportValmer(AssetIndexedDataNode):
         )
         return explanation
 
+    @staticmethod
+    def _read_debug_artifact_file(path: Path) -> pd.DataFrame:
+        engine = "xlrd" if path.suffix.lower() == ".xls" else "openpyxl"
+
+        # Keep default NA behavior for all columns except EMISORA, where Valmer's
+        # issuer code "NA" is a valid value and must stay as text.
+        df = pd.read_excel(
+            path,
+            engine=engine,
+            dtype={"TIPO VALOR": "string", "SERIE": "string"},
+        )
+
+        emisora = pd.read_excel(
+            path,
+            engine=engine,
+            usecols=["EMISORA"],
+            dtype={"EMISORA": "string"},
+            keep_default_na=False,
+        )["EMISORA"]
+
+        df["EMISORA"] = emisora.replace("", pd.NA)
+        return df
+
+    @classmethod
+    def _read_debug_artifact_path(cls, debug_artifact_path: str) -> list[pd.DataFrame]:
+        base = Path(debug_artifact_path)
+        if not base.exists():
+            raise FileNotFoundError(f"DEBUG_ARTIFACT_PATH does not exist: {base}")
+        if base.is_file():
+            return [cls._read_debug_artifact_file(base)]
+        return [
+            cls._read_debug_artifact_file(path)
+            for path in sorted(base.rglob("*.xls*"))
+        ]
+
+    @staticmethod
+    def _vector_time_index_from_valuation_date(value: object) -> pd.Timestamp | None:
+        valuation_date = _as_utc_ns_timestamp(value)
+        if valuation_date is None:
+            return None
+        return _as_utc_ns_timestamp(
+            valuation_date.normalize()
+            + pd.Timedelta(days=1)
+            - pd.Timedelta(seconds=1)
+        )
+
+    def _latest_vector_cursor_by_asset(self) -> dict[str, pd.Timestamp]:
+        try:
+            update_statistics = self.local_persist_manager.get_update_statistics_for_table()
+        except AttributeError:
+            return {}
+        cursor_map = _asset_cursor_map_from_update_statistics(update_statistics)
+        self.logger.info(
+            "Resolved Valmer vector per-asset cursors from target storage: "
+            f"{len(cursor_map)} assets with existing observations."
+        )
+        return cursor_map
+
+    @staticmethod
+    def _materialize_optional_source_columns(frame: pd.DataFrame) -> pd.DataFrame:
+        materialized = frame.copy()
+        for column in VALMER_OPTIONAL_SOURCE_COLUMNS:
+            if column not in materialized.columns:
+                materialized[column] = pd.NA
+        return materialized
+
+    @classmethod
+    def _filter_source_rows_from_last_vector_observation(
+        cls,
+        frame: pd.DataFrame,
+        cursor_by_asset: dict[str, pd.Timestamp],
+        *,
+        source_name: str,
+        logger,
+    ) -> pd.DataFrame:
+        if frame.empty:
+            return frame.copy()
+
+        missing = sorted(set(VALMER_REQUIRED_SOURCE_COLUMNS) - set(frame.columns))
+        if missing:
+            raise KeyError(
+                f"Valmer source {source_name!r} is missing required columns for "
+                f"per-asset vector filtering: {missing}."
+            )
+
+        working = frame.copy()
+        time_index = _source_vector_time_index(working["fecha"])
+        invalid_dates = time_index.isna()
+        if invalid_dates.any():
+            bad_count = int(invalid_dates.sum())
+            raise ValueError(
+                f"Valmer source {source_name!r} has {bad_count} rows with invalid fecha values."
+            )
+
+        asset_identifier = working["unique_identifier"].astype("string")
+        latest = asset_identifier.map(cursor_by_asset)
+        latest = pd.to_datetime(latest, errors="coerce", utc=True)
+        mask = latest.isna() | (time_index > latest)
+        filtered = working.loc[mask].copy()
+        logger.info(
+            f"Filtered Valmer source {source_name!r} from last vector observation: "
+            f"{len(filtered)}/{len(working)} rows kept across "
+            f"{asset_identifier.nunique(dropna=True)} source assets."
+        )
+        return filtered
+
+    @staticmethod
+    def _quote_metatable_identifier(identifier: str, *, dialect: str) -> str:
+        if dialect == "mssql":
+            return ".".join(f"[{part.replace(']', ']]')}]" for part in identifier.split("."))
+        return ".".join(f'"{part.replace(chr(34), chr(34) * 2)}"' for part in identifier.split("."))
+
+    @classmethod
+    def _resolve_source_metatable(cls, source: MetaTableValmerSourceConfig) -> MetaTable:
+        if source.metatable_uid:
+            return MetaTable.get(uid=source.metatable_uid)
+        assert source.metatable_identifier is not None
+        return MetaTable.get(identifier=source.metatable_identifier)
+
+    @staticmethod
+    def _metatable_contract_columns(meta_table: MetaTable) -> set[str]:
+        columns = {column.name for column in getattr(meta_table, "columns", [])}
+        if columns:
+            return columns
+        contract = getattr(meta_table, "table_contract", None)
+        if not isinstance(contract, dict):
+            return set()
+        return {
+            column["name"]
+            for column in contract.get("columns", [])
+            if isinstance(column, dict) and "name" in column
+        }
+
+    @classmethod
+    def _validate_metatable_source_contract(
+        cls,
+        source: MetaTableValmerSourceConfig,
+        meta_table: MetaTable,
+    ) -> None:
+        contract_columns = cls._metatable_contract_columns(meta_table)
+        if not contract_columns:
+            return
+        missing = sorted(set(source.column_map) - contract_columns)
+        if missing:
+            raise KeyError(
+                f"MetaTableValmerSource {source.source_name!r} maps columns that "
+                f"are not in MetaTable {meta_table.uid}: {missing}."
+            )
+
+    @classmethod
+    def _read_metatable_source_frame(
+        cls,
+        source: MetaTableValmerSourceConfig,
+        *,
+        logger,
+    ) -> pd.DataFrame:
+        meta_table = cls._resolve_source_metatable(source)
+        cls._validate_metatable_source_contract(source, meta_table)
+        table_name = cls._quote_metatable_identifier(
+            meta_table.physical_table_name,
+            dialect=source.sql_dialect,
+        )
+        columns = [
+            cls._quote_metatable_identifier(column, dialect=source.sql_dialect)
+            for column in source.column_map
+        ]
+        if source.sql_dialect == "mssql" and source.max_rows is not None:
+            select_clause = f"SELECT TOP ({source.max_rows}) {', '.join(columns)}"
+            limit_clause = ""
+        else:
+            select_clause = f"SELECT {', '.join(columns)}"
+            limit_clause = f" LIMIT {source.max_rows}" if source.max_rows is not None else ""
+        sql = f"{select_clause} FROM {table_name}{limit_clause}"
+        logger.info(
+            "Reading MetaTable Valmer source "
+            f"{source.source_name!r} ({meta_table.identifier or meta_table.uid})."
+        )
+        result = meta_table.run_query(sql)
+        rows = result.get("rows") if isinstance(result, dict) else None
+        if rows is None:
+            rows = result.get("results") if isinstance(result, dict) else None
+        if rows is None:
+            raise RuntimeError(
+                f"MetaTableValmerSource {source.source_name!r} did not return rows."
+            )
+        return pd.DataFrame(rows)
+
+    @classmethod
+    def _normalize_metatable_source_frame(
+        cls,
+        frame: pd.DataFrame,
+        source: MetaTableValmerSourceConfig,
+    ) -> pd.DataFrame:
+        missing = sorted(set(source.column_map) - set(frame.columns))
+        if missing:
+            raise KeyError(
+                f"MetaTableValmerSource {source.source_name!r} returned rows missing "
+                f"mapped source columns: {missing}."
+            )
+        normalized = frame[list(source.column_map)].rename(columns=source.column_map).copy()
+        required_missing = sorted(set(VALMER_REQUIRED_IDENTITY_SOURCE_COLUMNS) - set(normalized.columns))
+        if required_missing:
+            raise KeyError(
+                f"MetaTableValmerSource {source.source_name!r} is missing required "
+                f"normalized columns: {required_missing}."
+            )
+        normalized = cls._materialize_optional_source_columns(normalized)
+        normalized = add_valmer_unique_identifier(normalized)
+        return normalized
+
+    @staticmethod
+    def _raise_on_duplicate_source_keys(frame: pd.DataFrame) -> None:
+        if frame.empty:
+            return
+        keys = pd.DataFrame(
+            {
+                "time_index": _source_vector_time_index(frame["fecha"]),
+                "unique_identifier": frame["unique_identifier"].astype("string"),
+            },
+            index=frame.index,
+        )
+        duplicates = keys.duplicated(["time_index", "unique_identifier"], keep=False)
+        if duplicates.any():
+            duplicate_rows = keys.loc[duplicates]
+            sample = duplicate_rows.head(10).to_dict(orient="records")
+            raise ValueError(
+                "Duplicate Valmer source rows for (time_index, asset_identifier) "
+                f"after concatenating MetaTable sources. Sample: {sample}"
+            )
+
+    def _set_metatable_source_data(self):
+        if self.source_data is not None:
+            return None
+
+        cursor_by_asset = self._latest_vector_cursor_by_asset()
+        frames: list[pd.DataFrame] = []
+        for source in self.source_metatables:
+            raw_frame = self._read_metatable_source_frame(source, logger=self.logger)
+            normalized_frame = self._normalize_metatable_source_frame(raw_frame, source)
+            filtered_frame = self._filter_source_rows_from_last_vector_observation(
+                normalized_frame,
+                cursor_by_asset,
+                source_name=source.source_name,
+                logger=self.logger,
+            )
+            if not filtered_frame.empty:
+                frames.append(filtered_frame)
+
+        if not frames:
+            self.source_data = pd.DataFrame()
+            self.logger.info("No MetaTable Valmer source rows are newer than vector storage.")
+            return None
+
+        combined = pd.concat(frames, ignore_index=True, sort=False)
+        self._raise_on_duplicate_source_keys(combined)
+        self.source_data = combined
+        self.logger.info(
+            "Combined MetaTable Valmer sources into "
+            f"{len(self.source_data)} rows after per-asset vector filtering."
+        )
+
     def _set_artifact_data(self):
         """
         Reads all artifacts from the bucket, normalizes columns, and concatenates them into a single DataFrame.
         Optionally filters for new artifacts based on the 'process_all_files' flag.
         """
-        from pathlib import Path
-
         debug_artifact_path = os.environ.get("DEBUG_ARTIFACT_PATH", None)
         if debug_artifact_path:
-            def read_artifact(p: Path) -> pd.DataFrame:
-                engine = "xlrd" if p.suffix.lower() == ".xls" else "openpyxl"
-
-                # 1) normal read: keep default NA behavior for ALL other columns
-                df = pd.read_excel(
-                    p,
-                    engine=engine,
-                    dtype={"TIPO VALOR": "string", "SERIE": "string"}  # don't include emisora here
-                )
-
-                # 2) re-read ONLY emisora, without interpreting "NA" as missing
-                emisora = pd.read_excel(
-                    p,
-                    engine=engine,
-                    usecols=["EMISORA"],
-                    dtype={"EMISORA": "string"},
-                    keep_default_na=False
-                )["EMISORA"]
-
-                # If you want blank Excel cells to still be missing (not empty string):
-                emisora = emisora.replace("", pd.NA)
-
-                df["EMISORA"] = emisora
-                return df
-
-            base = Path(debug_artifact_path)
-            if not base.exists():
-                raise FileNotFoundError(f"DEBUG_ARTIFACT_PATH does not exist: {base}")
-            if base.is_file():
-                sorted_artifacts = [read_artifact(base)]
-            else:
-                sorted_artifacts = [read_artifact(p) for p in sorted(base.rglob("*.xls*"))]
-            latest_date = (
-                self.local_persist_manager.get_update_statistics_for_table()
-                .get_max_time_in_update_statistics()
-            )
+            sorted_artifacts = self._read_debug_artifact_path(debug_artifact_path)
             source_label = f"local DEBUG_ARTIFACT_PATH '{debug_artifact_path}'"
         else:
             if self.artifact_data is not None:
                 return None
 
-            artifacts, artifact_dates = self._get_artifacts(self.logger, self.bucket_name)
-            latest_date = (
-                self.local_persist_manager.get_update_statistics_for_table()
-                .get_max_time_in_update_statistics()
-            )
+            artifacts, _artifact_dates = self._get_artifacts(self.logger, self.bucket_name)
             sorted_artifacts = artifacts
-            if latest_date:
-                self.logger.info(f"Filtering artifacts newer than {latest_date}.")
-                sorted_artifacts = [
-                    a for a, a_date in zip(artifacts, artifact_dates) if a_date > latest_date
-                ]
-
-            sorted_artifacts = sorted_artifacts[:5]
 
             self.logger.info(f"Processing {len(sorted_artifacts)} artifacts...")
             if not sorted_artifacts:
@@ -953,10 +1312,7 @@ class ImportValmer(AssetIndexedDataNode):
             source_label=source_label,
         )
 
-        try:
-            self.artifact_data = pd.concat(frames, ignore_index=True, sort=False, copy=False)
-        except TypeError:
-            self.artifact_data = pd.concat(frames, ignore_index=True, sort=False)
+        self.artifact_data = pd.concat(frames, ignore_index=True, sort=False)
 
         self.logger.info(
             f"Combined all artifacts into a single DataFrame with {len(self.artifact_data)} rows."
@@ -1009,9 +1365,6 @@ class ImportValmer(AssetIndexedDataNode):
 
         all_target_bonds = df_latest.loc[target_mask].copy()
         all_target_bonds = all_target_bonds.loc[working.loc[target_mask, "fechaemision"].notna()]
-
-        log = structlog.get_logger("mainsequence")
-        log.info("Only adding price details for")
 
         return all_target_bonds
 
@@ -1530,7 +1883,7 @@ class ImportValmer(AssetIndexedDataNode):
     def _prepare_latest_inputs(self, df: pd.DataFrame):
         """Common prep: normalize, latest rows per UID, target bonds, and universe of UIDs."""
         df = df[df["unique_identifier"].notna()].copy()
-        df["fecha"] = pd.to_datetime(df["fecha"], format="%Y%m%d", utc=True)
+        df["fecha"] = _parse_valmer_valuation_dates(df["fecha"])
 
         idx = df.groupby("unique_identifier")["fecha"].idxmax()
         df_latest = df.loc[idx].reset_index(drop=True)
@@ -1542,10 +1895,22 @@ class ImportValmer(AssetIndexedDataNode):
 
     def prepare_source_data(self) -> pd.DataFrame:
         """Load Valmer artifact rows for the current DataNode update."""
-        self._set_artifact_data()
-        self.source_data = self.artifact_data
+        if self.source_kind == "metatable":
+            self._set_metatable_source_data()
+        else:
+            self._set_artifact_data()
+            self.source_data = self.artifact_data
         if self.source_data is None:
             self.source_data = pd.DataFrame()
+        if not self.source_data.empty:
+            self.source_data = self._materialize_optional_source_columns(self.source_data)
+            if self.source_kind != "metatable":
+                self.source_data = self._filter_source_rows_from_last_vector_observation(
+                    self.source_data,
+                    self._latest_vector_cursor_by_asset(),
+                    source_name="artifact",
+                    logger=self.logger,
+                )
         return self.source_data
 
     def prepare_for_update(
@@ -1594,10 +1959,11 @@ class ImportValmer(AssetIndexedDataNode):
         if source_data.empty:
             return pd.DataFrame()
 
+        source_data = self._materialize_optional_source_columns(source_data)
         missing_columns = sorted(set(VALMER_REQUIRED_SOURCE_COLUMNS) - set(source_data.columns))
         if missing_columns:
             raise KeyError(
-                "ImportValmer requires the full translated Valmer source schema. "
+                "ImportValmer requires Valmer source identity and date columns. "
                 f"Missing normalized columns: {missing_columns}"
             )
 

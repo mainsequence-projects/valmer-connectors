@@ -20,6 +20,7 @@ from valmer_connectors.data_nodes.nodes import (
     VALMER_VECTOR_COLUMN_SPECS,
     ImportValmer,
     ImportValmerConfig,
+    MetaTableValmerSourceConfig,
     _build_valmer_asset_snapshot_rows,
     _persist_valmer_pricing_details_batch,
     _publish_valmer_asset_snapshots,
@@ -218,6 +219,134 @@ class ValmerVectorStorageTest(unittest.TestCase):
             storage_class_type="postgres",
             meta_table=ValmerVectorPricesStorage,
         )
+
+    def test_source_filter_keeps_rows_newer_than_each_asset_cursor(self):
+        frame = pd.DataFrame(
+            [
+                {
+                    "fecha": "20240102",
+                    "tipovalor": "M",
+                    "emisora": "BONOS",
+                    "serie": "A",
+                    "unique_identifier": "M_BONOS_A",
+                },
+                {
+                    "fecha": "20240104",
+                    "tipovalor": "M",
+                    "emisora": "BONOS",
+                    "serie": "A",
+                    "unique_identifier": "M_BONOS_A",
+                },
+                {
+                    "fecha": "20240101",
+                    "tipovalor": "BI",
+                    "emisora": "CETE",
+                    "serie": "B",
+                    "unique_identifier": "BI_CETE_B",
+                },
+            ]
+        )
+        cursor = {
+            "M_BONOS_A": pd.Timestamp("2024-01-02 23:59:59", tz="UTC"),
+        }
+
+        result = ImportValmer._filter_source_rows_from_last_vector_observation(
+            frame,
+            cursor,
+            source_name="unit",
+            logger=Mock(),
+        )
+
+        self.assertEqual(result["unique_identifier"].tolist(), ["M_BONOS_A", "BI_CETE_B"])
+        self.assertEqual(result["fecha"].tolist(), ["20240104", "20240101"])
+
+    def test_metatable_sources_filter_each_source_then_concatenate(self):
+        source_a = MetaTableValmerSourceConfig(
+            source_name="government",
+            metatable_identifier="external.gov",
+            column_map={
+                "Fecha": "fecha",
+                "TV": "tipovalor",
+                "Emisora": "emisora",
+                "Serie": "serie",
+                "PrecioSucio": "preciosucio",
+            },
+        )
+        source_b = MetaTableValmerSourceConfig(
+            source_name="corporate",
+            metatable_identifier="external.corp",
+            column_map={
+                "Fecha": "fecha",
+                "TV": "tipovalor",
+                "Emisora": "emisora",
+                "Serie": "serie",
+                "PrecioSucio": "preciosucio",
+            },
+        )
+        node = ImportValmer.__new__(ImportValmer)
+        node.source_data = None
+        node.source_metatables = [source_a, source_b]
+        node._latest_vector_cursor_by_asset = Mock(
+            return_value={
+                "M_BONOS_A": pd.Timestamp("2024-01-02 23:59:59", tz="UTC"),
+                "I_CORP_A": pd.Timestamp("2024-01-05 23:59:59", tz="UTC"),
+            }
+        )
+        source_frames = {
+            "government": pd.DataFrame(
+                [
+                    {
+                        "Fecha": "2024-01-02",
+                        "TV": "M",
+                        "Emisora": "BONOS",
+                        "Serie": "A",
+                        "PrecioSucio": 99.0,
+                    },
+                    {
+                        "Fecha": "2024-01-03",
+                        "TV": "M",
+                        "Emisora": "BONOS",
+                        "Serie": "A",
+                        "PrecioSucio": 100.0,
+                    },
+                ]
+            ),
+            "corporate": pd.DataFrame(
+                [
+                    {
+                        "Fecha": "2024-01-06",
+                        "TV": "I",
+                        "Emisora": "CORP",
+                        "Serie": "A",
+                        "PrecioSucio": 101.0,
+                    },
+                    {
+                        "Fecha": "2024-01-01",
+                        "TV": "BI",
+                        "Emisora": "CETE",
+                        "Serie": "B",
+                        "PrecioSucio": 10.0,
+                    },
+                ]
+            ),
+        }
+        node._read_metatable_source_frame = Mock(
+            side_effect=lambda source, logger: source_frames[source.source_name]
+        )
+
+        with patch.object(
+            ImportValmer,
+            "logger",
+            new_callable=PropertyMock,
+            return_value=Mock(),
+        ):
+            ImportValmer._set_metatable_source_data(node)
+
+        self.assertEqual(
+            node.source_data["unique_identifier"].tolist(),
+            ["M_BONOS_A", "I_CORP_A", "BI_CETE_B"],
+        )
+        self.assertEqual(node._read_metatable_source_frame.call_count, 2)
 
     def test_valmer_asset_snapshot_rows_map_nombre_completo_to_name(self):
         latest = pd.DataFrame(

@@ -141,6 +141,8 @@ Default behavior:
 - call `ImportValmer.prepare_for_update()` to import source rows, sync
   AssetTable rows, sync `ValmerAssetDetailsTable`, and hydrate supported
   current pricing details;
+- filter imported rows from the last vector observation per
+  `asset_identifier`, not from one global source date;
 - run the Valmer vector DataNode update with `run(force_update=True)`.
 
 Options:
@@ -148,6 +150,8 @@ Options:
 ```text
 --bucket-name TEXT
 --debug-artifact-path PATH
+--source artifact|metatable
+--source-metatables-config-path PATH
 --first-loop-count INT
 ```
 
@@ -155,10 +159,15 @@ If `--bucket-name` is omitted, resolve the platform source bucket from
 `VALMER_VECTOR_BUCKET_NAME`. The legacy bucket name constant is only a
 backwards-compatible fallback.
 
+When `--source metatable` is used, `--source-metatables-config-path` points to a
+JSON file containing one or more MetaTable source specifications. Each source is
+filtered independently from the last vector observation per asset and then
+concatenated with the other filtered source frames.
+
 Do not expose `--force` / `--no-force`.
 `force_update=True` is the current script behavior and the intended default.
-Define what "new work" means for Valmer inputs before adding any non-forced
-update mode.
+The definition of "new work" is the asset-indexed vector cursor:
+`source_time_index > latest stored time_index for asset_identifier`.
 
 Do not expose full-source asset registration until the project has a real
 Valmer asset-type classifier. The Valmer vector contains multiple instrument

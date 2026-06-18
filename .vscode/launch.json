@@ -118,6 +118,29 @@
       "justMyCode": false
     },
     {
+      "name": "Valmer CLI: Vector Update From MetaTable",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "vector",
+        "update",
+        "--source",
+        "metatable",
+        "--source-metatables-config-path",
+        "${workspaceFolder}/.vscode/valmer-metatable-sources.debug.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
       "name": "Valmer CLI: Update TIIE Zero Curve",
       "type": "python",
       "request": "launch",

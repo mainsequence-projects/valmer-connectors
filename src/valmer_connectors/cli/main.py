@@ -64,6 +64,8 @@ def _vector_update_command(args: argparse.Namespace) -> int:
         bucket_name=args.bucket_name,
         first_loop_count=args.first_loop_count,
         debug_artifact_path=args.debug_artifact_path,
+        source_kind=args.source,
+        source_metatables_config_path=args.source_metatables_config_path,
     )
     return 0
 
@@ -302,6 +304,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug-artifact-path",
         default=None,
         help="Local Valmer Excel file or folder. Overrides bucket import for this command.",
+    )
+    vector_update_parser.add_argument(
+        "--source",
+        choices=["artifact", "metatable"],
+        default="artifact",
+        help="Source adapter for Valmer vector rows.",
+    )
+    vector_update_parser.add_argument(
+        "--source-metatables-config-path",
+        default=None,
+        help="JSON config file with MetaTableValmerSource entries for --source metatable.",
     )
     vector_update_parser.add_argument(
         "--first-loop-count",

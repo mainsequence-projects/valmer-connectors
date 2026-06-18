@@ -1,0 +1,40 @@
+{
+  "sources": [
+    {
+      "source_name": "historical_valmer_vector",
+      "metatable_uid": "b14db80b-64b7-4390-8483-5377510de505",
+      "sql_dialect": "mssql",
+      "column_map": {
+        "TipoMercado": "tipomercado",
+        "Fecha": "fecha",
+        "TV": "tipovalor",
+        "Emisora": "emisora",
+        "Serie": "serie",
+        "PrecioSucio": "preciosucio",
+        "PrecioLimpio": "preciolimpio",
+        "InteresesDevengados": "interesesacumulados",
+        "DiasPorVencer": "diasporvencer",
+        "TasaDescuento": "tasadescuento",
+        "PrecioSucio24Hrs": "preciosucio24hrs",
+        "PrecioLimpio24Hrs": "preciolimpio24hrs",
+        "InteresesDevengados24Hrs": "interesesdevengados24hrs",
+        "DiasPorVencer24Hrs": "diasporvencer24hrs",
+        "TasaDescuento24Hrs": "tasadescuento24hrs",
+        "Plazo": "plazo",
+        "Sobretasa": "sobretasa",
+        "ClaveProveedor": "claveproveedor",
+        "TipoEnvio": "tipoenvio",
+        "Duracion": "duracion",
+        "Convexidad": "convexidad",
+        "Rendimiento": "tasaderendimiento",
+        "Instrumento": "instrumento",
+        "FechaInicioCupon": "fechainiciocupon",
+        "FechaFinCupon": "fechafincupon",
+        "TasaCuponVigente": "cuponactual",
+        "TasaCuponVigente24hrs": "tasacuponvigente24hrs",
+        "Moneda": "monedaemision",
+        "Isin": "isin"
+      }
+    }
+  ]
+}

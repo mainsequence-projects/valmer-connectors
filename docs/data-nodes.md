@@ -124,6 +124,7 @@ build_import_valmer()
 prepare_for_update()
     |
     +-- load Valmer source rows
+    +-- filter rows from last vector observation per asset_identifier
     +-- select pricing-target assets from latest source rows
     +-- sync AssetTable rows for the selected registration scope
     +-- sync ValmerAssetDetailsTable rows for registered assets
@@ -142,6 +143,17 @@ run(force_update=True)
 
 `get_asset_list()` must stay a scope handoff. It should not register assets,
 upsert detail rows, or persist pricing details.
+
+The vector updater does not use a global latest-source-date gate. Source rows
+are filtered against `ValmerVectorPricesStorage` per asset:
+
+```text
+keep row when source time_index > latest stored time_index for asset_identifier
+keep row when asset_identifier has no stored vector observation
+```
+
+`update()` still applies `filter_df_by_latest_value(...)` as the final
+DataNode-level row filter when a run executes.
 
 `valmer-connectors vector update` registers and publishes only the assets that
 pass the pricing-detail target filter. This keeps the
