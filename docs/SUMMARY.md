@@ -4,8 +4,8 @@
 
 - `docs/index.md`: documentation entry point and responsibility map.
 - `docs/introduction.md`: project overview and current operational surface.
-- `docs/source-import.md`: Valmer source selection, platform bucket import, and
-  local `DEBUG_ARTIFACT_PATH` import.
+- `docs/source-import.md`: Valmer source hydration paths for Artifact buckets,
+  local folders, OneDrive Graph, MetaTable sources, and debug files.
 - `docs/data-nodes.md`: DataNode output boundary and
   `ValmerVectorPricesStorage` contract.
 - `docs/markets.md`: AssetTable registration, Valmer asset identity,

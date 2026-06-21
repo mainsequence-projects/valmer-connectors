@@ -1,6 +1,6 @@
 ---
 name: mainsequence-meta-tables
-description: Use this skill when the task is about defining, registering, querying, migrating, or reviewing Main Sequence MetaTables. This skill owns SQLAlchemy table contracts, backend-managed table registration, external table registration, Alembic-based MetaTable migrations, governed compiled SQL operations, foreign keys, indexes, and validation rules. It does not own DataNode producers, API route contracts, scheduling, releases, or sharing policy.
+description: Use this skill when the task is about defining, querying, or reviewing Main Sequence MetaTables. This skill owns SQLAlchemy table contracts, backend-managed table authoring, external table registration, governed compiled SQL operations, foreign keys, indexes, naming, cadence, and validation rules. For Alembic migration lifecycle work, use the mainsequence-metatable-migrations skill. It does not own DataNode producers, API route contracts, scheduling, releases, or sharing policy.
 ---
 
 # Main Sequence MetaTables
@@ -15,12 +15,11 @@ This skill is for schema-driven application tables registered through TS Manager
 
 - define SQLAlchemy/Core or ORM table models for `MetaTable` registration
 - choose `platform_managed` or `external_registered` management mode
-- register platform-managed tables through the model class API
+- declare platform-managed tables for migration-managed registration
 - build registration requests from resolved SQLAlchemy metadata when inspection is useful
 - define indexes and foreign keys in SQLAlchemy metadata for Alembic-owned DDL
 - design governed compiled SQL read and write operations
-- design provider-based Alembic contract evolution for MetaTables
-- run the documented `mainsequence migrations ...` lifecycle for Alembic-backed MetaTable changes
+- route provider-based Alembic contract evolution to the MetaTable migration skill
 - review table contracts for physical-name, namespace, and identifier issues
 - review whether a task should be a `MetaTable` or a `DataNode`
 
@@ -41,6 +40,8 @@ If the user is still in the discovery process and does not yet know what data ex
 
 - discovery-only data inventory before table implementation:
   `.agents/skills/mainsequence/data_access/exploration/SKILL.md`
+- MetaTable migrations:
+  `.agents/skills/mainsequence/data_publishing/meta_table_migrations/SKILL.md`
 - DataNodes:
   `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
 - APIs and FastAPI:
@@ -48,14 +49,16 @@ If the user is still in the discovery process and does not yet know what data ex
 - Command Center workspaces:
   `.agents/skills/mainsequence/command_center/workspace_builder/SKILL.md`
 - AppComponents and custom forms:
-  `.agents/skills/mainsequence/command_center/app_components/SKILL.md`
+  `.agents/skills/mainsequence/command_center/widgets/app_components/SKILL.md`
 - Jobs, images, resources, and releases:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
 
 ## Read First
 
 1. `docs/tutorial/working_with_meta_tables.md`
-2. For migration work, `docs/tutorial/metatable_migrations.md`
+2. For migration work, use
+   `.agents/skills/mainsequence/data_publishing/meta_table_migrations/SKILL.md`
+   and `docs/tutorial/metatable_migrations.md`
 3. `docs/knowledge/meta_tables/index.md`
 4. `docs/knowledge/meta_tables/sqlalchemy.md`
 5. `docs/knowledge/meta_tables/compiled_sql.md`
@@ -111,9 +114,9 @@ creation or deletion.
 The only migration workflow to recommend is the Main Sequence CLI lifecycle:
 
 ```bash
-mainsequence migrations current --provider mainsequence_migrations:migration
-mainsequence migrations revision --provider mainsequence_migrations:migration
-mainsequence migrations upgrade --provider mainsequence_migrations:migration head
+mainsequence migrations current --provider sdk_examples.migrations:migration
+mainsequence migrations revision --provider sdk_examples.migrations:migration
+mainsequence migrations upgrade --provider sdk_examples.migrations:migration head
 ```
 
 ### 1. SQLAlchemy metadata is the authoring source
@@ -127,9 +130,22 @@ Do not hand-build contract fragments when the SQLAlchemy helper can derive them.
 For `platform_managed`, inherit from `PlatformManagedMetaTable`.
 
 Declare an explicit project-prefixed SQLAlchemy `__tablename__`. Use
-`schema_table_name(project_or_app, concept)` from `mainsequence.meta_tables` to
-generate that name. Storage identity is derived from storage-relevant
-configuration and table shape; it must not be used as the SQLAlchemy table name.
+`schema_table_name(app, concept, suffix=None)` from `mainsequence.meta_tables`
+to generate that name:
+
+```python
+def schema_table_name(
+    app: str,
+    concept: str,
+    suffix: str | None = None,
+) -> str: ...
+```
+
+Use `app` for the project/package prefix, `concept` for the table concept, and
+`suffix` for a namespace, variant, or bounded specialization when the same
+concept exists in multiple logical scopes. The mixin derives only the logical
+`storage_hash` from storage-relevant configuration and table shape; it must not
+use that hash as the SQLAlchemy table name.
 
 When a platform-managed table must support in-place contract migrations from its
 first version, use Alembic. Keep the SDK model as a normal
@@ -155,7 +171,7 @@ The column description must explain what the value means in this table and how
 it is used, not just restate the column name or dtype.
 
 Use `__metatable_extra_hash_components__` when two backend-managed tables could
-otherwise produce the same storage identity because their storage-relevant shape is
+otherwise produce the same storage hash because their storage-relevant shape is
 identical or intentionally generic. The value must be stable and deterministic,
 usually a small mapping such as `{"storage_name": "account_holdings"}`.
 
@@ -178,6 +194,7 @@ from mainsequence.meta_tables import PlatformManagedMetaTable, schema_table_name
 
 PROJECT_NAME = "sdk_examples"
 ACCOUNT_TABLE_NAME = schema_table_name(PROJECT_NAME, "account")
+BROKER_ACCOUNT_TABLE_NAME = schema_table_name(PROJECT_NAME, "account", suffix="broker")
 
 
 class Account(PlatformManagedMetaTable, Base):
@@ -265,7 +282,7 @@ both the schema and the table's intention.
 Provider scope:
 
 ```python
-migration = AlembicMetaTableMigration(
+migration = build_metatable_migration_provider(
     ...,
     metatable_models=[Account, Asset],
 )
@@ -290,9 +307,10 @@ asset_meta_table = MetaTable.register(asset_request)
 
 ### 4. Schema changes use Alembic
 
-When doing migration work, first read
-`docs/tutorial/metatable_migrations.md`. That document is the tutorial source
-for the provider-based Alembic lifecycle.
+When doing migration work, use
+`.agents/skills/mainsequence/data_publishing/meta_table_migrations/SKILL.md`
+and read `docs/tutorial/metatable_migrations.md`. The migration skill owns the
+provider-based Alembic lifecycle.
 
 Do not apply in-place contract changes by changing a `PlatformManagedMetaTable`
 SQLAlchemy class and calling normal registration again. Shape-addressed
@@ -309,8 +327,10 @@ create a new Alembic revision on top of the current head.
 For contract evolution, define or update one selected
 `AlembicMetaTableMigration` provider:
 
-- put the provider in `mainsequence_migrations.py:migration` or pass
-  `--provider module.path:migration`
+- create or update a scaffolded package provider with
+  `mainsequence migrations scaffold`
+- pass the selected provider explicitly, for example
+  `--provider sdk_examples.migrations:migration`
 - set `package`, `migration_namespace`, `script_location`, and `target_metadata`
 - set `alembic_registry` to an `AlembicVersionMetaTable` subclass
 - list the post-apply catalog scope in `metatable_models`
@@ -325,17 +345,18 @@ SQLAlchemy table name used by the provider model. Keep that table name stable
 when a class is renamed or moved but must keep the same platform identity.
 When declaring an explicit identifier, explicit physical table name, or Alembic
 version table name, prefix it with the project or package name rather than using
-a bare table name. Use `schema_table_name(project_or_app, concept)` for the
-physical table and Alembic version table names.
+a bare table name. Use `schema_table_name(app, concept, suffix=None)` for the
+physical table and Alembic version table names. Use `suffix` for a namespace or
+variant, for example `schema_table_name("msm", "positions", suffix="broker")`.
 
-Do not ask users to construct backend migration payloads, call low-level
-migration request models, or use SDK helper functions directly. The backend
-request shape is reference material in the tutorial; the user-facing path is:
+Do not ask users to construct backend migration payloads or call low-level
+migration request models. The backend request shape is reference material in
+the tutorial; the user-facing path is:
 
 ```bash
-mainsequence migrations current --provider mainsequence_migrations:migration
-mainsequence migrations revision --provider mainsequence_migrations:migration
-mainsequence migrations upgrade --provider mainsequence_migrations:migration head
+mainsequence migrations current --provider sdk_examples.migrations:migration
+mainsequence migrations revision --provider sdk_examples.migrations:migration
+mainsequence migrations upgrade --provider sdk_examples.migrations:migration head
 ```
 
 All migration commands prepare the provider, reserve provider-scoped
@@ -366,6 +387,24 @@ Only use physical table names returned by registered `MetaTable` objects when co
 
 Do not hardcode platform-managed physical names manually.
 
+### 7. DataNode storage deletes use the DataNode tail-delete API
+
+For `PlatformTimeIndexMetaTable` storage owned by DataNodes, do not design raw
+SQL delete operations or compiled SQL delete operations for rollback, repair, or
+stream cleanup. Route that work to the DataNode skill and use
+`TimeIndexMetaTable.delete_after_date(...)`.
+
+The DataNode delete path is:
+
+```text
+POST /orm/api/ts_manager/dynamic_table/<dynamic_table_uid>/delete_after_date/
+```
+
+Use `after_date` for global tail rollback. Use `dimension_filters` or
+`index_coordinates` for scoped deletes, including scoped full-stream deletes
+where `after_date=None`. Never allow `after_date=None` without an explicit
+dimension or coordinate scope.
+
 ## Review Rules
 
 When reviewing an existing MetaTable workflow, look for:
@@ -385,6 +424,8 @@ When reviewing an existing MetaTable workflow, look for:
 - migration work that asks users to define backend payloads, artifact rows, or SDK request objects
 - compiled SQL operations without complete table scope
 - raw SQL that hardcodes stale physical names
+- raw SQL or compiled SQL deletes against DataNode-owned
+  `PlatformTimeIndexMetaTable` storage instead of `delete_after_date(...)`
 - a table that should really be modeled as a DataNode instead
 
 ## Validation Checklist

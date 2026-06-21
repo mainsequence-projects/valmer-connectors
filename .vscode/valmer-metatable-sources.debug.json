@@ -20,7 +20,7 @@
         "InteresesDevengados24Hrs": "interesesdevengados24hrs",
         "DiasPorVencer24Hrs": "diasporvencer24hrs",
         "TasaDescuento24Hrs": "tasadescuento24hrs",
-        "Plazo": "plazo",
+        "Plazo": "plazoemision",
         "Sobretasa": "sobretasa",
         "ClaveProveedor": "claveproveedor",
         "TipoEnvio": "tipoenvio",

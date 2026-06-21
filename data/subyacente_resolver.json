@@ -1,0 +1,1248 @@
+{
+  "source": "data/VectorAnalitico24h_sample.xls (sheet 24H)",
+  "rows": 28972,
+  "note": "Static fallback for SUBYACENTE when an instrument is not in the live vector. Each value is the dominant SUBYACENTE for that key. Try precise first, then coarse.",
+  "precise_TV_REGLA_MONEDA": {
+    "*CSP": {
+      "0": {
+        "OTRO": "NA",
+        "ARS": "NA",
+        "ATS": "NA",
+        "AUD": "NA",
+        "BEF": "NA",
+        "BRL": "NA",
+        "CAD": "NA",
+        "CHF": "NA",
+        "CLF": "NA",
+        "CLP": "NA",
+        "CNY": "NA",
+        "COP": "NA",
+        "DEG": "NA",
+        "DEM": "NA",
+        "DKK": "NA",
+        "ESP": "NA",
+        "EUR": "NA",
+        "FIM": "NA",
+        "FRF": "NA",
+        "GBP": "NA",
+        "GTQ": "NA",
+        "HKD": "NA",
+        "HNL": "NA",
+        "ISK": "NA",
+        "ITL": "NA",
+        "JPY": "NA",
+        "KYD": "NA",
+        "AED": "NA",
+        "AWG": "NA",
+        "BBD": "NA",
+        "BDT": "NA",
+        "BGN": "NA",
+        "BMD": "NA",
+        "BOB": "NA",
+        "BSD": "NA",
+        "BZD": "NA",
+        "CNH": "NA",
+        "CRC": "NA",
+        "CZK": "NA",
+        "DOP": "NA",
+        "DZD": "NA",
+        "EGP": "NA",
+        "FJD": "NA",
+        "GRD": "NA",
+        "GYD": "NA",
+        "HTG": "NA",
+        "HUF": "NA",
+        "IDR": "NA",
+        "ILS": "NA",
+        "INR": "NA",
+        "IQD": "NA",
+        "JMD": "NA",
+        "KES": "NA",
+        "KRW": "NA",
+        "KWD": "NA",
+        "LTL": "NA",
+        "LUF": "NA",
+        "LVL": "NA",
+        "MAD": "NA",
+        "MYR": "NA",
+        "NGN": "NA",
+        "NIC": "NA",
+        "NIO": "NA",
+        "NLG": "NA",
+        "NOK": "NA",
+        "NZD": "NA",
+        "PEN": "NA",
+        "PHP": "NA",
+        "PKR": "NA",
+        "PLN": "NA",
+        "PTE": "NA",
+        "PYG": "NA",
+        "QAR": "NA",
+        "RON": "NA",
+        "RUB": "NA",
+        "SAR": "NA",
+        "SEK": "NA",
+        "SGD": "NA",
+        "SVC": "NA",
+        "THB": "NA",
+        "TND": "NA",
+        "TRY": "NA",
+        "TTD": "NA",
+        "TWD": "NA",
+        "UAH": "NA",
+        "USD": "NA",
+        "UVR": "NA",
+        "UYU": "NA",
+        "VND": "NA",
+        "XCD": "NA",
+        "ZAR": "NA"
+      }
+    },
+    "*C": {
+      "0": {
+        "OTRO": "NA",
+        "USD": "NA",
+        "ARS": "NA",
+        "ATS": "NA",
+        "CAD": "NA",
+        "CHF": "NA",
+        "EUR": "NA",
+        "GBP": "NA",
+        "JPY": "NA",
+        "MPS": "NA",
+        "AUD": "NA",
+        "BEF": "NA",
+        "BRL": "NA",
+        "CLF": "NA",
+        "CLP": "NA",
+        "CNY": "NA",
+        "COP": "NA",
+        "UVR": "NA",
+        "DEG": "NA",
+        "DEM": "NA",
+        "DKK": "NA",
+        "ESP": "NA",
+        "ZAR": "NA",
+        "FIM": "NA",
+        "FRF": "NA",
+        "GTQ": "NA",
+        "HKD": "NA",
+        "HNL": "NA",
+        "ISK": "NA",
+        "ITL": "NA",
+        "KYD": "NA",
+        "AED": "NA",
+        "AWG": "NA",
+        "BBD": "NA",
+        "BDT": "NA",
+        "BGN": "NA",
+        "BMD": "NA",
+        "BOB": "NA",
+        "BSD": "NA",
+        "BZD": "NA",
+        "CNH": "NA",
+        "CRC": "NA",
+        "CZK": "NA",
+        "DOP": "NA",
+        "DZD": "NA",
+        "EGP": "NA",
+        "FJD": "NA",
+        "GRD": "NA",
+        "GYD": "NA",
+        "HTG": "NA",
+        "HUF": "NA",
+        "IDR": "NA",
+        "ILS": "NA",
+        "INR": "NA",
+        "IQD": "NA",
+        "JMD": "NA",
+        "KES": "NA",
+        "KRW": "NA",
+        "KWD": "NA",
+        "LTL": "NA",
+        "LUF": "NA",
+        "LVL": "NA",
+        "MAD": "NA",
+        "MYR": "NA",
+        "NGN": "NA",
+        "NIC": "NA",
+        "NIO": "NA",
+        "NLG": "NA",
+        "NOK": "NA",
+        "NZD": "NA",
+        "PEN": "NA",
+        "PHP": "NA",
+        "PKR": "NA",
+        "PLN": "NA",
+        "PTE": "NA",
+        "PYG": "NA",
+        "QAR": "NA",
+        "RON": "NA",
+        "RUB": "NA",
+        "SAR": "NA",
+        "SEK": "NA",
+        "SGD": "NA",
+        "SVC": "NA",
+        "THB": "NA",
+        "TND": "NA",
+        "TRY": "NA",
+        "TTD": "NA",
+        "TWD": "NA",
+        "UAH": "NA",
+        "MUD": "NA",
+        "UDI": "NA",
+        "UYU": "NA",
+        "VND": "NA",
+        "XCD": "NA",
+        "ENY": "NA",
+        "ORO": "NA",
+        "MON": "NA",
+        "ATA": "NA"
+      }
+    },
+    "00": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "0": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "1ASP": {
+      "0": {
+        "DKK": "NA",
+        "SEK": "NA",
+        "HKD": "NA",
+        "JPY": "NA",
+        "EUR": "NA",
+        "USD": "NA",
+        "GBP": "NA",
+        "CHF": "NA",
+        "CAD": "NA",
+        "MPS": "NA",
+        "AUD": "NA",
+        "PLN": "NA",
+        "KRW": "NA",
+        "SGD": "NA"
+      }
+    },
+    "1A": {
+      "0": {
+        "DKK": "NA",
+        "SEK": "NA",
+        "HKD": "NA",
+        "JPY": "NA",
+        "EUR": "NA",
+        "USD": "NA",
+        "GBP": "NA",
+        "CHF": "NA",
+        "CAD": "NA",
+        "AUD": "NA",
+        "PLN": "NA",
+        "KRW": "NA",
+        "SGD": "NA"
+      }
+    },
+    "1B": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "1C": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "1ESP": {
+      "0": {
+        "EUR": "NA",
+        "HKD": "NA",
+        "KRW": "NA",
+        "USD": "NA",
+        "BRL": "NA",
+        "GBP": "NA",
+        "CHF": "NA",
+        "CAD": "NA",
+        "NOK": "NA",
+        "SEK": "NA",
+        "AUD": "NA",
+        "MPS": "NA",
+        "IDR": "NA",
+        "PEN": "NA",
+        "CLP": "NA",
+        "DKK": "NA",
+        "COP": "NA",
+        "SGD": "NA"
+      }
+    },
+    "1E": {
+      "0": {
+        "EUR": "NA",
+        "HKD": "NA",
+        "KRW": "NA",
+        "USD": "NA",
+        "BRL": "NA",
+        "GBP": "NA",
+        "MPS": "NA",
+        "CHF": "NA",
+        "CAD": "NA",
+        "NOK": "NA",
+        "SEK": "NA",
+        "AUD": "NA",
+        "IDR": "NA",
+        "PEN": "NA",
+        "CLP": "NA",
+        "DKK": "NA",
+        "COP": "NA",
+        "SGD": "NA"
+      }
+    },
+    "1ISP": {
+      "0": {
+        "JPY": "NA",
+        "EUR": "NA",
+        "USD": "NA",
+        "MPS": "NA",
+        "AUD": "NA",
+        "BRL": "NA",
+        "CAD": "NA",
+        "GBP": "NA",
+        "CHF": "NA"
+      }
+    },
+    "1I": {
+      "0": {
+        "JPY": "NA",
+        "EUR": "NA",
+        "USD": "NA",
+        "MPS": "NA",
+        "AUD": "NA",
+        "BRL": "NA",
+        "CAD": "NA",
+        "CHF": "NA",
+        "GBP": "NA"
+      }
+    },
+    "1MSP": {
+      "0": {
+        "CLP": "NA",
+        "PEN": "NA",
+        "CAD": "NA",
+        "USD": "NA",
+        "COP": "NA"
+      }
+    },
+    "1M": {
+      "0": {
+        "CLP": "NA",
+        "PEN": "NA",
+        "CAD": "NA",
+        "USD": "NA",
+        "COP": "NA"
+      }
+    },
+    "1RSP": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "1R": {
+      "0": {
+        "MPS": "NA",
+        "USD": "NA"
+      }
+    },
+    "1S": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "1": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "2U": {
+      "Tasa Fija": {
+        "MUD": "Real Bruta (Yield)"
+      }
+    },
+    "2": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "3": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "41": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "51": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "52": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "53": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "54": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "56SP": {
+      "0": {
+        "USD": "NA",
+        "EUR": "NA",
+        "MPS": "NA",
+        "COP": "NA",
+        "GBP": "NA",
+        "JPY": "NA",
+        "CHF": "NA"
+      }
+    },
+    "56": {
+      "0": {
+        "USD": "NA",
+        "EUR": "NA",
+        "MPS": "NA",
+        "COP": "NA",
+        "GBP": "NA",
+        "JPY": "NA",
+        "CHF": "NA"
+      }
+    },
+    "6U": {
+      "0": {
+        "MUD": "NA"
+      }
+    },
+    "71": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "75": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "7": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "90": {
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Tasa Fija": {
+        "MPS": "Bonos M Bruta(Yield)",
+        "MUD": "Real Bruta (Yield)"
+      },
+      "TIIE28 EQUIV 182": {
+        "MPS": "TIIE28 EQUIV 182"
+      }
+    },
+    "91SP": {
+      "Tasa Fija": {
+        "USD": "NA"
+      },
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "91": {
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Tasa Fija": {
+        "MPS": "Bonos M Bruta(Yield)",
+        "MUD": "Real Bruta (Yield)",
+        "USD": "Treasury"
+      },
+      "Tasa TIIE Fondeo 1D": {
+        "MPS": "Tasa TIIE Fondeo 1D"
+      },
+      "0": {
+        "MPS": "NA",
+        "MUD": "Real Bruta (Yield)"
+      },
+      "TIIE91": {
+        "MPS": "TIIE91"
+      },
+      "Bonos M Bruta(Yield)": {
+        "MPS": "Bonos M Bruta(Yield)"
+      },
+      "TERM SOFR 6M": {
+        "USD": "TERM SOFR 6M"
+      },
+      "TERM SOFR 3M": {
+        "USD": "TERM SOFR 3M"
+      },
+      "TIIE28 EQUIV 182": {
+        "MPS": "TIIE28 EQUIV 182"
+      },
+      "CETE28": {
+        "MPS": "CETE28"
+      }
+    },
+    "92": {
+      "0": {
+        "MPS": "D1"
+      },
+      "Tasa TIIE Fondeo 1D": {
+        "MPS": "Tasa TIIE Fondeo 1D"
+      }
+    },
+    "93SP": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "93": {
+      "0": {
+        "MPS": "D1"
+      },
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Tasa Fija": {
+        "USD": "SOFR",
+        "MPS": "Bonos M Bruta(Yield)"
+      },
+      "Tasa TIIE Fondeo 1D": {
+        "MPS": "Tasa TIIE Fondeo 1D"
+      },
+      "Bonos M Bruta(Yield)": {
+        "MPS": "Bonos M Bruta(Yield)"
+      }
+    },
+    "94SP": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "94": {
+      "Tasa Fija": {
+        "MUD": "Real Bruta (Yield)",
+        "MPS": "Bonos M Bruta(Yield)",
+        "USD": "Treasury"
+      },
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Tasa TIIE Fondeo 1D": {
+        "MPS": "Tasa TIIE Fondeo 1D"
+      }
+    },
+    "95": {
+      "Tasa Fija": {
+        "MUD": "Real Bruta (Yield)",
+        "MPS": "Bonos M Bruta(Yield)"
+      },
+      "0": {
+        "MPS": "Real Bruta (Yield)"
+      },
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Tasa TIIE Fondeo 1D": {
+        "MPS": "Tasa TIIE Fondeo 1D"
+      }
+    },
+    "97": {
+      "0": {
+        "MUD": "Real Bruta (Yield)"
+      },
+      "Tasa Fija": {
+        "MUD": "Real Bruta (Yield)",
+        "MPS": "Bonos M Bruta(Yield)"
+      }
+    },
+    "98": {
+      "0": {
+        "MPS": "Bonos M Bruta(Yield)",
+        "MUD": "Real Bruta (Yield)"
+      }
+    },
+    "BI": {
+      "0": {
+        "MPS": "Cetes"
+      }
+    },
+    "CC": {
+      "0": {
+        "MUD": "Real Bruta (Yield)"
+      }
+    },
+    "CDSP": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "CD": {
+      "Tasa Fija": {
+        "MPS": "Bonos M Bruta(Yield)",
+        "USD": "Treasury",
+        "MUD": "Real Bruta (Yield)"
+      },
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Tasa TIIE Fondeo 1D": {
+        "MPS": "Tasa TIIE Fondeo 1D"
+      }
+    },
+    "CF": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "CP": {
+      "0": {
+        "MUD": "Real (Yield)"
+      }
+    },
+    "D1SP": {
+      "Tasa Fija": {
+        "AUD": "NA",
+        "USD": "NA",
+        "EUR": "NA",
+        "BRL": "NA",
+        "CAD": "NA",
+        "DKK": "NA",
+        "GBP": "NA",
+        "JPY": "NA",
+        "NOK": "NA",
+        "SEK": "NA",
+        "CHF": "NA"
+      },
+      "0": {
+        "USD": "NA",
+        "EUR": "NA"
+      },
+      "Bono Cupon Cero": {
+        "EUR": "NA",
+        "BRL": "NA",
+        "CAD": "NA",
+        "USD": "NA"
+      },
+      "Nota de Tasa Flotante": {
+        "EUR": "NA"
+      }
+    },
+    "D1": {
+      "Tasa Fija": {
+        "AUD": "NA",
+        "USD": "NA",
+        "EUR": "NA",
+        "BRL": "NA",
+        "CAD": "NA",
+        "DKK": "NA",
+        "GBP": "NA",
+        "JPY": "NA",
+        "NOK": "NA",
+        "MPS": "Bonos M Bruta(Yield)",
+        "SEK": "NA",
+        "CHF": "NA"
+      },
+      "0": {
+        "USD": "NA",
+        "EUR": "NA"
+      },
+      "Bono Cupon Cero": {
+        "EUR": "NA",
+        "BRL": "NA",
+        "CAD": "NA",
+        "USD": "NA"
+      },
+      "Nota de Tasa Flotante": {
+        "EUR": "NA"
+      }
+    },
+    "D2SP": {
+      "Tasa Fija": {
+        "USD": "NA",
+        "CHF": "NA",
+        "EUR": "NA",
+        "GBP": "NA"
+      },
+      "Nota de Tasa Flotante": {
+        "GBP": "NA",
+        "USD": "NA"
+      },
+      "0": {
+        "USD": "NA"
+      },
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      }
+    },
+    "D2": {
+      "Tasa Fija": {
+        "USD": "NA",
+        "MPS": "Bonos M Bruta(Yield)",
+        "MUD": "Bonos M Bruta(Yield)",
+        "CHF": "NA",
+        "EUR": "NA",
+        "GBP": "NA"
+      },
+      "Nota de Tasa Flotante": {
+        "GBP": "NA",
+        "USD": "NA"
+      },
+      "0": {
+        "USD": "SOFR",
+        "MUD": "Bonos M Bruta(Yield)",
+        "MPS": "TIIE28"
+      },
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      }
+    },
+    "D4SP": {
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      }
+    },
+    "D4": {
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      }
+    },
+    "D5SP": {
+      "Tasa Fija": {
+        "USD": "NA"
+      },
+      "Nota de Tasa Flotante": {
+        "USD": "NA"
+      }
+    },
+    "D5": {
+      "Tasa Fija": {
+        "USD": "NA"
+      },
+      "Nota de Tasa Flotante": {
+        "USD": "NA"
+      }
+    },
+    "D6SP": {
+      "Tasa Fija": {
+        "USD": "NA"
+      },
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      }
+    },
+    "D6": {
+      "Tasa Fija": {
+        "USD": "NA"
+      },
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      }
+    },
+    "D7SP": {
+      "0": {
+        "USD": "NA"
+      },
+      "Tasa Fija": {
+        "USD": "NA",
+        "GBP": "NA"
+      },
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      }
+    },
+    "D7": {
+      "0": {
+        "USD": "NA"
+      },
+      "Tasa Fija": {
+        "USD": "NA",
+        "MUD": "Real Bruta (Yield)",
+        "GBP": "NA",
+        "MPS": "Bonos M Bruta(Yield)"
+      },
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      }
+    },
+    "D8SP": {
+      "Tasa Fija": {
+        "USD": "NA"
+      }
+    },
+    "D8": {
+      "Tasa Fija": {
+        "USD": "NA",
+        "MUD": "Real Bruta (Yield)",
+        "MPS": "Bonos M Bruta(Yield)"
+      },
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "0": {
+        "MPS": "NA",
+        "MUD": "Zero Real Bruta"
+      }
+    },
+    "FA": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "FB": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "FCSP": {
+      "0": {
+        "USD": "NA",
+        "BRL": "NA",
+        "EUR": "NA",
+        "MPS": "NA"
+      }
+    },
+    "FC": {
+      "0": {
+        "USD": "NA",
+        "BRL": "NA",
+        "EUR": "NA",
+        "MPS": "NA"
+      }
+    },
+    "FD": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "FE": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "FF": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "FH": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "FI": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "FMSP": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "FM": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "FSP": {
+      "0": {
+        "USD": "NA"
+      },
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      }
+    },
+    "FWC": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "FWV": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "F": {
+      "0": {
+        "USD": "SOFR",
+        "MPS": "AAA"
+      },
+      "Tasa TIIE Fondeo 1D": {
+        "MPS": "Tasa TIIE Fondeo 1D"
+      },
+      "Bono Cupon Cero": {
+        "USD": "NA"
+      },
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Tasa Fija": {
+        "MPS": "Bonos M Bruta(Yield)",
+        "MUD": "Real Bruta (Yield)",
+        "USD": "SOFR"
+      },
+      "Bonos M Bruta(Yield)": {
+        "MPS": "Bonos M Bruta(Yield)"
+      }
+    },
+    "IL": {
+      "0": {
+        "MPS": "AAA"
+      }
+    },
+    "IM": {
+      "IRMXP-FGub-28": {
+        "MPS": "IRMXP-FGub-28"
+      }
+    },
+    "IQ": {
+      "IRMXP-FGub-91": {
+        "MPS": "IRMXP-FGub-91"
+      }
+    },
+    "IS": {
+      "CETE182": {
+        "MPS": "CETE182"
+      }
+    },
+    "I": {
+      "0": {
+        "MPS": "AAA"
+      }
+    },
+    "JE": {
+      "Tasa Fija": {
+        "MPS": "Bonos M Bruta(Yield)"
+      }
+    },
+    "JISP": {
+      "Tasa Fija": {
+        "AUD": "NA",
+        "USD": "NA",
+        "GBP": "NA",
+        "EUR": "NA",
+        "SEK": "NA"
+      },
+      "Nota de Tasa Flotante": {
+        "USD": "NA"
+      }
+    },
+    "JI": {
+      "Tasa Fija": {
+        "AUD": "NA",
+        "USD": "NA",
+        "GBP": "NA",
+        "EUR": "NA",
+        "MPS": "Bonos M Bruta(Yield)",
+        "MUD": "Real Bruta (Yield)",
+        "SEK": "NA"
+      },
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Nota de Tasa Flotante": {
+        "USD": "NA"
+      },
+      "0": {
+        "MPS": "Bonos M Bruta(Yield)"
+      }
+    },
+    "J": {
+      "TIIE28": {
+        "MPS": "TIIE28"
+      }
+    },
+    "LD": {
+      "Fondeo Bancario": {
+        "MPS": "Fondeo Bancario"
+      }
+    },
+    "LF": {
+      "Tasa TIIE Fondeo 1D": {
+        "MPS": "Tasa TIIE Fondeo 1D"
+      }
+    },
+    "LG": {
+      "Tasa TIIE Fondeo 1D": {
+        "MPS": "Tasa TIIE Fondeo 1D"
+      }
+    },
+    "MCC": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "MCV": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "MC": {
+      "0": {
+        "MPS": "Bonos M Bruta(Yield)"
+      }
+    },
+    "MP": {
+      "0": {
+        "MPS": "Bonos M Bruta(Yield)"
+      }
+    },
+    "MS": {
+      "Tasa Fija": {
+        "MPS": "Bonos M Bruta(Yield)"
+      }
+    },
+    "M": {
+      "Tasa Fija": {
+        "MPS": "Bonos M Bruta(Yield)"
+      }
+    },
+    "OA": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "OCSP": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "OC": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "OD": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "OI": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "PI": {
+      "Tasa Fija": {
+        "MUD": "Real (Yield)"
+      }
+    },
+    "QSP": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "Q": {
+      "0": {
+        "MPS": "NA"
+      },
+      "TIIE28": {
+        "MPS": "TIIE28"
+      },
+      "Tasa Fija": {
+        "MPS": "Bonos M Bruta(Yield)"
+      },
+      "TERM SOFR 6M": {
+        "USD": "TERM SOFR 6M"
+      }
+    },
+    "R3": {
+      "0": {
+        "MPS": "NA"
+      }
+    },
+    "RC": {
+      "0": {
+        "MPS": "NA",
+        "USD": "NA"
+      }
+    },
+    "SC": {
+      "0": {
+        "MUD": "Real Bruta (Yield)"
+      }
+    },
+    "SP": {
+      "0": {
+        "MUD": "Real Bruta (Yield)"
+      }
+    },
+    "SW": {
+      "0": {
+        "MPS": "NA",
+        "USD": "NA",
+        "MUD": "NA"
+      }
+    },
+    "S": {
+      "Tasa Fija": {
+        "MUD": "Real Bruta (Yield)"
+      }
+    },
+    "TR": {
+      "0": {
+        "MPS": "NA",
+        "USD": "NA"
+      }
+    },
+    "UST": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "XR": {
+      "IRMXP_Tasa_Obj": {
+        "MPS": "IRMXP_Tasa_Obj"
+      }
+    },
+    "YYSP": {
+      "0": {
+        "USD": "NA"
+      }
+    },
+    "YY": {
+      "0": {
+        "USD": "NA"
+      }
+    }
+  },
+  "coarse_TV": {
+    "*CSP": "NA",
+    "*C": "NA",
+    "00": "NA",
+    "0": "NA",
+    "1ASP": "NA",
+    "1A": "NA",
+    "1B": "NA",
+    "1C": "NA",
+    "1ESP": "NA",
+    "1E": "NA",
+    "1ISP": "NA",
+    "1I": "NA",
+    "1MSP": "NA",
+    "1M": "NA",
+    "1RSP": "NA",
+    "1R": "NA",
+    "1S": "NA",
+    "1": "NA",
+    "2U": "Real Bruta (Yield)",
+    "2": "NA",
+    "3": "NA",
+    "41": "NA",
+    "51": "NA",
+    "52": "NA",
+    "53": "NA",
+    "54": "NA",
+    "56SP": "NA",
+    "56": "NA",
+    "6U": "NA",
+    "71": "NA",
+    "75": "NA",
+    "7": "NA",
+    "90": "Bonos M Bruta(Yield)",
+    "91SP": "NA",
+    "91": "Bonos M Bruta(Yield)",
+    "92": "Tasa TIIE Fondeo 1D",
+    "93SP": "NA",
+    "93": "D1",
+    "94SP": "NA",
+    "94": "TIIE28",
+    "95": "Real Bruta (Yield)",
+    "97": "Real Bruta (Yield)",
+    "98": "Bonos M Bruta(Yield)",
+    "BI": "Cetes",
+    "CC": "Real Bruta (Yield)",
+    "CDSP": "NA",
+    "CD": "Bonos M Bruta(Yield)",
+    "CF": "NA",
+    "CP": "Real (Yield)",
+    "D1SP": "NA",
+    "D1": "NA",
+    "D2SP": "NA",
+    "D2": "NA",
+    "D4SP": "NA",
+    "D4": "NA",
+    "D5SP": "NA",
+    "D5": "NA",
+    "D6SP": "NA",
+    "D6": "NA",
+    "D7SP": "NA",
+    "D7": "NA",
+    "D8SP": "NA",
+    "D8": "NA",
+    "FA": "NA",
+    "FB": "NA",
+    "FCSP": "NA",
+    "FC": "NA",
+    "FD": "NA",
+    "FE": "NA",
+    "FF": "NA",
+    "FH": "NA",
+    "FI": "NA",
+    "FMSP": "NA",
+    "FM": "NA",
+    "FSP": "NA",
+    "FWC": "NA",
+    "FWV": "NA",
+    "F": "SOFR",
+    "IL": "AAA",
+    "IM": "IRMXP-FGub-28",
+    "IQ": "IRMXP-FGub-91",
+    "IS": "CETE182",
+    "I": "AAA",
+    "JE": "Bonos M Bruta(Yield)",
+    "JISP": "NA",
+    "JI": "NA",
+    "J": "TIIE28",
+    "LD": "Fondeo Bancario",
+    "LF": "Tasa TIIE Fondeo 1D",
+    "LG": "Tasa TIIE Fondeo 1D",
+    "MCC": "NA",
+    "MCV": "NA",
+    "MC": "Bonos M Bruta(Yield)",
+    "MP": "Bonos M Bruta(Yield)",
+    "MS": "Bonos M Bruta(Yield)",
+    "M": "Bonos M Bruta(Yield)",
+    "OA": "NA",
+    "OCSP": "NA",
+    "OC": "NA",
+    "OD": "NA",
+    "OI": "NA",
+    "PI": "Real (Yield)",
+    "QSP": "NA",
+    "Q": "TIIE28",
+    "R3": "NA",
+    "RC": "NA",
+    "SC": "Real Bruta (Yield)",
+    "SP": "Real Bruta (Yield)",
+    "SW": "NA",
+    "S": "Real Bruta (Yield)",
+    "TR": "NA",
+    "UST": "NA",
+    "XR": "IRMXP_Tasa_Obj",
+    "YYSP": "NA",
+    "YY": "NA"
+  }
+}

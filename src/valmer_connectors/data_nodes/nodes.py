@@ -1,12 +1,19 @@
 import os
 import re
+import shutil
+import tempfile
+import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, List, Literal, Union
+from urllib.parse import urlparse
 
 import pandas as pd
+from mainsequence.client.exceptions import ApiError, raise_for_response
 from mainsequence.client.metatables import MetaTable
+from mainsequence.client.utils import make_request
 from mainsequence.client.models_foundry import Artifact
 from msm.api.assets import Asset as MarketsAsset
 from msm.api.base import operation_result_rows
@@ -22,11 +29,11 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from tqdm import tqdm
 
+from valmer_connectors.asset_classification import classify_valmer_asset_type
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.asset_identity import (
     _upsert_asset_table_rows,
     add_valmer_unique_identifier,
-    batched_values,
     resolve_valmer_asset_refs,
 )
 from valmer_connectors.instruments.vector_to_asset import (
@@ -40,6 +47,28 @@ from valmer_connectors.meta_tables.valmer_asset_details import (
 )
 from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
 from valmer_connectors.settings import resolve_valmer_pricing_details_batch_size
+from valmer_connectors.settings import resolve_valmer_vector_local_copy_chunk_size
+
+_VALMER_EXCEL_NA_VALUES = (
+    "",
+    "#N/A",
+    "#N/A N/A",
+    "#NA",
+    "-1.#IND",
+    "-1.#QNAN",
+    "-NaN",
+    "-nan",
+    "1.#IND",
+    "1.#QNAN",
+    "<NA>",
+    "N/A",
+    "NULL",
+    "NaN",
+    "None",
+    "n/a",
+    "nan",
+    "null",
+)
 
 
 @dataclass(frozen=True)
@@ -160,6 +189,106 @@ def _summarize_failure_reasons(
     return sample
 
 
+_PRICING_ADAPTER_REQUIRED_FIELDS: tuple[str, ...] = (
+    "fecha",
+    "tipovalor",
+    "emisora",
+    "serie",
+    "subyacente",
+    "monedaemision",
+    "fechaemision",
+    "fechavcto",
+    "valornominalactualizado",
+    "reglacupon",
+    "cuponesemision",
+)
+
+_PRICING_ADAPTER_CONTEXT_FIELDS: tuple[str, ...] = (
+    "fecha",
+    "unique_identifier",
+    "tipovalor",
+    "emisora",
+    "serie",
+    "subyacente",
+    "monedaemision",
+    "fechaemision",
+    "plazoemision",
+    "fechavcto",
+    "freccpn",
+    "cuponesxcobrar",
+    "diastransccpn",
+    "cuponactual",
+    "cuponesemision",
+    "reglacupon",
+    "tasacupon",
+    "tasaderendimiento",
+    "valornominalactualizado",
+    "sobretasa",
+)
+
+_PRICING_ADAPTER_SCHEDULE_FIELDS: tuple[str, ...] = (
+    "fecha",
+    "fechaemision",
+    "fechavcto",
+    "freccpn",
+    "cuponesxcobrar",
+    "diastransccpn",
+    "cuponactual",
+    "cuponesemision",
+)
+
+
+def _format_pricing_adapter_value(value: object) -> str:
+    if value is None:
+        return "None"
+    try:
+        if pd.isna(value):
+            return "NULL"
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    return str(value)
+
+
+def _pricing_adapter_failure_detail(row: pd.Series, exc: BaseException) -> str:
+    row_index = set(row.index)
+    missing_required = [
+        field for field in _PRICING_ADAPTER_REQUIRED_FIELDS if field not in row_index
+    ]
+    null_required = [
+        field
+        for field in _PRICING_ADAPTER_REQUIRED_FIELDS
+        if field in row_index and pd.isna(row[field])
+    ]
+    schedule_context = {
+        field: _format_pricing_adapter_value(row[field])
+        for field in _PRICING_ADAPTER_SCHEDULE_FIELDS
+        if field in row_index
+    }
+    row_context = {
+        field: _format_pricing_adapter_value(row[field])
+        for field in _PRICING_ADAPTER_CONTEXT_FIELDS
+        if field in row_index
+    }
+
+    parts = [f"{type(exc).__name__}: {exc}"]
+    if missing_required:
+        parts.append(f"missing required pricing columns={missing_required}")
+    if null_required:
+        parts.append(f"null required pricing fields={null_required}")
+    if "Failed to insert extra dates" in str(exc):
+        parts.append(
+            "schedule reconciliation failed: QuantLib could not fit "
+            "cuponesxcobrar coupon dates between valuation/settlement and fechavcto "
+            "using freccpn; check cuponesxcobrar, diastransccpn, freccpn, fecha, "
+            "fechaemision, and fechavcto"
+        )
+    parts.append(f"schedule_inputs={schedule_context}")
+    parts.append(f"row_context={row_context}")
+    return "; ".join(parts)
+
+
 def _pricing_detail_failure_summary(
     *,
     missing_latest_rows: list[str],
@@ -261,16 +390,8 @@ def _publish_valmer_asset_snapshots(
         "name mapped from NOMBRE COMPLETO."
     )
     node = AssetSnapshot()
-    snapshot_rows = _drop_existing_valmer_asset_snapshot_rows(
-        snapshot_rows,
-        node=node,
-        logger=logger,
-    )
-    if not snapshot_rows:
-        logger.info("All Valmer asset snapshot rows already exist; skipping snapshot publish.")
-        return 0
 
-    result = node.set_snapshots(snapshot_rows).run(force_update=True)
+    result = node.set_snapshots(snapshot_rows, verify_existing=False).run(force_update=True)
     if isinstance(result, tuple) and len(result) == 2:
         error_on_last_update, frame = result
     else:
@@ -283,74 +404,6 @@ def _publish_valmer_asset_snapshots(
     row_count = len(frame) if isinstance(frame, pd.DataFrame) else len(snapshot_rows)
     logger.info(f"Published {row_count} Valmer asset snapshot rows.")
     return row_count
-
-
-def _drop_existing_valmer_asset_snapshot_rows(
-    snapshot_rows: list[dict[str, object]],
-    *,
-    node: AssetSnapshot,
-    logger,
-) -> list[dict[str, object]]:
-    if not _asset_snapshot_backend_update_exists(node=node, logger=logger):
-        return snapshot_rows
-
-    frame = AssetSnapshot.build_frame(snapshot_rows)
-    flat = frame.reset_index()
-    existing_keys: set[tuple[pd.Timestamp, str]] = set()
-    batch_size = resolve_valmer_meta_operation_batch_size()
-    for time_index, time_group in flat.groupby("time_index", sort=False):
-        identifiers = time_group[ASSET_IDENTIFIER_DIMENSION].astype(str).tolist()
-        for batch in batched_values(identifiers, batch_size):
-            existing_frame = node.get_df_between_dates(
-                start_date=time_index.to_pydatetime(),
-                end_date=time_index.to_pydatetime(),
-                great_or_equal=True,
-                less_or_equal=True,
-                dimension_filters={ASSET_IDENTIFIER_DIMENSION: batch},
-            )
-            existing_keys.update(_asset_snapshot_keys(existing_frame))
-
-    if not existing_keys:
-        return snapshot_rows
-
-    logger.info(
-        "Skipping "
-        f"{len(existing_keys)} existing Valmer asset snapshot keys before publish."
-    )
-    return [
-        row
-        for row in snapshot_rows
-        if (
-            pd.Timestamp(row["time_index"]),
-            str(row[ASSET_IDENTIFIER_DIMENSION]),
-        )
-        not in existing_keys
-    ]
-
-
-def _asset_snapshot_backend_update_exists(
-    *,
-    node: AssetSnapshot,
-    logger,
-) -> bool:
-    if node.data_node_update is not None:
-        return True
-    logger.info(
-        "No existing AssetSnapshot backend update found; "
-        "publishing Valmer asset snapshot rows without pre-read dedupe."
-    )
-    return False
-
-
-def _asset_snapshot_keys(frame: pd.DataFrame | None) -> set[tuple[pd.Timestamp, str]]:
-    if frame is None or frame.empty:
-        return set()
-    flat = frame.reset_index()
-    if "time_index" not in flat.columns or ASSET_IDENTIFIER_DIMENSION not in flat.columns:
-        return set()
-    time_index = pd.to_datetime(flat["time_index"], utc=True).astype("datetime64[ns, UTC]")
-    identifiers = flat[ASSET_IDENTIFIER_DIMENSION].astype(str)
-    return set(zip(time_index, identifiers))
 
 
 def _clean_valmer_snapshot_name(value: object) -> str | None:
@@ -1004,6 +1057,7 @@ class ImportValmer(AssetIndexedDataNode):
         self.artifact_data = None
         self.source_data = None
         self.asset_list = None
+        self._publication_unique_identifiers: set[str] = set()
         super().__init__(config=config, **kwargs)
 
     @classmethod
@@ -1023,39 +1077,117 @@ class ImportValmer(AssetIndexedDataNode):
         return explanation
 
     @staticmethod
-    def _read_debug_artifact_file(path: Path) -> pd.DataFrame:
+    def _stage_debug_artifact_file(
+        path: Path,
+        *,
+        logger=None,
+        attempts: int = 3,
+    ) -> tuple[tempfile.TemporaryDirectory, Path]:
+        temp_dir = tempfile.TemporaryDirectory(prefix="valmer-vector-")
+        staged_path = Path(temp_dir.name) / path.name
+        last_error: BaseException | None = None
+        chunk_size = resolve_valmer_vector_local_copy_chunk_size()
+        chunk_size_kb = max(1, chunk_size // 1024)
+
+        for attempt in range(1, attempts + 1):
+            try:
+                if logger is not None:
+                    logger.info(
+                        f"Staging local vector file {path.name} to temporary local storage "
+                        f"(attempt {attempt}/{attempts}, chunk_size={chunk_size_kb} KiB) ..."
+                    )
+                started = time.monotonic()
+                with path.open("rb") as source, staged_path.open("wb") as target:
+                    shutil.copyfileobj(source, target, length=chunk_size)
+                if logger is not None:
+                    logger.info(
+                        f"Staged local vector file {path.name} in "
+                        f"{round(time.monotonic() - started, 1)}s."
+                    )
+                return temp_dir, staged_path
+            except OSError as exc:
+                last_error = exc
+                staged_path.unlink(missing_ok=True)
+                if attempt < attempts:
+                    time.sleep(2)
+
+        temp_dir.cleanup()
+        raise RuntimeError(
+            f"Failed to stage local vector file {path}. If this path is backed by "
+            "OneDrive/iCloud/CloudStorage, make sure the file is downloaded locally "
+            "and retry."
+        ) from last_error
+
+    @staticmethod
+    def _read_debug_artifact_file(path: Path, logger=None) -> pd.DataFrame:
         engine = "xlrd" if path.suffix.lower() == ".xls" else "openpyxl"
+        size_mb = round(path.stat().st_size / 1_048_576, 1)
+        if logger is not None:
+            logger.info(
+                f"Reading local vector file {path.name} ({size_mb} MB, engine={engine}) ..."
+            )
 
-        # Keep default NA behavior for all columns except EMISORA, where Valmer's
-        # issuer code "NA" is a valid value and must stay as text.
-        df = pd.read_excel(
+        started = time.monotonic()
+        temp_dir, staged_path = ImportValmer._stage_debug_artifact_file(
             path,
-            engine=engine,
-            dtype={"TIPO VALOR": "string", "SERIE": "string"},
+            logger=logger,
         )
+        try:
+            # Read once from the staged local copy. ``NA`` is a valid EMISORA
+            # issuer code, so preserve it while keeping the rest of pandas'
+            # default Excel NA tokens.
+            df = pd.read_excel(
+                staged_path,
+                engine=engine,
+                dtype={"TIPO VALOR": "string", "SERIE": "string"},
+                keep_default_na=False,
+                na_values=_VALMER_EXCEL_NA_VALUES,
+            )
+        finally:
+            temp_dir.cleanup()
 
-        emisora = pd.read_excel(
-            path,
-            engine=engine,
-            usecols=["EMISORA"],
-            dtype={"EMISORA": "string"},
-            keep_default_na=False,
-        )["EMISORA"]
-
-        df["EMISORA"] = emisora.replace("", pd.NA)
+        if "EMISORA" in df.columns:
+            non_emisora_columns = [column for column in df.columns if column != "EMISORA"]
+            if non_emisora_columns:
+                df.loc[:, non_emisora_columns] = df.loc[:, non_emisora_columns].replace(
+                    "NA",
+                    pd.NA,
+                )
+            df["EMISORA"] = (
+                df["EMISORA"]
+                .astype("string")
+                .replace("", pd.NA)
+            )
+        else:
+            raise KeyError(
+                f"Local Valmer vector file {path} does not contain required column EMISORA."
+            )
+        if logger is not None:
+            logger.info(
+                f"Read local vector file {path.name}: {len(df)} rows "
+                f"in {round(time.monotonic() - started, 1)}s."
+            )
         return df
 
     @classmethod
-    def _read_debug_artifact_path(cls, debug_artifact_path: str) -> list[pd.DataFrame]:
+    def _read_debug_artifact_files(
+        cls,
+        paths: list[Path],
+        logger=None,
+    ) -> list[pd.DataFrame]:
+        return [cls._read_debug_artifact_file(path, logger) for path in paths]
+
+    @classmethod
+    def _read_debug_artifact_path(cls, debug_artifact_path: str, logger=None) -> list[pd.DataFrame]:
         base = Path(debug_artifact_path)
         if not base.exists():
             raise FileNotFoundError(f"DEBUG_ARTIFACT_PATH does not exist: {base}")
         if base.is_file():
-            return [cls._read_debug_artifact_file(base)]
-        return [
-            cls._read_debug_artifact_file(path)
-            for path in sorted(base.rglob("*.xls*"))
-        ]
+            return [cls._read_debug_artifact_file(base, logger)]
+        paths = sorted(base.rglob("*.xls*"))
+        if logger is not None:
+            logger.info(f"Found {len(paths)} local vector file(s) under {base}.")
+        return cls._read_debug_artifact_files(paths, logger)
 
     @staticmethod
     def _vector_time_index_from_valuation_date(value: object) -> pd.Timestamp | None:
@@ -1171,6 +1303,301 @@ class ImportValmer(AssetIndexedDataNode):
                 f"are not in MetaTable {meta_table.uid}: {missing}."
             )
 
+    @staticmethod
+    def _query_result_keys(result: object) -> list[str]:
+        if not isinstance(result, Mapping):
+            return []
+        return sorted(str(key) for key in result.keys())
+
+    @classmethod
+    def _query_error_message(cls, result: object) -> str:
+        if not isinstance(result, Mapping):
+            return ""
+        error = result.get("error")
+        messages: list[str] = []
+        if isinstance(error, Mapping):
+            messages.extend(
+                str(error.get(key, ""))
+                for key in ("message", "detail", "kind")
+                if error.get(key)
+            )
+        elif error is not None:
+            messages.append(str(error))
+        for key in ("message", "detail"):
+            if result.get(key):
+                messages.append(str(result[key]))
+        return " ".join(messages)
+
+    @classmethod
+    def _requires_raw_sql_request_body(cls, result: object) -> bool:
+        return "raw sql string" in cls._query_error_message(result).lower()
+
+    @classmethod
+    def _is_backend_mssql_dsn_error(cls, result: object) -> bool:
+        message = cls._query_error_message(result).lower()
+        return "invalid dsn" in message and "mssql://" in message
+
+    @classmethod
+    def _run_metatable_query_with_raw_sql_body(
+        cls,
+        meta_table: MetaTable,
+        sql: str,
+        *,
+        timeout: int | None = None,
+    ) -> dict[str, Any]:
+        if meta_table.uid is None:
+            raise ValueError("MetaTable must have a uid before running a query.")
+
+        meta_table_cls = type(meta_table)
+        url = f"{meta_table_cls.get_object_url().rstrip('/')}/{meta_table.uid}/run_query/"
+        response = make_request(
+            s=meta_table_cls.build_session(),
+            loaders=meta_table_cls.LOADERS,
+            r_type="POST",
+            url=url,
+            payload={"json": sql},
+            time_out=timeout,
+        )
+
+        try:
+            data = response.json()
+        except Exception:
+            data = None
+        if isinstance(data, dict) and "ok" in data:
+            return data
+        raise_for_response(response, payload={"json": sql})
+        return response.json()
+
+    @classmethod
+    def _run_metatable_query(
+        cls,
+        meta_table: MetaTable,
+        sql: str,
+        *,
+        timeout: int | None = None,
+    ) -> dict[str, Any]:
+        try:
+            result = meta_table.run_query(sql, timeout=timeout)
+        except ApiError as exc:
+            message = str(exc)
+            if "Unsupported media type" not in message or "text/plain" not in message:
+                raise
+            result = cls._run_metatable_query_with_raw_sql_body(
+                meta_table,
+                sql,
+                timeout=timeout,
+            )
+        if cls._requires_raw_sql_request_body(result):
+            return cls._run_metatable_query_with_raw_sql_body(
+                meta_table,
+                sql,
+                timeout=timeout,
+            )
+        return result
+
+    @staticmethod
+    def _mssql_connection_config_from_env() -> dict[str, Any]:
+        raw_host = os.environ.get("VALMER_METATABLE_MSSQL_HOST") or os.environ.get(
+            "EXTERNAL_URL"
+        )
+        database = os.environ.get("VALMER_METATABLE_MSSQL_DATABASE") or os.environ.get(
+            "EXTERNAL_BD"
+        )
+        user = os.environ.get("VALMER_METATABLE_MSSQL_USER") or os.environ.get(
+            "EXTERNAL_USER"
+        )
+        password = os.environ.get("VALMER_METATABLE_MSSQL_PASSWORD") or os.environ.get(
+            "EXTERNAL_PWD"
+        )
+        if not all((raw_host, database, user, password)):
+            raise RuntimeError(
+                "Direct MSSQL MetaTable fallback requires "
+                "VALMER_METATABLE_MSSQL_HOST, VALMER_METATABLE_MSSQL_DATABASE, "
+                "VALMER_METATABLE_MSSQL_USER, and VALMER_METATABLE_MSSQL_PASSWORD "
+                "or EXTERNAL_URL, EXTERNAL_BD, EXTERNAL_USER, and EXTERNAL_PWD."
+            )
+
+        parsed = urlparse(raw_host if "://" in raw_host else f"//{raw_host}")
+        host = parsed.hostname or raw_host
+        port = parsed.port or int(os.environ.get("VALMER_METATABLE_MSSQL_PORT", "1433"))
+        return {
+            "server": host,
+            "port": port,
+            "database": database,
+            "user": user,
+            "password": password,
+        }
+
+    @classmethod
+    def _run_direct_mssql_query(cls, sql: str) -> pd.DataFrame:
+        try:
+            import pymssql
+        except ImportError as exc:
+            raise RuntimeError(
+                "Direct MSSQL MetaTable fallback requires pymssql to be installed."
+            ) from exc
+
+        config = cls._mssql_connection_config_from_env()
+        with pymssql.connect(
+            server=config["server"],
+            port=config["port"],
+            user=config["user"],
+            password=config["password"],
+            database=config["database"],
+            login_timeout=10,
+            timeout=120,
+            as_dict=True,
+        ) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                return pd.DataFrame.from_records(cursor.fetchall())
+
+    @staticmethod
+    def _query_column_names(columns: object) -> list[str] | None:
+        if columns is None or isinstance(columns, str | bytes):
+            return None
+        if not isinstance(columns, Sequence):
+            return None
+
+        names: list[str] = []
+        for column in columns:
+            if isinstance(column, Mapping):
+                name = (
+                    column.get("name")
+                    or column.get("column_name")
+                    or column.get("field")
+                    or column.get("key")
+                    or column.get("label")
+                )
+            else:
+                name = getattr(column, "name", None)
+                if name is None:
+                    name = column
+            if name is None:
+                return None
+            names.append(str(name))
+        return names
+
+    @classmethod
+    def _frame_from_metatable_query_payload(
+        cls,
+        payload: object,
+        *,
+        columns: list[str] | None = None,
+    ) -> pd.DataFrame | None:
+        if payload is None:
+            return None
+
+        if isinstance(payload, pd.DataFrame):
+            return payload.copy()
+
+        if isinstance(payload, Mapping):
+            nested_columns = cls._query_column_names(
+                payload.get("columns")
+                or payload.get("column_names")
+                or payload.get("fields")
+            ) or columns
+            for key in ("rows", "results", "data", "records"):
+                if key in payload:
+                    return cls._frame_from_metatable_query_payload(
+                        payload.get(key),
+                        columns=nested_columns,
+                    )
+            return None
+
+        if isinstance(payload, Sequence) and not isinstance(payload, str | bytes):
+            rows = list(payload)
+            if not rows:
+                return pd.DataFrame(columns=columns)
+            if all(isinstance(row, Mapping) for row in rows):
+                return pd.DataFrame(rows)
+            if columns is not None:
+                return pd.DataFrame(rows, columns=columns)
+            return pd.DataFrame(rows)
+
+        return None
+
+    @classmethod
+    def _frame_from_metatable_query_result(
+        cls,
+        result: object,
+        *,
+        source_name: str,
+    ) -> pd.DataFrame:
+        if isinstance(result, Mapping) and result.get("ok") is False:
+            raise RuntimeError(
+                f"MetaTableValmerSource {source_name!r} query failed: "
+                f"{result.get('error') or result}."
+            )
+
+        columns = None
+        if isinstance(result, Mapping):
+            columns = cls._query_column_names(
+                result.get("columns")
+                or result.get("column_names")
+                or result.get("fields")
+            )
+            for key in ("rows", "results", "data", "records"):
+                if key not in result:
+                    continue
+                frame = cls._frame_from_metatable_query_payload(
+                    result.get(key),
+                    columns=columns,
+                )
+                if frame is not None:
+                    return frame
+        else:
+            frame = cls._frame_from_metatable_query_payload(result, columns=None)
+            if frame is not None:
+                return frame
+
+        raise RuntimeError(
+            f"MetaTableValmerSource {source_name!r} did not return tabular rows. "
+            f"Result keys: {cls._query_result_keys(result)}."
+        )
+
+    @staticmethod
+    def _source_column_match_key(column: object) -> str:
+        return normalize_column_name(str(column))
+
+    @classmethod
+    def _align_metatable_source_columns(
+        cls,
+        frame: pd.DataFrame,
+        *,
+        expected_columns: Sequence[str],
+    ) -> pd.DataFrame:
+        if frame.empty and len(frame.columns) == 0:
+            return frame
+
+        expected = list(expected_columns)
+        actual_by_key: dict[str, object] = {}
+        duplicates: set[str] = set()
+        for actual_column in frame.columns:
+            key = cls._source_column_match_key(actual_column)
+            if key in actual_by_key and actual_by_key[key] != actual_column:
+                duplicates.add(key)
+                continue
+            actual_by_key[key] = actual_column
+
+        if duplicates:
+            raise KeyError(
+                "MetaTable query returned duplicate columns after Valmer "
+                f"normalization: {sorted(duplicates)}."
+            )
+
+        rename_map: dict[object, str] = {}
+        for expected_column in expected:
+            if expected_column in frame.columns:
+                continue
+            actual_column = actual_by_key.get(cls._source_column_match_key(expected_column))
+            if actual_column is not None:
+                rename_map[actual_column] = expected_column
+
+        if not rename_map:
+            return frame
+        return frame.rename(columns=rename_map)
+
     @classmethod
     def _read_metatable_source_frame(
         cls,
@@ -1199,15 +1626,31 @@ class ImportValmer(AssetIndexedDataNode):
             "Reading MetaTable Valmer source "
             f"{source.source_name!r} ({meta_table.identifier or meta_table.uid})."
         )
-        result = meta_table.run_query(sql)
-        rows = result.get("rows") if isinstance(result, dict) else None
-        if rows is None:
-            rows = result.get("results") if isinstance(result, dict) else None
-        if rows is None:
-            raise RuntimeError(
-                f"MetaTableValmerSource {source.source_name!r} did not return rows."
+        result = cls._run_metatable_query(meta_table, sql)
+        if source.sql_dialect == "mssql" and cls._is_backend_mssql_dsn_error(result):
+            logger.warning(
+                "Backend MetaTable query failed with an MSSQL DSN error for "
+                f"{source.source_name!r}; retrying through direct MSSQL fallback."
             )
-        return pd.DataFrame(rows)
+            frame = cls._run_direct_mssql_query(sql)
+        else:
+            frame = cls._frame_from_metatable_query_result(
+                result,
+                source_name=source.source_name,
+            )
+        frame = cls._align_metatable_source_columns(
+            frame,
+            expected_columns=tuple(source.column_map),
+        )
+        missing = sorted(set(source.column_map) - set(frame.columns))
+        if missing:
+            raise KeyError(
+                f"MetaTableValmerSource {source.source_name!r} returned rows missing "
+                f"mapped source columns: {missing}. Actual returned columns: "
+                f"{[str(column) for column in frame.columns]}. Result keys: "
+                f"{cls._query_result_keys(result)}."
+            )
+        return frame
 
     @classmethod
     def _normalize_metatable_source_frame(
@@ -1215,11 +1658,16 @@ class ImportValmer(AssetIndexedDataNode):
         frame: pd.DataFrame,
         source: MetaTableValmerSourceConfig,
     ) -> pd.DataFrame:
+        frame = cls._align_metatable_source_columns(
+            frame,
+            expected_columns=tuple(source.column_map),
+        )
         missing = sorted(set(source.column_map) - set(frame.columns))
         if missing:
             raise KeyError(
                 f"MetaTableValmerSource {source.source_name!r} returned rows missing "
-                f"mapped source columns: {missing}."
+                f"mapped source columns: {missing}. Actual returned columns: "
+                f"{[str(column) for column in frame.columns]}."
             )
         normalized = frame[list(source.column_map)].rename(columns=source.column_map).copy()
         required_missing = sorted(set(VALMER_REQUIRED_IDENTITY_SOURCE_COLUMNS) - set(normalized.columns))
@@ -1288,9 +1736,18 @@ class ImportValmer(AssetIndexedDataNode):
         Reads all artifacts from the bucket, normalizes columns, and concatenates them into a single DataFrame.
         Optionally filters for new artifacts based on the 'process_all_files' flag.
         """
+        debug_artifact_files = os.environ.get("DEBUG_ARTIFACT_FILES", None)
         debug_artifact_path = os.environ.get("DEBUG_ARTIFACT_PATH", None)
-        if debug_artifact_path:
-            sorted_artifacts = self._read_debug_artifact_path(debug_artifact_path)
+        if debug_artifact_files:
+            paths = [Path(p) for p in debug_artifact_files.split(os.pathsep) if p]
+            self.logger.info(f"Reading local Valmer vector batch of {len(paths)} file(s) ...")
+            sorted_artifacts = self._read_debug_artifact_files(paths, self.logger)
+            source_label = f"local batch ({len(paths)} file(s))"
+        elif debug_artifact_path:
+            self.logger.info(
+                f"Reading local Valmer vector from DEBUG_ARTIFACT_PATH '{debug_artifact_path}' ..."
+            )
+            sorted_artifacts = self._read_debug_artifact_path(debug_artifact_path, self.logger)
             source_label = f"local DEBUG_ARTIFACT_PATH '{debug_artifact_path}'"
         else:
             if self.artifact_data is not None:
@@ -1325,42 +1782,16 @@ class ImportValmer(AssetIndexedDataNode):
     @staticmethod
     def _get_target_bonds(df_latest: pd.DataFrame):
         working = _prepare_frame_for_target_bond_rules(df_latest)
-        required_cols = {"tipovalor", "subyacente", "monedaemision", "emisora", "fechaemision"}
+        required_cols = {"fechaemision"}
         missing = sorted(required_cols - set(working.columns))
         if missing:
             raise KeyError(
                 f"ImportValmer target-bond selection requires columns {required_cols}. Missing: {missing}"
             )
 
-        working["tipovalor"] = working["tipovalor"].astype("string")
-        working["subyacente"] = working["subyacente"].astype("string")
-        working["monedaemision"] = working["monedaemision"].astype("string")
-        working["emisora"] = working["emisora"].astype("string")
-
-        floating_tiie = working["subyacente"].str.contains("TIIE", na=False)
-        floating_cetes = working["subyacente"].str.contains("CETE", na=False)
-        cetes = working["subyacente"].str.contains("Cete", na=False)
-        m_bono_fixed_0 = working["subyacente"].str.contains("Bonos M", na=False)
-        m_bono_fixed_0 = m_bono_fixed_0 & (working["monedaemision"] == "MPS")
-
-        bondes_d = working["subyacente"].str.contains("Fondeo Bancario", na=False)
-        bondes_f_g = working["subyacente"].str.contains("Tasa TIIE Fondeo 1D", na=False)
-
-        zero_corps = working["tipovalor"].isin(["I", "93", "92"])
-        zero_corps = zero_corps & working["monedaemision"].isin(["MPS"])
-
-        bpas = working["emisora"].isin(["BPAG91", "BPAG28", "BPA182"])
-        bpas = bpas & working["monedaemision"].isin(["MPS"])
-
-        target_mask = (
-            floating_tiie
-            | floating_cetes
-            | cetes
-            | m_bono_fixed_0
-            | bondes_d
-            | bondes_f_g
-            | zero_corps
-            | bpas
+        target_mask = working.apply(
+            lambda row: classify_valmer_asset_type(row.to_dict()) == ASSET_TYPE_BOND,
+            axis=1,
         )
 
         all_target_bonds = df_latest.loc[target_mask].copy()
@@ -1542,7 +1973,8 @@ class ImportValmer(AssetIndexedDataNode):
     @staticmethod
     def _concatenate_artifacts_content(sorted_artifacts, logger, *, source_label: str | None = None):
         frames = []
-        for artifact in tqdm(sorted_artifacts):
+        total = len(sorted_artifacts)
+        for index, artifact in enumerate(tqdm(sorted_artifacts), start=1):
             if isinstance(artifact, Artifact):
                 artifact_name = artifact.name
                 name_l = artifact.name.lower()
@@ -1550,11 +1982,14 @@ class ImportValmer(AssetIndexedDataNode):
                 buf = content
 
                 df = None
+                started = time.monotonic()
                 if name_l.endswith(".xls"):
                     import xlrd  # noqa: F401
 
+                    logger.info(f"[{index}/{total}] Reading Excel artifact {artifact_name} ...")
                     df = pd.read_excel(buf, engine="xlrd")
                 elif name_l.endswith(".csv"):
+                    logger.info(f"[{index}/{total}] Reading CSV artifact {artifact_name} ...")
                     try:
                         df = pd.read_csv(buf, encoding="latin1", engine="pyarrow")
                     except Exception:
@@ -1564,7 +1999,12 @@ class ImportValmer(AssetIndexedDataNode):
                     continue
 
                 if df is None or df.empty:
+                    logger.info(f"[{index}/{total}] {artifact_name}: empty, skipping.")
                     continue
+                logger.info(
+                    f"[{index}/{total}] Parsed {artifact_name}: {len(df)} rows "
+                    f"in {round(time.monotonic() - started, 1)}s."
+                )
             else:
                 df = artifact
                 artifact_name = source_label or "local dataframe"
@@ -1623,21 +2063,34 @@ class ImportValmer(AssetIndexedDataNode):
     ) -> list:
         """Sync Valmer asset rows, Valmer asset details, and current pricing details."""
         per_page_assets = resolve_valmer_meta_operation_batch_size()
+        source_unique_identifiers = list(dict.fromkeys(unique_identifiers))
         target_uids = set(all_target_bonds["unique_identifier"].dropna().unique())
-        registration_unique_identifiers = [uid for uid in unique_identifiers if uid in target_uids]
+        registration_unique_identifiers = [
+            uid for uid in source_unique_identifiers if uid in target_uids
+        ]
+        df_latest_idx = df_latest.drop_duplicates("unique_identifier", keep="last").set_index(
+            "unique_identifier"
+        )
+        target_asset_types = {
+            uid: asset_type
+            for uid in registration_unique_identifiers
+            if uid in df_latest_idx.index
+            for asset_type in [classify_valmer_asset_type(df_latest_idx.loc[uid].to_dict())]
+            if asset_type is not None
+        }
+        unclassified_registration_uids = [
+            uid for uid in registration_unique_identifiers if uid not in target_asset_types
+        ]
         self.logger.info(
             "Starting Valmer asset registry and pricing sync: "
-            f"{len(unique_identifiers)} source assets, "
+            f"{len(source_unique_identifiers)} source assets, "
             f"{len(target_uids)} target pricing assets, "
             f"{len(registration_unique_identifiers)} registration-scope assets, "
             f"batch size {per_page_assets}."
         )
-        if not registration_unique_identifiers:
-            self.logger.info("No Valmer assets selected for registration or pricing sync.")
-            return []
 
         existing_asset_refs = resolve_valmer_asset_refs(
-            registration_unique_identifiers,
+            source_unique_identifiers,
             batch_size=per_page_assets,
             logger=self.logger,
         )
@@ -1648,30 +2101,46 @@ class ImportValmer(AssetIndexedDataNode):
         asset_type_conflicts = [
             uid
             for uid, asset_ref in existing_asset_refs.items()
-            if asset_ref.asset_type != ASSET_TYPE_BOND
+            if uid in target_asset_types
+            and asset_ref.asset_type != target_asset_types[uid]
         ]
+        existing_registration_count = sum(
+            1 for uid in registration_unique_identifiers if uid in existing_assets
+        )
         self.logger.info(
             "Valmer asset registry decision: "
             f"{len(existing_assets)} existing, "
-            f"{len(registration_unique_identifiers) - len(existing_assets)} missing, "
-            f"{len(asset_type_conflicts)} wrong asset_type."
+            f"{len(registration_unique_identifiers) - existing_registration_count} missing, "
+                f"{len(asset_type_conflicts)} wrong asset_type."
         )
-        if asset_type_conflicts:
+        if unclassified_registration_uids:
             raise RuntimeError(
-                "Valmer target-bond asset type conflict for "
-                f"{len(asset_type_conflicts)} existing assets: "
-                f"{_summarize_uids(asset_type_conflicts)}. "
-                f"Expected asset_type={ASSET_TYPE_BOND!r}; refusing to overwrite existing "
-                "AssetTable.asset_type values."
+                "Valmer target-bond rows are missing an explicit asset classification: "
+                f"{_summarize_uids(unclassified_registration_uids)}. "
+                "Refusing to write AssetTable rows from the pricing-target filter alone."
             )
-        existing_target_assets = {
-            uid: asset for uid, asset in existing_assets.items() if uid in target_uids
-        }
+        if asset_type_conflicts:
+            repair_asset_types = {
+                uid: target_asset_types[uid]
+                for uid in asset_type_conflicts
+            }
+            self.logger.warning(
+                "Repairing Valmer AssetTable asset_type conflicts using explicit "
+                "Valmer asset classification: "
+                f"{_summarize_uids(asset_type_conflicts)}."
+            )
+            repaired_assets = _upsert_asset_table_rows(
+                repair_asset_types,
+                batch_size=per_page_assets,
+                logger=self.logger,
+            )
+            existing_assets.update(repaired_assets)
         current_pricing_face_values = self._get_current_pricing_face_values_by_uid(
-            existing_target_assets,
+            existing_assets,
             batch_size=per_page_assets,
             logger=self.logger,
         )
+        current_pricing_uids = set(current_pricing_face_values)
         missing_assets = self._get_missing_asset_uids(
             registration_unique_identifiers,
             existing_assets,
@@ -1685,38 +2154,41 @@ class ImportValmer(AssetIndexedDataNode):
             logger=self.logger,
         )
 
-        df_latest_idx = df_latest.drop_duplicates("unique_identifier", keep="last").set_index(
-            "unique_identifier"
-        )
-
         assets_to_upsert = list(dict.fromkeys(missing_assets))
         if assets_to_upsert:
             self.logger.info(
                 f"Upserting {len(assets_to_upsert)} Valmer target-bond assets "
-                f"as {ASSET_TYPE_BOND!r}."
+                "using explicit Valmer asset classification."
             )
             upserted_assets = _upsert_asset_table_rows(
-                {uid: ASSET_TYPE_BOND for uid in assets_to_upsert},
+                {uid: target_asset_types[uid] for uid in assets_to_upsert},
                 batch_size=per_page_assets,
                 logger=self.logger,
             )
             existing_assets.update(upserted_assets)
 
-        _publish_valmer_asset_snapshots(
-            df_latest,
-            existing_assets,
-            logger=self.logger,
-        )
+        hydration_assets = {
+            uid: existing_assets[uid]
+            for uid in target_uids
+            if uid in existing_assets
+        }
+        if hydration_assets:
+            _publish_valmer_asset_snapshots(
+                df_latest,
+                hydration_assets,
+                logger=self.logger,
+            )
 
         detail_source = df_latest[
-            df_latest["unique_identifier"].isin(existing_assets.keys())
+            df_latest["unique_identifier"].isin(hydration_assets)
         ].copy()
-        detail_rows = upsert_valmer_asset_details(
-            detail_source,
-            existing_assets,
-            logger=self.logger,
-        )
-        self.logger.info(f"Upserted {len(detail_rows)} Valmer asset detail rows.")
+        if not detail_source.empty:
+            detail_rows = upsert_valmer_asset_details(
+                detail_source,
+                hydration_assets,
+                logger=self.logger,
+            )
+            self.logger.info(f"Upserted {len(detail_rows)} Valmer asset detail rows.")
 
         # --- decide pricing recipients ---
         pricing_uid_list = list(
@@ -1754,9 +2226,11 @@ class ImportValmer(AssetIndexedDataNode):
                         settlement_days=settlement_days,
                     )
                 except Exception as exc:
-                    instrument_build_failures[uid] = str(exc)
+                    failure_detail = _pricing_adapter_failure_detail(row, exc)
+                    instrument_build_failures[uid] = failure_detail
                     self.logger.error(
-                        f"Cannot build current pricing details for {uid}: pricing adapter failed: {exc}"
+                        "Cannot build current pricing details for "
+                        f"{uid}: pricing adapter failed: {failure_detail}"
                     )
                 else:
                     instrument_pricing_detail_map[uid] = {
@@ -1805,6 +2279,7 @@ class ImportValmer(AssetIndexedDataNode):
                         logger=self.logger,
                     )
                 )
+                current_pricing_uids.update(verified_uids)
             missing_after_persist = [
                 uid for uid in persisted_uids if uid not in verified_uids
             ]
@@ -1819,9 +2294,7 @@ class ImportValmer(AssetIndexedDataNode):
                 dict.fromkeys(
                     [
                         *missing_latest_rows,
-                        *instrument_build_failures.keys(),
                         *missing_assets_for_pricing,
-                        *missing_instruments_for_pricing,
                         *missing_after_persist,
                     ]
                 )
@@ -1851,7 +2324,27 @@ class ImportValmer(AssetIndexedDataNode):
                 f"{len(persisted_uids)} persisted, {len(verified_uids)} verified."
             )
 
-        return list(existing_assets.values())
+        publication_unique_identifiers = [
+            uid
+            for uid in source_unique_identifiers
+            if uid in existing_assets and uid in current_pricing_uids
+        ]
+        dropped_without_pricing = [
+            uid for uid in source_unique_identifiers if uid not in publication_unique_identifiers
+        ]
+        self._publication_unique_identifiers = set(publication_unique_identifiers)
+        self.logger.info(
+            "Valmer vector publication eligibility: "
+            f"{len(publication_unique_identifiers)} assets with current pricing details, "
+            f"{len(dropped_without_pricing)} dropped without current pricing details."
+        )
+        if dropped_without_pricing:
+            self.logger.info(
+                "Dropped Valmer vector rows without current pricing details: "
+                f"{_summarize_uids(dropped_without_pricing)}"
+            )
+
+        return [existing_assets[uid] for uid in publication_unique_identifiers]
 
     def update_pricing_details_from_last_vector(
         self,
@@ -1883,12 +2376,20 @@ class ImportValmer(AssetIndexedDataNode):
     def _prepare_latest_inputs(self, df: pd.DataFrame):
         """Common prep: normalize, latest rows per UID, target bonds, and universe of UIDs."""
         df = df[df["unique_identifier"].notna()].copy()
+        df = self._materialize_optional_source_columns(df)
         df["fecha"] = _parse_valmer_valuation_dates(df["fecha"])
 
         idx = df.groupby("unique_identifier")["fecha"].idxmax()
         df_latest = df.loc[idx].reset_index(drop=True)
 
-        all_target_bonds = self._get_target_bonds(df_latest)
+        try:
+            all_target_bonds = self._get_target_bonds(df_latest)
+        except KeyError as exc:
+            all_target_bonds = pd.DataFrame(columns=["unique_identifier"])
+            self.logger.info(
+                "No Valmer pricing-detail hydration targets selected because "
+                f"instrument-definition columns are missing: {exc}."
+            )
 
         unique_identifiers = df["unique_identifier"].unique().tolist()
         return df_latest, all_target_bonds, unique_identifiers
@@ -1938,11 +2439,20 @@ class ImportValmer(AssetIndexedDataNode):
             all_target_bonds,
             force_update=force_pricing_update,
         )
-        target_uids = set(all_target_bonds["unique_identifier"].dropna().unique())
-        self.source_data = source_data[source_data["unique_identifier"].isin(target_uids)].copy()
+
+        publication_uids = set(getattr(self, "_publication_unique_identifiers", set()))
+        if not publication_uids and self.asset_list:
+            publication_uids = {
+                asset.unique_identifier
+                for asset in self.asset_list
+                if getattr(asset, "unique_identifier", None)
+            }
+        self.source_data = source_data[
+            source_data["unique_identifier"].isin(publication_uids)
+        ].copy()
         self.logger.info(
-            "Scoped Valmer vector publication to pricing-target assets: "
-            f"{len(self.source_data)} rows for {len(target_uids)} assets."
+            "Scoped Valmer vector publication to priceable assets: "
+            f"{len(self.source_data)} rows for {len(publication_uids)} assets."
         )
         if self.source_data.empty:
             self.asset_list = None

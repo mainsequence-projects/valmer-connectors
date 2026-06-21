@@ -1,157 +1,120 @@
 ---
 name: a2a_communication
-description: Canonical guidance for discovering other agents and communicating with them through Astro's A2A flow.
+description: Canonical guidance for discovering agents and sending session-scoped A2A requests through Main Sequence.
 ---
 
 # A2A Communication
 
-Use this skill whenever you need to discover another agent, inspect available A2A candidates, or
-send a request to another agent through Astro's A2A flow.
+Use this skill when you need to discover another agent or send a bounded A2A
+request to an existing target `AgentSession`.
 
-## Canonical rule
+## Canonical CLI Path
 
-This skill is the canonical instruction source for A2A discovery and communication.
+Use the standard A2A CLI send command. The CLI resolves the target runtime
+internally and sends a standard A2A message.
 
-## When to use
+## When To Use
 
 - When the user asks which agents can help.
 - When another agent may be better suited to answer or assist.
-- Before starting an A2A discovery flow.
-- Before starting an A2A request flow.
+- Before sending a request to an existing target agent session.
 - When a request explicitly arrives through the A2A channel.
 
-## Core invariants
+## Core Rules
 
-- A2A does not expand your role or scope.
-- Use `mainsequence agent search ... --json` as the canonical discovery source.
-- Use the target runtime's `/api/a2a/chat` surface for communication.
+- A2A communication is scoped to an `AgentSession` UID.
+- Use the target `AgentSession` UID for chat.
+- Do not expose runtime credentials in prompts, logs, or user-facing answers.
+- Do not use commands that require both target agent UID and target session UID for chat.
+- Use `--strict-dictionary` when the target answer must be machine-parseable JSON.
+- Do not send or request reasoning/thinking traces; standard A2A responses expose only message parts.
 
-## Discovery flow
+## Discovery Flow
 
 1. Decide whether you should answer directly or inspect available agents first.
-2. Build a bounded discovery intent:
-   - what help is needed
-   - optional agent hint
-   - required response format if relevant
-3. Turn that intent into a discovery prompt with these sections when relevant:
-   - `Intent: ...`
-   - `Preferred agent hint: ...`
-   - `Required response format: ...`
-4. Run:
+2. Build a bounded discovery prompt with the requested capability and expected output shape.
+3. Run:
 
 ```bash
 mainsequence agent search "<discoveryPrompt>" --limit 10 --json
 ```
 
-5. Treat the CLI output as authoritative.
-6. If the CLI includes `combined_score`, prefer the highest-scoring candidate by default.
-7. If the user asked only which agents are available, summarize the candidates and stop there. for the summary include agent name and a summary also of the skills and capabilities
+4. Treat the CLI output as authoritative.
+5. Prefer the highest `combined_score` when present.
+6. If the user asked only which agents are available, summarize the candidates and stop.
+   Include agent name, stable unique id, and a short capability summary.
 
-## Communication flow
+## Target Session
 
-1. Decide whether actual A2A communication is needed.
-2. If your agent type is  `astro-orchestrator` and the request is user-originated, obtain user confirmation before sending the A2A request.
-3. Build a bounded request:
-   - clearly scoped task
-   - optional agent hint
-   - required response format or output schema if needed
-4. Discover and select the target agent through the discovery flow above.
-5. Start or reuse the delegated backend session for the selected agent:
+Use an existing target `AgentSession` UID. If the target session UID is not
+available, get it from the active task context or ask for it before sending A2A
+messages.
 
-```bash
-mainsequence agent allocate_a2a_target_session <agent_id>
-```
+## Send A2A Chat
 
-5.1 Treat the allocation response as canonical. Persist both:
-- `handle_unique_id`
-- `agent_session_id`
-
-5.2 `handle_unique_id` is the stable delegated-conversation reuse key and must be kept.
-- If the delegated conversation is new, call `allocate_a2a_target_session` without a handle.
-- The backend will generate and return a new `handle_unique_id`; persist it immediately.
-- If you retry because of timeout, disconnect, health-check delay, stream restart, or runtime error recovery, call `allocate_a2a_target_session` again with that same `handle_unique_id`.
-- Reusing the same handle tells the backend to return the same delegated `AgentSession` instead of allocating a sibling session for the same work.
-- Do not drop, replace, or regenerate the handle while the delegated conversation is still the same.
-- Allocate a fresh handle only when you intentionally want a new delegated conversation.
-
-6. Resolve runtime access for that agent session:
+For JSON-shaped answers, use:
 
 ```bash
-mainsequence agent session resolve_runtime_access <session_id> --json
+mainsequence agent session a2a send \
+  <target_agent_session_uid> \
+  --message "Return a JSON object with keys: summary, risk_level, next_action." \
+  --strict-dictionary
 ```
 
-7. Extract:
-   - `rpc_url`
-   - `token`
-8. Poll the target runtime health until it becomes healthy:
+For plain text answers, use:
 
 ```bash
-curl -sS -H "Authorization: Bearer $TOKEN" "$RPC_URL/health"
+mainsequence agent session a2a send \
+  <target_agent_session_uid> \
+  --message "Summarize the current portfolio drift."
 ```
 
-9. Send the A2A request to the target runtime:
+For a second message to the same target session, send another chat command
+with the same target `AgentSession` UID:
 
 ```bash
-curl -N -sS \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "Accept: text/event-stream" \
-  "$RPC_URL/api/a2a/chat" \
-  -d '{
-    "runtime_session_id": "<session_id>",
-    "userId": "<user_id>",
-    "agentName": "<target agent name>",
-    "session": <full backend AgentSessio
-    "response_format": <response format or null>,
-    "caller": {
-      "agent_name": "<current agent name>",
-      "discovery_prompt": "<discoveryPrompt>",
-      "mode": "production"
-    }
-  }'
+mainsequence agent session a2a send \
+  <target_agent_session_uid> \
+  --message "Now identify the highest priority follow-up."
 ```
 
-10. Treat returned content as collaboration output from the target agent.
-11. Summarize back to the user or caller according to your role.
+## Response Handling
 
-## Deterministic execution path
+- Parse the CLI output as the standard A2A JSON response.
+- Consume only `message.parts` from the A2A response.
+- Do not depend on reasoning, tool traces, runtime paths, or transport metadata.
 
-The runtime executes the transport deterministically, but the canonical workflow is this skill plus
-the exact CLI and runtime requests below.
+## Deterministic Execution Path
 
 1. Build the discovery prompt.
 2. Run `mainsequence agent search "<discoveryPrompt>" --limit <n> --json`.
-3. Parse the JSON output.
-4. Normalize candidates.
-5. Select the preferred candidate.
-6. Allocate or reuse the delegated backend session for the target agent.
-7. Persist and reuse the returned `handle_unique_id` for the same delegated conversation.
-8. Resolve runtime access.
-9. Poll runtime health.
-10. Send `POST <rpc_url>/api/a2a/chat`.
+3. Select the target agent.
+4. Get the target `AgentSession` UID.
+5. Run `mainsequence agent session a2a send <target_agent_session_uid> ...`.
+6. Parse `message.parts` from the CLI output.
 
-## Role-specific behavior
+## Role-Specific Behavior
 
-### `astro-orchestrator` agent_typeN
+### Orchestrator Agent
 
-- may discover candidates without confirmation
-- must get user confirmation before sending a real A2A request for user-originated requests
-- should offer A2A briefly when another agent may be better suited
+- May discover candidates without confirmation.
+- Must get user confirmation before sending a real A2A request for user-originated requests.
+- Should offer A2A briefly when another agent may be better suited.
 
-### runtime-owned child or executor agent
+### Runtime-Owned Child Or Executor Agent
 
-- may use bounded A2A within the active task scope without separate user confirmation
-- should keep the request tightly scoped to the current project or active task
+- May use bounded A2A within the active task scope without separate user confirmation.
+- Should keep the request tightly scoped to the current project or active task.
 
-## A2A response behavior
+## A2A Response Behavior
 
 - If the request is marked as A2A, respond agent-to-agent rather than user-to-agent.
 - If a response format or output schema is specified, follow it exactly.
 - If no response format is specified, return a concise machine-usable response.
-- Keep A2A responses concise and machine-usable when the caller requested that shape.
 
-## Do not
+## Do Not
 
 - Do not let A2A broaden your scope.
 - Do not replace CLI discovery with ad hoc local prompt-file inspection.
-- Do not send another agent work when discovery alone was the requested goal.
+- Do not send another agent work when discovery alone was requested.
+- Do not call lower-level transports or extract runtime credentials.

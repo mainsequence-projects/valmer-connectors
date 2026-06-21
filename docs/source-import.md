@@ -40,18 +40,71 @@ no global latest-date source skip.
 
 ## Source Selection
 
-`prepare_source_data()` has three source paths.
+`prepare_source_data()` has three source paths. The CLI exposes the platform
+bucket, OneDrive Graph, local-folder-as-bucket, debug artifact, and MetaTable
+source choices.
 
 ```text
-DEBUG_ARTIFACT_PATH set
-    -> local filesystem import
-
-DEBUG_ARTIFACT_PATH not set
+artifact source
     -> Main Sequence Artifact bucket import
+
+onedrive-graph source
+    -> Microsoft Graph download into local cache, then artifact reader
+
+local bucket path
+    -> local folder import using the artifact reader
 
 source_kind = "metatable"
     -> configured MetaTable source list
+
+DEBUG_ARTIFACT_PATH set
+    -> low-level local file/folder override
 ```
+
+## Hydration Path Examples
+
+The examples in this section intentionally use fictional names. Replace bucket
+names, secret names, folder paths, MetaTable identifiers, and UIDs with the
+values owned by the consuming project or deployment.
+
+Every source path hydrates the same normalized Valmer row shape before the
+downstream workflow continues:
+
+```text
+source-specific reader
+    |
+    v
+normalized Valmer rows
+    |
+    v
+per-asset vector cursor filter
+    |
+    v
+AssetTable registration for supported rows
+    |
+    v
+ValmerAssetDetailsTable hydration
+    |
+    v
+AssetSnapshot publication
+    |
+    v
+optional pricing-details hydration for supported pricing targets
+    |
+    v
+Valmer vector DataNode publication
+```
+
+Supported source hydration paths:
+
+| Path | Use When | Example |
+| --- | --- | --- |
+| Platform Artifact bucket | Files are already uploaded to Main Sequence Artifacts. | `valmer-connectors vector update --bucket-name "example-vector-archive"` |
+| Local folder bucket | A developer has a local folder with many vector files. | `valmer-connectors vector update --local-bucket-path /mnt/example/vector-drop` |
+| Local folder from env | A local path should stay out of launch configs and commits. | `valmer-connectors vector update --local-bucket-path-env-var EXAMPLE_VECTOR_FOLDER` |
+| OneDrive Graph | A Linux/Kubernetes job must read OneDrive without a mounted filesystem. | `valmer-connectors vector update --source onedrive-graph --onedrive-drive-id "<drive-id>" --onedrive-folder-path "shared/vector-files"` |
+| MetaTable source list | Vector rows already exist in one or more registered MetaTables. | `valmer-connectors vector update --source metatable --source-metatables-config-path configs/example_sources.json` |
+| Debug artifact | A one-off file or folder needs direct local debugging. | `valmer-connectors vector update --debug-artifact-path /tmp/example-vector.xls` |
 
 ## Platform Artifact Bucket Path
 
@@ -62,9 +115,16 @@ environment:
 VALMER_VECTOR_BUCKET_NAME=<artifact bucket name>
 ```
 
-If neither is provided, the importer keeps the legacy bucket fallback
-`Hitorical Valmer Vector Analytico` for backwards compatibility. Do not rely on
-that fallback for new operational configurations.
+If neither is provided, the importer keeps a legacy bucket fallback for
+backwards compatibility. Do not rely on that fallback for new operational
+configurations.
+
+Example:
+
+```bash
+valmer-connectors vector update \
+  --bucket-name "example-vector-archive"
+```
 
 The platform path calls:
 
@@ -88,6 +148,132 @@ For each artifact, the importer:
 Artifact rows are concatenated first and then filtered by the per-asset vector
 cursor described above.
 
+## Local Folder Bucket Path
+
+For local multi-file upload testing, use a folder path as the source:
+
+```bash
+valmer-connectors vector update \
+  --local-bucket-path /mnt/example/vector-drop
+```
+
+For VS Code debug runs, keep the user-specific path in `.env` and pass the
+environment variable name:
+
+```bash
+EXAMPLE_VECTOR_FOLDER=/mnt/example/vector-drop
+
+valmer-connectors vector update \
+  --local-bucket-path-env-var EXAMPLE_VECTOR_FOLDER
+```
+
+This path is intentionally separate from `DEBUG_ARTIFACT_PATH`. The local
+bucket option is the semantic multi-file folder source. Internally it discovers
+Excel files recursively:
+
+```text
+Path(local_bucket_path).rglob("*.xls*")
+```
+
+Before any Excel file is opened, the service parses the Valmer valuation date
+from filenames such as `VectorAnalitico24h_2024-12-03.xls` and compares it
+with the latest persisted vector `time_index`. Files whose date is not newer
+than storage are not staged or read. Files without a parseable date remain
+selected and are still checked by the row-level DataNode cursor filter.
+
+The local folder path also preflights each selected batch for cloud-provider
+placeholders before reading that batch. If a selected OneDrive/FileProvider file
+exists but has not been downloaded/materialized locally, the command opens the
+file to request materialization and retries before reading the batch. If
+OneDrive still does not provide the file, the command fails with the exact file
+paths. The importer does not silently skip unreadable local files.
+
+Selected source rows then follow the same normalization, unique-identifier
+construction, and per-asset vector cursor filtering as platform bucket rows.
+
+## OneDrive Graph Source
+
+For Linux/Kubernetes jobs, use Microsoft Graph instead of a mounted OneDrive
+folder:
+
+```bash
+valmer-connectors vector update --source onedrive-graph
+```
+
+The source adapter:
+
+1. reads Microsoft Graph credentials from Main Sequence `Secret`s
+2. queries the registered Valmer vector storage table for `MAX(time_index)`
+3. lists files from the configured OneDrive drive/folder
+4. selects only `VectorAnalitico24h_*.xls` files newer than storage
+5. downloads selected files into a local cache directory
+6. runs the existing local-file Valmer parser on the cached files
+
+Credential values are resolved by key. The default keys are:
+
+```text
+VALMER_ONEDRIVE_TENANT_ID
+VALMER_ONEDRIVE_CLIENT_ID
+VALMER_ONEDRIVE_CLIENT_SECRET
+```
+
+For each key, the importer first checks an environment variable with that exact
+name. If it is not present, it reads a Main Sequence `Secret` with that name. If
+neither exists, the update fails before calling Microsoft Graph.
+
+Production jobs should normally use Main Sequence `Secret`s:
+
+```bash
+mainsequence secrets create VALMER_ONEDRIVE_TENANT_ID "<azure-tenant-id>"
+mainsequence secrets create VALMER_ONEDRIVE_CLIENT_ID "<azure-app-client-id>"
+mainsequence secrets create VALMER_ONEDRIVE_CLIENT_SECRET "<azure-app-client-secret>"
+```
+
+Local runs may provide the same keys through the process environment. Do not
+commit those values:
+
+```bash
+export VALMER_ONEDRIVE_TENANT_ID="<azure-tenant-id>"
+export VALMER_ONEDRIVE_CLIENT_ID="<azure-app-client-id>"
+export VALMER_ONEDRIVE_CLIENT_SECRET="<azure-app-client-secret>"
+```
+
+The drive id is not sensitive and can be supplied by CLI, environment, or a
+Main Sequence `Constant`. The default key is:
+
+```text
+VALMER_ONEDRIVE_DRIVE_ID
+```
+
+```bash
+mainsequence constants create VALMER_ONEDRIVE_DRIVE_ID "<microsoft-graph-drive-id>"
+```
+
+Override non-secret routing when needed:
+
+```bash
+valmer-connectors vector update \
+  --source onedrive-graph \
+  --onedrive-drive-id "<drive-id>" \
+  --onedrive-folder-path "shared/vector-files" \
+  --onedrive-cache-path /tmp/example-vector-cache
+```
+
+Secret names are passed by name, never by value:
+
+```bash
+valmer-connectors vector update \
+  --source onedrive-graph \
+  --onedrive-tenant-id-secret-name EXAMPLE_GRAPH_TENANT_ID \
+  --onedrive-client-id-secret-name EXAMPLE_GRAPH_CLIENT_ID \
+  --onedrive-client-secret-secret-name EXAMPLE_GRAPH_CLIENT_SECRET \
+  --onedrive-drive-id "<drive-id>" \
+  --onedrive-folder-path "shared/vector-files"
+```
+
+When custom keys are passed, the same order applies for each key: environment
+variable first, then Main Sequence `Secret`.
+
 ## MetaTable Source Path
 
 Run:
@@ -95,7 +281,7 @@ Run:
 ```bash
 valmer-connectors vector update \
   --source metatable \
-  --source-metatables-config-path configs/valmer_metatable_sources.json
+  --source-metatables-config-path configs/example_metatable_sources.json
 ```
 
 The config file contains one or more `MetaTableValmerSource` entries:
@@ -104,8 +290,8 @@ The config file contains one or more `MetaTableValmerSource` entries:
 {
   "sources": [
     {
-      "source_name": "government_vector",
-      "metatable_identifier": "external.valmer_government_vector",
+      "source_name": "example_government_slice",
+      "metatable_identifier": "example.vendor_government_vector",
       "column_map": {
         "Fecha": "fecha",
         "TV": "tipovalor",
@@ -119,33 +305,93 @@ The config file contains one or more `MetaTableValmerSource` entries:
 }
 ```
 
+When the source has no stable logical identifier, use a MetaTable UID instead:
+
+```json
+{
+  "sources": [
+    {
+      "source_name": "example_corporate_slice",
+      "metatable_uid": "00000000-0000-0000-0000-000000000000",
+      "column_map": {
+        "Fecha": "fecha",
+        "TV": "tipovalor",
+        "Emisora": "emisora",
+        "Serie": "serie",
+        "PrecioSucio": "preciosucio",
+        "PrecioLimpio": "preciolimpio",
+        "Moneda": "monedaemision",
+        "Isin": "isin"
+      }
+    }
+  ]
+}
+```
+
+Multiple sources are allowed. Each source is read independently and then
+normalized into the same Valmer semantic column names:
+
+```json
+{
+  "sources": [
+    {
+      "source_name": "example_government_slice",
+      "metatable_identifier": "example.vendor_government_vector",
+      "column_map": {
+        "Fecha": "fecha",
+        "TV": "tipovalor",
+        "Emisora": "emisora",
+        "Serie": "serie",
+        "PrecioSucio": "preciosucio",
+        "PrecioLimpio": "preciolimpio"
+      }
+    },
+    {
+      "source_name": "example_bank_slice",
+      "metatable_identifier": "example.vendor_bank_vector",
+      "column_map": {
+        "valuationDate": "fecha",
+        "securityType": "tipovalor",
+        "issuerCode": "emisora",
+        "seriesCode": "serie",
+        "dirtyPrice": "preciosucio",
+        "cleanPrice": "preciolimpio"
+      }
+    }
+  ]
+}
+```
+
 Each source is read and normalized independently, filtered against the vector
 cursor per `asset_identifier`, and only then concatenated with the other source
 frames. Duplicate `(time_index, asset_identifier)` rows across MetaTable
 sources fail unless a source-priority rule is added in a later implementation.
 
-## Local Debug Path
+## Low-Level Debug Artifact Path
 
 Set:
 
 ```bash
-DEBUG_ARTIFACT_PATH=/path/to/local/valmer/file-or-folder
+DEBUG_ARTIFACT_PATH=/tmp/example-vector.xls
 ```
 
 or pass the CLI option:
 
 ```bash
-valmer-connectors vector update --debug-artifact-path /path/to/local/valmer/file-or-folder
+valmer-connectors vector update --debug-artifact-path /tmp/example-vector.xls
 ```
 
-When this environment variable is present, `_set_artifact_data()` reads local
-source files and bypasses the platform bucket. If the path is a file, that
-single file is read. If the path is a directory, Excel files are read
-recursively:
+`DEBUG_ARTIFACT_PATH` is the low-level override kept for direct one-off
+debugging. If the path is a file, that single file is read. If the path is a
+directory, Excel files are read recursively:
 
 ```text
 Path(DEBUG_ARTIFACT_PATH).rglob("*.xls*")
 ```
+
+Unlike `--local-bucket-path`, this low-level override is not prefiltered by
+filename date in the service layer. It is intended for explicit debugging of a
+known file or folder.
 
 The local path re-reads the `EMISORA` column with `keep_default_na=False` so
 issuer code `NA` is preserved as text instead of being converted to missing

@@ -1,10 +1,13 @@
 from contextlib import ExitStack
+from pathlib import Path
+import tempfile
 import uuid
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, PropertyMock, patch
 
 import pandas as pd
+from mainsequence.client.exceptions import ApiError
 from mainsequence.meta_tables.data_nodes.run_operations import UpdateRunner
 from msm.base import markets_table_name
 from msm.constants import ASSET_TYPE_BOND
@@ -22,6 +25,7 @@ from valmer_connectors.data_nodes.nodes import (
     ImportValmerConfig,
     MetaTableValmerSourceConfig,
     _build_valmer_asset_snapshot_rows,
+    _pricing_adapter_failure_detail,
     _persist_valmer_pricing_details_batch,
     _publish_valmer_asset_snapshots,
 )
@@ -348,6 +352,125 @@ class ValmerVectorStorageTest(unittest.TestCase):
         )
         self.assertEqual(node._read_metatable_source_frame.call_count, 2)
 
+    def test_metatable_query_result_builds_frame_from_rows_and_columns(self):
+        result = {
+            "ok": True,
+            "columns": ["Fecha", "TV", "Emisora", "Serie", "PrecioSucio"],
+            "rows": [["2024-01-03", "M", "BONOS", "A", 100.0]],
+        }
+
+        frame = ImportValmer._frame_from_metatable_query_result(
+            result,
+            source_name="unit",
+        )
+
+        self.assertEqual(
+            frame.to_dict(orient="records"),
+            [
+                {
+                    "Fecha": "2024-01-03",
+                    "TV": "M",
+                    "Emisora": "BONOS",
+                    "Serie": "A",
+                    "PrecioSucio": 100.0,
+                }
+            ],
+        )
+
+    def test_metatable_query_result_builds_frame_from_nested_results(self):
+        result = {
+            "ok": True,
+            "results": {
+                "columns": [
+                    {"name": "Fecha"},
+                    {"name": "TV"},
+                    {"name": "Emisora"},
+                    {"name": "Serie"},
+                    {"name": "PrecioSucio"},
+                ],
+                "rows": [["2024-01-03", "M", "BONOS", "A", 100.0]],
+            },
+        }
+
+        frame = ImportValmer._frame_from_metatable_query_result(
+            result,
+            source_name="unit",
+        )
+
+        self.assertEqual(
+            frame.columns.tolist(),
+            ["Fecha", "TV", "Emisora", "Serie", "PrecioSucio"],
+        )
+        self.assertEqual(frame.loc[0, "PrecioSucio"], 100.0)
+
+    def test_metatable_query_raw_sql_validation_uses_raw_body_fallback(self):
+        meta_table = Mock()
+        meta_table.run_query.return_value = {
+            "ok": False,
+            "error": {
+                "kind": "validation_error",
+                "message": "Request body must be the raw SQL string.",
+            },
+        }
+
+        with patch.object(
+            ImportValmer,
+            "_run_metatable_query_with_raw_sql_body",
+            return_value={"ok": True, "results": [{"Fecha": "2024-01-03"}]},
+        ) as raw_fallback:
+            result = ImportValmer._run_metatable_query(meta_table, "SELECT 1")
+
+        self.assertEqual(result["ok"], True)
+        raw_fallback.assert_called_once_with(meta_table, "SELECT 1", timeout=None)
+
+    def test_metatable_query_text_plain_api_error_uses_raw_body_fallback(self):
+        meta_table = Mock()
+        meta_table.run_query.side_effect = ApiError(
+            'Unsupported media type "text/plain" in request.'
+        )
+
+        with patch.object(
+            ImportValmer,
+            "_run_metatable_query_with_raw_sql_body",
+            return_value={"ok": True, "results": [{"Fecha": "2024-01-03"}]},
+        ) as raw_fallback:
+            result = ImportValmer._run_metatable_query(meta_table, "SELECT 1")
+
+        self.assertEqual(result["ok"], True)
+        raw_fallback.assert_called_once_with(meta_table, "SELECT 1", timeout=None)
+
+    def test_metatable_source_normalization_matches_columns_in_pandas(self):
+        source = MetaTableValmerSourceConfig(
+            source_name="government",
+            metatable_identifier="external.gov",
+            column_map={
+                "Fecha": "fecha",
+                "TV": "tipovalor",
+                "Emisora": "emisora",
+                "Serie": "serie",
+                "PrecioSucio": "preciosucio",
+                "Plazo": "plazoemision",
+            },
+        )
+        frame = pd.DataFrame(
+            [
+                {
+                    "fecha": "2024-01-03",
+                    "tv": "M",
+                    "emisora": "BONOS",
+                    "serie": "A",
+                    "preciosucio": 100.0,
+                    "plazo": 365,
+                }
+            ]
+        )
+
+        normalized = ImportValmer._normalize_metatable_source_frame(frame, source)
+
+        self.assertEqual(normalized.loc[0, "unique_identifier"], "M_BONOS_A")
+        self.assertEqual(normalized.loc[0, "preciosucio"], 100.0)
+        self.assertEqual(normalized.loc[0, "plazoemision"], 365)
+
     def test_valmer_asset_snapshot_rows_map_nombre_completo_to_name(self):
         latest = pd.DataFrame(
             [
@@ -388,6 +511,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             asset_type=ASSET_TYPE_BOND,
         )
         snapshot_node = Mock()
+        snapshot_node.data_node_update = None
         snapshot_node.get_df_between_dates.return_value = pd.DataFrame()
         snapshot_node.set_snapshots.return_value = snapshot_node
         snapshot_node.run.return_value = (False, pd.DataFrame([{"name": "BONOS 241205 FULL NAME"}]))
@@ -409,12 +533,14 @@ class ValmerVectorStorageTest(unittest.TestCase):
                     ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205",
                     "name": "BONOS 241205 FULL NAME",
                 }
-            ]
+            ],
+            verify_existing=False,
         )
         snapshot_node.run.assert_called_once_with(force_update=True)
+        snapshot_node.get_df_between_dates.assert_not_called()
         self.assertEqual(published, 1)
 
-    def test_publish_valmer_asset_snapshots_handles_missing_backend_update(self):
+    def test_publish_valmer_asset_snapshots_uses_supported_idempotent_mode(self):
         latest = pd.DataFrame(
             [
                 {
@@ -451,50 +577,11 @@ class ValmerVectorStorageTest(unittest.TestCase):
                     ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205",
                     "name": "BONOS 241205 FULL NAME",
                 }
-            ]
+            ],
+            verify_existing=False,
         )
         snapshot_node.run.assert_called_once_with(force_update=True)
         self.assertEqual(published, 1)
-
-    def test_publish_valmer_asset_snapshots_skips_existing_snapshot_keys(self):
-        latest = pd.DataFrame(
-            [
-                {
-                    "unique_identifier": "M_BONOS_241205",
-                    "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
-                    "nombrecompleto": "BONOS 241205 FULL NAME",
-                }
-            ]
-        )
-        asset = SimpleNamespace(
-            uid=uuid.uuid4(),
-            unique_identifier="M_BONOS_241205",
-            asset_type=ASSET_TYPE_BOND,
-        )
-        snapshot_node = Mock()
-        snapshot_node.get_df_between_dates.return_value = pd.DataFrame(
-            [
-                {
-                    "time_index": pd.Timestamp("2024-01-02T23:59:59Z"),
-                    ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205",
-                    "name": "BONOS 241205 FULL NAME",
-                }
-            ]
-        )
-
-        with patch("valmer_connectors.data_nodes.nodes.AssetSnapshot") as asset_snapshot_class:
-            asset_snapshot_class.return_value = snapshot_node
-            asset_snapshot_class.build_frame.side_effect = CoreAssetSnapshot.build_frame
-
-            published = _publish_valmer_asset_snapshots(
-                latest,
-                {"M_BONOS_241205": asset},
-                logger=Mock(),
-            )
-
-        snapshot_node.set_snapshots.assert_not_called()
-        snapshot_node.run.assert_not_called()
-        self.assertEqual(published, 0)
 
     def test_current_pricing_face_value_resolver_uses_projection_query(self):
         asset_uid = uuid.uuid4()
@@ -530,6 +617,85 @@ class ValmerVectorStorageTest(unittest.TestCase):
                         )
 
         self.assertEqual(face_values, {"M_BONOS_241205": 100.0})
+
+    def test_pricing_adapter_failure_detail_includes_schedule_inputs(self):
+        row = pd.Series(
+            {
+                "fecha": pd.Timestamp("2024-09-05T00:00:00Z"),
+                "unique_identifier": "F_BINVEX_24484",
+                "tipovalor": "F",
+                "emisora": "BINVEX",
+                "serie": "24484",
+                "subyacente": "TIIE",
+                "monedaemision": "MPS",
+                "fechaemision": pd.Timestamp("2024-01-01T00:00:00Z"),
+                "fechavcto": pd.Timestamp("2024-09-06T00:00:00Z"),
+                "freccpn": 28,
+                "cuponesxcobrar": 100,
+                "diastransccpn": 1,
+                "cuponactual": 2,
+                "cuponesemision": 10,
+                "reglacupon": "Tasa Variable",
+                "valornominalactualizado": 100.0,
+            }
+        )
+
+        detail = _pricing_adapter_failure_detail(
+            row,
+            RuntimeError("Failed to insert extra dates."),
+        )
+
+        self.assertIn("F_BINVEX_24484", detail)
+        self.assertIn("schedule reconciliation failed", detail)
+        self.assertIn("cuponesxcobrar", detail)
+        self.assertIn("fechavcto", detail)
+        self.assertIn("schedule_inputs", detail)
+
+    def test_read_debug_artifact_file_stages_local_file_and_reads_excel_once(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "VectorAnalitico24h_2024-12-03.xls"
+            source_path.write_bytes(b"fake excel bytes")
+            read_paths: list[Path] = []
+
+            def fake_read_excel(path, **_kwargs):
+                read_path = Path(path)
+                read_paths.append(read_path)
+                self.assertNotEqual(read_path, source_path)
+                return pd.DataFrame(
+                    {
+                        "EMISORA": ["NA", ""],
+                        "TIPO VALOR": ["M", "BI"],
+                        "SERIE": ["1", "2"],
+                        "OTHER": ["NA", "value"],
+                    }
+                )
+
+            with patch(
+                "valmer_connectors.data_nodes.nodes.pd.read_excel",
+                side_effect=fake_read_excel,
+            ):
+                frame = ImportValmer._read_debug_artifact_file(
+                    source_path,
+                    logger=Mock(),
+                )
+
+        self.assertEqual(len(read_paths), 1)
+        self.assertEqual(frame.loc[0, "EMISORA"], "NA")
+        self.assertTrue(pd.isna(frame.loc[1, "EMISORA"]))
+        self.assertTrue(pd.isna(frame.loc[0, "OTHER"]))
+
+    def test_read_debug_artifact_files_propagates_cloud_timeout_files(self):
+        paths = [Path("bad.xls"), Path("good.xls")]
+        good_frame = pd.DataFrame({"EMISORA": ["ABC"]})
+
+        def fake_read(path, _logger):
+            if path.name == "bad.xls":
+                raise RuntimeError("stage failed") from TimeoutError("timed out")
+            return good_frame
+
+        with patch.object(ImportValmer, "_read_debug_artifact_file", side_effect=fake_read):
+            with self.assertRaisesRegex(RuntimeError, "stage failed"):
+                ImportValmer._read_debug_artifact_files(paths, logger=Mock())
 
     def test_pricing_refresh_decision_uses_face_values(self):
         target_bonds = pd.DataFrame(
@@ -663,6 +829,10 @@ class ValmerVectorStorageTest(unittest.TestCase):
                     "unique_identifier": "M_BONOS_241205",
                     "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
                     "valornominalactualizado": 100.0,
+                    "tipovalor": "M",
+                    "emisora": "BONOS",
+                    "serie": "241205",
+                    "tasacupon": 10.0,
                 },
                 {
                     "unique_identifier": "X_OTHER_1",
@@ -750,7 +920,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             )
 
         resolve_refs.assert_called_once_with(
-            ["M_BONOS_241205"],
+            ["M_BONOS_241205", "X_OTHER_1"],
             batch_size=1000,
             logger=logger,
         )
@@ -769,22 +939,23 @@ class ValmerVectorStorageTest(unittest.TestCase):
         )
         self.assertEqual(asset_scope, [asset])
 
-    def test_sync_asset_registry_raises_on_asset_type_conflict(self):
+    def test_sync_asset_registry_publishes_existing_priced_non_hydration_asset(self):
         asset = SimpleNamespace(
             uid=uuid.uuid4(),
-            unique_identifier="M_BONOS_241205",
-            asset_type="future",
+            unique_identifier="X_OTHER_1",
+            asset_type="fund",
         )
         node = ImportValmer.__new__(ImportValmer)
         latest = pd.DataFrame(
             [
                 {
-                    "unique_identifier": "M_BONOS_241205",
+                    "unique_identifier": "X_OTHER_1",
                     "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
                     "valornominalactualizado": 100.0,
                 }
             ]
         )
+        target_bonds = pd.DataFrame(columns=["unique_identifier"])
 
         with ExitStack() as stack:
             stack.enter_context(
@@ -797,7 +968,147 @@ class ValmerVectorStorageTest(unittest.TestCase):
                 patch(
                     "valmer_connectors.data_nodes.nodes.resolve_valmer_asset_refs",
                     return_value={
-                        "M_BONOS_241205": SimpleNamespace(
+                        "X_OTHER_1": SimpleNamespace(
+                            asset_type="fund",
+                            as_asset=lambda: asset,
+                        )
+                    },
+                )
+            )
+            upsert_assets = stack.enter_context(
+                patch("valmer_connectors.data_nodes.nodes._upsert_asset_table_rows")
+            )
+            publish_snapshots = stack.enter_context(
+                patch("valmer_connectors.data_nodes.nodes._publish_valmer_asset_snapshots")
+            )
+            upsert_details = stack.enter_context(
+                patch("valmer_connectors.data_nodes.nodes.upsert_valmer_asset_details")
+            )
+            build_instrument = stack.enter_context(
+                patch("valmer_connectors.data_nodes.nodes.build_qll_bond_from_row")
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "_get_current_pricing_face_values_by_uid",
+                    return_value={"X_OTHER_1": 100.0},
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "logger",
+                    new_callable=PropertyMock,
+                    return_value=Mock(),
+                )
+            )
+
+            asset_scope = ImportValmer._sync_asset_registry_and_pricing(
+                node,
+                ["X_OTHER_1"],
+                latest,
+                target_bonds,
+            )
+
+        self.assertEqual(asset_scope, [asset])
+        self.assertEqual(node._publication_unique_identifiers, {"X_OTHER_1"})
+        upsert_assets.assert_not_called()
+        publish_snapshots.assert_not_called()
+        upsert_details.assert_not_called()
+        build_instrument.assert_not_called()
+
+    def test_sync_asset_registry_drops_existing_asset_without_pricing_details(self):
+        asset = SimpleNamespace(
+            uid=uuid.uuid4(),
+            unique_identifier="X_OTHER_1",
+            asset_type="fund",
+        )
+        node = ImportValmer.__new__(ImportValmer)
+        latest = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "X_OTHER_1",
+                    "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
+                    "valornominalactualizado": 100.0,
+                }
+            ]
+        )
+        target_bonds = pd.DataFrame(columns=["unique_identifier"])
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_meta_operation_batch_size",
+                    return_value=1000,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_asset_refs",
+                    return_value={
+                        "X_OTHER_1": SimpleNamespace(
+                            asset_type="fund",
+                            as_asset=lambda: asset,
+                        )
+                    },
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "_get_current_pricing_face_values_by_uid",
+                    return_value={},
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "logger",
+                    new_callable=PropertyMock,
+                    return_value=Mock(),
+                )
+            )
+
+            asset_scope = ImportValmer._sync_asset_registry_and_pricing(
+                node,
+                ["X_OTHER_1"],
+                latest,
+                target_bonds,
+            )
+
+        self.assertEqual(asset_scope, [])
+        self.assertEqual(node._publication_unique_identifiers, set())
+
+    def test_sync_asset_registry_raises_when_target_row_has_no_asset_classification(self):
+        asset = SimpleNamespace(
+            uid=uuid.uuid4(),
+            unique_identifier="X_UNKNOWN_1",
+            asset_type="future",
+        )
+        node = ImportValmer.__new__(ImportValmer)
+        latest = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "X_UNKNOWN_1",
+                    "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
+                    "valornominalactualizado": 100.0,
+                }
+            ]
+        )
+        logger = Mock()
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_meta_operation_batch_size",
+                    return_value=1000,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_asset_refs",
+                    return_value={
+                        "X_UNKNOWN_1": SimpleNamespace(
                             asset_type="future",
                             as_asset=lambda: asset,
                         )
@@ -812,22 +1123,117 @@ class ValmerVectorStorageTest(unittest.TestCase):
                     ImportValmer,
                     "logger",
                     new_callable=PropertyMock,
-                    return_value=Mock(),
+                    return_value=logger,
                 )
             )
 
-            with self.assertRaisesRegex(RuntimeError, "asset type conflict"):
+            with self.assertRaisesRegex(RuntimeError, "missing an explicit asset classification"):
                 ImportValmer._sync_asset_registry_and_pricing(
                     node,
-                    ["M_BONOS_241205"],
+                    ["X_UNKNOWN_1"],
                     latest,
                     latest,
                 )
 
         upsert_assets.assert_not_called()
 
+    def test_sync_asset_registry_repairs_asset_type_conflict_when_classifier_matches(self):
+        old_asset = SimpleNamespace(
+            uid=uuid.uuid4(),
+            unique_identifier="IM_BPAG28_271104",
+            asset_type="future",
+        )
+        repaired_asset = SimpleNamespace(
+            uid=old_asset.uid,
+            unique_identifier="IM_BPAG28_271104",
+            asset_type=ASSET_TYPE_BOND,
+        )
+        node = ImportValmer.__new__(ImportValmer)
+        latest = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "IM_BPAG28_271104",
+                    "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
+                    "valornominalactualizado": 100.0,
+                    "tipovalor": "IM",
+                    "emisora": "BPAG28",
+                    "serie": "271104",
+                    "monedaemision": "MPS",
+                    "fechaemision": "2020-01-01",
+                }
+            ]
+        )
+        logger = Mock()
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_meta_operation_batch_size",
+                    return_value=1000,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_asset_refs",
+                    return_value={
+                        "IM_BPAG28_271104": SimpleNamespace(
+                            asset_type="future",
+                            as_asset=lambda: old_asset,
+                        )
+                    },
+                )
+            )
+            upsert_assets = stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes._upsert_asset_table_rows",
+                    return_value={"IM_BPAG28_271104": repaired_asset},
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.upsert_valmer_asset_details",
+                    return_value=[],
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes._publish_valmer_asset_snapshots",
+                    return_value=1,
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "_get_current_pricing_face_values_by_uid",
+                    return_value={"IM_BPAG28_271104": 100.0},
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "logger",
+                    new_callable=PropertyMock,
+                    return_value=logger,
+                )
+            )
+
+            asset_scope = ImportValmer._sync_asset_registry_and_pricing(
+                node,
+                ["IM_BPAG28_271104"],
+                latest,
+                latest,
+            )
+
+        upsert_assets.assert_called_once_with(
+            {"IM_BPAG28_271104": ASSET_TYPE_BOND},
+            batch_size=1000,
+            logger=logger,
+        )
+        self.assertEqual(asset_scope, [repaired_asset])
+
     def test_prepare_for_update_scopes_vector_source_to_pricing_targets_by_default(self):
         node = ImportValmer.__new__(ImportValmer)
+        node.source_kind = "artifact"
         source_data = pd.DataFrame(
             [
                 {
@@ -837,6 +1243,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
                     "subyacente": "Bonos M",
                     "monedaemision": "MPS",
                     "emisora": "BONOS",
+                    "tasacupon": 10.0,
                     "fechaemision": "2020-01-01",
                 },
                 {
@@ -902,6 +1309,10 @@ class ValmerVectorStorageTest(unittest.TestCase):
                     "unique_identifier": "M_BONOS_241205",
                     "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
                     "valornominalactualizado": 100.0,
+                    "tipovalor": "M",
+                    "emisora": "BONOS",
+                    "serie": "241205",
+                    "tasacupon": 10.0,
                 }
             ]
         )

@@ -10,8 +10,9 @@ Vector Analitico CETES and M Bonos rows.
 
 ## What The Project Does
 
-- Reads historical Valmer vector files from a Main Sequence Artifact bucket or
-  a local `DEBUG_ARTIFACT_PATH` file or folder.
+- Reads historical Valmer vector files from a Main Sequence Artifact bucket, a
+  local folder treated as a bucket, a single debug artifact path, or configured
+  MetaTable sources.
 - Builds or reuses MainSequence `Asset` objects keyed as
   `tipovalor_emisora_serie`.
 - Stores static Valmer asset descriptors in `ValmerAssetDetailsTable`.
@@ -97,7 +98,8 @@ owns the behavior:
 
 Detailed guides:
 
-- `docs/source-import.md`: bucket versus local file import
+- `docs/source-import.md`: source hydration paths for Artifact buckets, local
+  folders, OneDrive Graph, MetaTable sources, and debug files
 - `docs/data-nodes.md`: Valmer vector DataNode publication
 - `docs/markets.md`: AssetTable, ValmerAssetDetailsTable, and
   extension-library asset registration boundaries
@@ -208,7 +210,8 @@ for MkDocs through `mkdocs.yml`.
 
 - `docs/index.md`: documentation entry point and navigation
 - `docs/introduction.md`: project overview and runtime flow
-- `docs/source-import.md`: source selection, bucket import, and local debug import
+- `docs/source-import.md`: source hydration paths and examples for Artifact
+  buckets, local folders, OneDrive Graph, MetaTable sources, and debug files
 - `docs/data-nodes.md`: Valmer vector DataNode publication boundary
 - `docs/markets.md`: AssetTable, ValmerAssetDetailsTable, and
   extension-library asset registration boundaries

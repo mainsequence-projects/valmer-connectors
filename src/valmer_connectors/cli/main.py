@@ -17,6 +17,7 @@ from valmer_connectors.instruments.curve_bootstrap import (
 )
 from valmer_connectors.settings import DEFAULT_VECTOR_FIRST_LOOP_COUNT
 from valmer_connectors.settings import VALMER_VECTOR_BUCKET_NAME_ENV
+from valmer_connectors.settings import VALMER_VECTOR_UPLOAD_DEBUG_PATH_ENV
 
 SOURCE_VALMER_SKILLS_PATH = (".agents", "skills", "valmer-connectors")
 PACKAGE_VALMER_SKILLS_PATH = ("agent_skills", "valmer-connectors")
@@ -64,8 +65,16 @@ def _vector_update_command(args: argparse.Namespace) -> int:
         bucket_name=args.bucket_name,
         first_loop_count=args.first_loop_count,
         debug_artifact_path=args.debug_artifact_path,
+        local_bucket_path=args.local_bucket_path,
+        local_bucket_path_env_var=args.local_bucket_path_env_var,
         source_kind=args.source,
         source_metatables_config_path=args.source_metatables_config_path,
+        onedrive_drive_id=args.onedrive_drive_id,
+        onedrive_folder_path=args.onedrive_folder_path,
+        onedrive_cache_path=args.onedrive_cache_path,
+        onedrive_tenant_id_secret_name=args.onedrive_tenant_id_secret_name,
+        onedrive_client_id_secret_name=args.onedrive_client_id_secret_name,
+        onedrive_client_secret_secret_name=args.onedrive_client_secret_secret_name,
     )
     return 0
 
@@ -306,8 +315,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Local Valmer Excel file or folder. Overrides bucket import for this command.",
     )
     vector_update_parser.add_argument(
+        "--local-bucket-path",
+        default=None,
+        help=(
+            "Local folder of Valmer Excel files. The folder is treated like a "
+            "local Artifact bucket for this command."
+        ),
+    )
+    vector_update_parser.add_argument(
+        "--local-bucket-path-env-var",
+        default=None,
+        help=(
+            "Environment variable containing a local Valmer folder path. "
+            f"For VS Code debug configs, use {VALMER_VECTOR_UPLOAD_DEBUG_PATH_ENV}."
+        ),
+    )
+    vector_update_parser.add_argument(
         "--source",
-        choices=["artifact", "metatable"],
+        choices=["artifact", "metatable", "onedrive-graph"],
         default="artifact",
         help="Source adapter for Valmer vector rows.",
     )
@@ -315,6 +340,55 @@ def build_parser() -> argparse.ArgumentParser:
         "--source-metatables-config-path",
         default=None,
         help="JSON config file with MetaTableValmerSource entries for --source metatable.",
+    )
+    vector_update_parser.add_argument(
+        "--onedrive-drive-id",
+        default=None,
+        help=(
+            "Microsoft Graph drive id for --source onedrive-graph. If omitted, "
+            "reads VALMER_ONEDRIVE_DRIVE_ID env or Main Sequence Constant "
+            "VALMER_ONEDRIVE_DRIVE_ID."
+        ),
+    )
+    vector_update_parser.add_argument(
+        "--onedrive-folder-path",
+        default=None,
+        help=(
+            "OneDrive folder path for --source onedrive-graph. Defaults to the "
+            "configured package folder path."
+        ),
+    )
+    vector_update_parser.add_argument(
+        "--onedrive-cache-path",
+        default=None,
+        help=(
+            "Local cache directory for downloaded Graph files. Defaults to "
+            "/tmp/valmer-vector-cache."
+        ),
+    )
+    vector_update_parser.add_argument(
+        "--onedrive-tenant-id-secret-name",
+        default=None,
+        help=(
+            "Credential key for the Azure tenant id. The value is resolved from "
+            "an environment variable with this name first, then Main Sequence Secret."
+        ),
+    )
+    vector_update_parser.add_argument(
+        "--onedrive-client-id-secret-name",
+        default=None,
+        help=(
+            "Credential key for the Azure app client id. The value is resolved "
+            "from an environment variable with this name first, then Main Sequence Secret."
+        ),
+    )
+    vector_update_parser.add_argument(
+        "--onedrive-client-secret-secret-name",
+        default=None,
+        help=(
+            "Credential key for the Azure app client secret. The value is resolved "
+            "from an environment variable with this name first, then Main Sequence Secret."
+        ),
     )
     vector_update_parser.add_argument(
         "--first-loop-count",

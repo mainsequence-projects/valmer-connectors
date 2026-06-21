@@ -118,6 +118,48 @@
       "justMyCode": false
     },
     {
+      "name": "Valmer CLI: Vector Update From Upload Folder",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "vector",
+        "update",
+        "--local-bucket-path-env-var",
+        "VALMER_VECTOR_UPLOAD_DEBUG_PATH"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "Valmer CLI: Vector Update From OneDrive Graph",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "vector",
+        "update",
+        "--source",
+        "onedrive-graph"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
       "name": "Valmer CLI: Vector Update From MetaTable",
       "type": "python",
       "request": "launch",

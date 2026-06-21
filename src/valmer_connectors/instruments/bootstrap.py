@@ -4,10 +4,55 @@ from collections.abc import Sequence
 from threading import RLock
 from typing import Any
 
-from valmer_connectors.instruments.curve_bootstrap import bootstrap_valmer_curve_pricing
+from valmer_connectors.instruments.curve_bootstrap import (
+    attach_valmer_curve_pricing_runtime,
+    bootstrap_valmer_curve_pricing,
+)
 
 _LOCK = RLock()
-_BOOTSTRAPPED = False
+_RUNTIME_ATTACHED = False
+_STATIC_DEFAULTS_SEEDED = False
+
+
+def _valmer_markets_models(
+    *,
+    extra_markets_models: Sequence[Any] | None = None,
+) -> list[Any]:
+    from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
+
+    from valmer_connectors.meta_tables.valmer_asset_details import (
+        ValmerAssetDetailsTable,
+    )
+
+    markets_models = [ValmerAssetDetailsTable, ValmerVectorPricesStorage]
+    if extra_markets_models is not None:
+        markets_models.extend(extra_markets_models)
+    return markets_models
+
+
+def attach_runtime_defaults(
+    *,
+    extra_markets_models: Sequence[Any] | None = None,
+    **runtime_kwargs: Any,
+) -> dict[str, Any]:
+    """Attach Valmer runtime tables without seeding static pricing rows."""
+
+    from valmer_connectors.meta_tables.valmer_asset_details import (
+        ensure_valmer_asset_detail_runtime,
+    )
+
+    result = {
+        "pricing_context": attach_valmer_curve_pricing_runtime(
+            markets_models=_valmer_markets_models(
+                extra_markets_models=extra_markets_models,
+            ),
+            **runtime_kwargs,
+        )
+    }
+    result["valmer_asset_details_context"] = ensure_valmer_asset_detail_runtime(
+        timeout=runtime_kwargs.get("timeout"),
+    )
+    return result
 
 
 def seed_static_defaults(
@@ -17,19 +62,14 @@ def seed_static_defaults(
 ) -> dict[str, Any]:
     """Attach runtime tables and seed static rows used by this project."""
 
-    from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
-
     from valmer_connectors.meta_tables.valmer_asset_details import (
-        ValmerAssetDetailsTable,
         ensure_valmer_asset_detail_runtime,
     )
 
-    markets_models = [ValmerAssetDetailsTable, ValmerVectorPricesStorage]
-    if extra_markets_models is not None:
-        markets_models.extend(extra_markets_models)
-
     result = bootstrap_valmer_curve_pricing(
-        markets_models=markets_models,
+        markets_models=_valmer_markets_models(
+            extra_markets_models=extra_markets_models,
+        ),
         **runtime_kwargs,
     )
     result["valmer_asset_details_context"] = ensure_valmer_asset_detail_runtime(
@@ -47,6 +87,7 @@ def seed_defaults(**runtime_kwargs: Any) -> dict[str, Any]:
 def bootstrap_runtime(
     *,
     override: bool = False,
+    seed_static_rows: bool = True,
     extra_markets_models: Sequence[Any] | None = None,
     **runtime_kwargs: Any,
 ) -> dict[str, Any] | None:
@@ -57,16 +98,27 @@ def bootstrap_runtime(
     schemas are attached.
     """
 
-    global _BOOTSTRAPPED
+    global _RUNTIME_ATTACHED, _STATIC_DEFAULTS_SEEDED
 
     with _LOCK:
-        if _BOOTSTRAPPED and not override:
+        if seed_static_rows:
+            if _STATIC_DEFAULTS_SEEDED and not override:
+                return None
+            result = seed_static_defaults(
+                extra_markets_models=extra_markets_models,
+                **runtime_kwargs,
+            )
+            _RUNTIME_ATTACHED = True
+            _STATIC_DEFAULTS_SEEDED = True
+            return result
+
+        if _RUNTIME_ATTACHED and not override:
             return None
-        result = seed_static_defaults(
+        result = attach_runtime_defaults(
             extra_markets_models=extra_markets_models,
             **runtime_kwargs,
         )
-        _BOOTSTRAPPED = True
+        _RUNTIME_ATTACHED = True
         return result
 
 
@@ -80,9 +132,16 @@ def register_all(
 
     return bootstrap_runtime(
         override=override,
+        seed_static_rows=True,
         extra_markets_models=extra_markets_models,
         **runtime_kwargs,
     )
 
 
-__all__ = ["bootstrap_runtime", "register_all", "seed_defaults", "seed_static_defaults"]
+__all__ = [
+    "attach_runtime_defaults",
+    "bootstrap_runtime",
+    "register_all",
+    "seed_defaults",
+    "seed_static_defaults",
+]
