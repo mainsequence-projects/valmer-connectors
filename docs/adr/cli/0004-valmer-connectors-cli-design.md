@@ -181,9 +181,12 @@ Run the Valmer MXN government bond discount-curve update.
 Default behavior:
 
 - call `bootstrap_runtime()`;
-- import Valmer Vector Analitico rows without running asset registration,
-  asset-detail sync, vector publication, or bond pricing hydration;
-- select CETES and M Bonos MXN government bootstrap rows;
+- run a project-specific `DiscountCurvesNode` subclass with
+  `OFFSET_START = 2026-06-01T00:00:00Z`;
+- read CETES and M Bonos MXN government rows from
+  `ValmerVectorPricesStorage` joined to `ValmerAssetDetailsTable`;
+- use the first-run offset or the last stored curve observation to select the
+  vector snapshots that should be built;
 - build the curve frame for `VALMER_MXN_GOVERNMENT_BOND`;
 - publish through `msm_pricing.data_nodes.DiscountCurvesNode` with
   `run(force_update=True)`.
@@ -195,6 +198,11 @@ Options:
 --bucket-name TEXT
 --debug-artifact-path PATH
 ```
+
+`--bucket-name` and `--debug-artifact-path` are compatibility options and are
+ignored for this command. To test a local Vector Analitico artifact, run the
+vector DataNode with the debug artifact first, then run this curve command
+against persisted vector storage.
 
 ### `valmer-connectors curves update-tiie-zero`
 

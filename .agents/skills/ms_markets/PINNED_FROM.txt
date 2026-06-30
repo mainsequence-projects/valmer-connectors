@@ -1,0 +1,7 @@
+schema=1
+library_name=ms-markets
+namespace=ms_markets
+pinned_version=0.0.85
+skills_path=/Users/jose/mainsequence-dev/main-sequence-workbench/projects/mainsequencemarkets-21f6783c-041a-4631-80ef-934e1dfa3d2b/.agents/skills/ms_markets
+copied_at_utc=2026-06-30T14:39:29Z
+command=msm copy-msm-skills

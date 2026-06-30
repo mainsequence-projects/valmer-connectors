@@ -10,6 +10,7 @@ from valmer_connectors.instruments.vector_to_asset import (
     build_instrument_from_core_bond_pricing_payload,
     resolve_reference_index_uid,
 )
+from valmer_connectors.settings import SUBYACENTE_TO_INDEX_MAP
 
 
 class _FakeInstrument:
@@ -107,6 +108,11 @@ class ValmerInstrumentIndexUidTests(unittest.TestCase):
                 return_value={"CETE_28": fake_index},
             ):
                 self.assertEqual(resolve_reference_index_uid("CETE_28"), index_uid)
+
+    def test_subyacente_map_never_uses_synthetic_government_bond_index(self):
+        self.assertNotIn("MXN_GOVERNMENT_BOND", set(SUBYACENTE_TO_INDEX_MAP.values()))
+        self.assertEqual(SUBYACENTE_TO_INDEX_MAP["Bonos M Bruta(Yield)"], "CETE_28")
+        self.assertEqual(SUBYACENTE_TO_INDEX_MAP["P8-X8"], "CETE_182")
 
 
 if __name__ == "__main__":

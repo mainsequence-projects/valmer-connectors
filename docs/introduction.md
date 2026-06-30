@@ -15,9 +15,9 @@ with Valmer market data for Mexican fixed income.
   through `msm_pricing.api.add_many_pricing_details(...)`, which bulk upserts
   timestamped pricing-detail rows and reconciles current rows by strict source
   date.
-- Seeds Mexican TIIE/CETE and MXN government benchmark identities, pricing
-  conventions, and the `VALMER_TIIE_28` and
-  `VALMER_MXN_GOVERNMENT_BOND` curve identities.
+- Seeds Mexican TIIE/CETE index identities, pricing conventions, Valmer curve
+  identities, curve build details, and explicit `mid` market-data-set curve
+  bindings for `VALMER_TIIE_28` and `VALMER_MXN_GOVERNMENT_BOND`.
 - Publishes the Valmer TIIE curve through the canonical
   `msm_pricing.data_nodes.DiscountCurvesNode` path.
 - Publishes the Valmer MXN government curve through the same

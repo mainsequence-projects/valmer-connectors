@@ -72,10 +72,10 @@ reference-index, convention, and Valmer curve rows required by core
 `ms-markets` / `msm_pricing`.
 
 The project uses `attach_pricing_schemas(models=[...])`, not the legacy
-`create_pricing_schemas(...)` entry point. This avoids default
-`PricingMarketDataSet` / `PricingMarketDataBinding` seeding during vector
-updates. If this project later overrides default curve or fixing DataNodes, it
-must do that explicitly in a separate pricing market-data configuration flow.
+`create_pricing_schemas(...)` entry point. Valmer owns the pricing
+market-data-set rows and curve-selection bindings it needs, so source storage
+bindings and curve bindings are explicit bootstrap work instead of side effects
+of schema attachment.
 
 Reference indexes:
 
@@ -86,7 +86,6 @@ Reference indexes:
 - `CETE_28`
 - `CETE_91`
 - `CETE_182`
-- `MXN_GOVERNMENT_BOND`
 
 Pricing convention details:
 
@@ -94,19 +93,23 @@ Pricing convention details:
 - keyed by `index_uid`
 - source: `mexico`
 
+`MXN_GOVERNMENT_BOND` is not an `Index`. It is the curve-family identifier in
+`VALMER_MXN_GOVERNMENT_BOND`, selected at runtime through explicit
+market-data-set curve bindings.
+
 Curve identities:
 
-| Curve | Benchmark Index | Source | Purpose |
+| Curve | Type | Source | Purpose |
 | --- | --- | --- | --- |
-| `VALMER_TIIE_28` | `TIIE_28` | Valmer MexDer TIIE CSV | TIIE 28 discount curve |
-| `VALMER_MXN_GOVERNMENT_BOND` | `MXN_GOVERNMENT_BOND` | Valmer Vector Analitico | CETES + M Bonos MXN government discount curve |
+| `VALMER_TIIE_28` | `projection` | Valmer MexDer TIIE CSV | TIIE 28 projection curve |
+| `VALMER_MXN_GOVERNMENT_BOND` | `discount` | Valmer Vector Analitico | CETES + M Bonos MXN government discount and z-spread base curve |
 
 Both curves use:
 
-- `curve_type = "discount"`
 - `interpolation_method = "log_linear_discount"`
 - `compounding = "compounded_annual"`
 - `source = "valmer"`
+- `quote_side = "mid"`
 
 Relationship:
 
@@ -124,17 +127,55 @@ Relationship:
 +-----------------------------+
 | IndexConventionDetails      |
 +-----------------------------+
+
++-----------------------------+       +-----------------------------+
+| Curve                       |       | CurveBuildingDetails        |
+|-----------------------------|       |-----------------------------|
+| uid                         |<----->| curve_uid                   |
+| unique_identifier           |       | calendar_code = Mexico      |
+| curve_type                  |       | compounding/interpolation   |
++-----------------------------+       +-----------------------------+
+              ^
               |
-              | index_uid
-              v
+              | curve_uid
 +-----------------------------+
-| Curve                       |
+| PricingMarketDataSetCurveBinding |
+|-----------------------------------|
+| set_key = default                 |
+| role_key                          |
+| selector = index:<uid>:mid        |
++-----------------------------+
+
++-----------------------------+
+| PricingMarketDataSetBinding |
 |-----------------------------|
-| unique_identifier           |
-| VALMER_TIIE_28              |
-| VALMER_MXN_GOVERNMENT_BOND  |
+| default + discount_curves   |
+| default + interest_rate_index_fixings |
 +-----------------------------+
 ```
+
+Valmer seeds the default market-data set and binds it to the canonical
+`DiscountCurvesStorage` and `IndexFixingsStorage` tables. Curve selection is
+quote-side explicit. Runtime calls must request `mid`; there is no implicit
+fallback from an omitted quote side.
+
+Seeded curve-selection bindings:
+
+| Role | Selector | Curve |
+| --- | --- | --- |
+| `projection` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_28` |
+| `projection` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_28` |
+| `projection` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_28` |
+| `z_spread_base` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_28` |
+| `z_spread_base` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_28` |
+| `z_spread_base` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_28` |
+| `z_spread_base` | `index:<CETE_28.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `z_spread_base` | `index:<CETE_91.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `z_spread_base` | `index:<CETE_182.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+
+`CurveBuildingDetails.calendar_code` is `Mexico`, which is the token accepted
+by the current `msm_pricing` calendar JSON codec for the Mexico/BMV QuantLib
+calendar.
 
 ## Bond Pricing Hydration
 
@@ -246,9 +287,15 @@ publication path.
 
 ## MXN Government Bond Curve Publication
 
-The Valmer Mexican government bond curve uses Vector Analitico rows directly.
-It does not run asset registration, asset-detail upserts, vector price storage,
-or current bond-pricing hydration.
+The Valmer Mexican government bond curve consumes the persisted market snapshot
+owned by the vector DataNode. It does not re-read a separate raw Vector
+Analitico file during curve publication.
+
+The curve source is:
+
+- `ValmerVectorPricesStorage` for daily price observations
+- `ValmerAssetDetailsTable` for the Valmer static fields needed to build
+  QuantLib helpers
 
 ```text
 valmer-connectors curves update-mxn-government
@@ -260,7 +307,12 @@ bootstrap_runtime()
 configure_valmer_discount_curves_cadence()
     |
     v
-ImportValmer.prepare_source_data()
+ValmerMxnGovernmentBondDiscountCurvesNode
+    OFFSET_START = 2026-06-01T00:00:00Z
+    |
+    v
+builder reads ValmerVectorPricesStorage
+    joined to ValmerAssetDetailsTable
     |
     v
 select_mxn_government_bootstrap_instruments(...)
@@ -273,13 +325,70 @@ select_mxn_government_bootstrap_instruments(...)
 build_mxn_government_curve_frame(...)
     |
     v
-DiscountCurvesNode(
+ValmerMxnGovernmentBondDiscountCurvesNode(
     CurveConfig(curve_unique_identifier="VALMER_MXN_GOVERNMENT_BOND")
 )
     |
     v
 run(force_update=True)
 ```
+
+On first publication the DataNode offset boundary starts at June 1, 2026. The
+builder queries vector-storage snapshots at or after that timestamp and emits
+one curve row per available snapshot. On later runs it queries rows after the
+last stored curve observation for `VALMER_MXN_GOVERNMENT_BOND`.
+
+### MXN Government Bootstrap Instrument Contract
+
+The government curve bootstrap uses tradable Valmer asset rows as curve
+instruments. It does not use `Index` rows as curve pillars. CETE benchmark
+indexes such as `CETE_28` and `CETE_182` only select the published
+`VALMER_MXN_GOVERNMENT_BOND` curve for z-spread resolution through
+`PricingMarketDataSetCurveBinding`.
+
+Storage-to-builder mapping:
+
+| Builder field | Source | Required for | Notes |
+| --- | --- | --- | --- |
+| `time_index` | `ValmerVectorPricesStorage.time_index` | all rows | Snapshot timestamp and curve update boundary |
+| `unique_identifier` | `ValmerVectorPricesStorage.asset_identifier` | all rows | Valmer asset identifier used for diagnostics and duplicate checks |
+| `fecha` | `ValmerVectorPricesStorage.valuation_date` | all rows | Falls back to `time_index` if the valuation date is missing |
+| `preciolimpio` | `ValmerVectorPricesStorage.clean_price` | M Bonos | Clean price used by `FixedRateBondHelper` |
+| `preciosucio` | `ValmerVectorPricesStorage.dirty_price` | all rows | CETES quote; M Bonos dirty-price consistency check |
+| `interesesacumulados` | `ValmerVectorPricesStorage.accrued_interest` | M Bonos | Required for clean + accrued = dirty validation |
+| `diastransccpn` | `ValmerVectorPricesStorage.days_since_coupon` | M Bonos when present | Used to validate Actual/360 accrued interest when available |
+| `valornominalactualizado` | `ValmerVectorPricesStorage.adjusted_face_value` | not consumed by helpers | Selected for source parity and future use |
+| `tipovalor` | `ValmerAssetDetailsTable.security_type` | all rows | Bootstrap allow-list accepts `BI` and `M` |
+| `emisora` | `ValmerAssetDetailsTable.issuer` | all rows | Bootstrap allow-list accepts `CETES` and `BONOS` |
+| `serie` | `ValmerAssetDetailsTable.series` | all rows | Used in fallback instrument identity |
+| `sector` | `ValmerAssetDetailsTable.sector` | all rows when present | Must be `GUBERNAMENTAL` when populated |
+| `fechaemision` | `ValmerAssetDetailsTable.issue_date` | M Bonos | Start date for the generated fixed-rate schedule |
+| `fechavcto` | `ValmerAssetDetailsTable.maturity_date` | all rows | Pillar maturity; must be after valuation date |
+| `valornominal` | `ValmerAssetDetailsTable.face_value` | optional | CETES defaults to `10`; M Bonos default to `100` |
+| `monedaemision` | `ValmerAssetDetailsTable.issue_currency` | all rows | Must be `MPS` |
+| `freccpn` | `ValmerAssetDetailsTable.coupon_frequency` | M Bonos | Must parse to `182` days |
+| `tasacupon` | `ValmerAssetDetailsTable.coupon_rate` | M Bonos | Coupon rate, normalized from percent to decimal when needed |
+
+CETES rows are selected with
+`tipovalor = BI`, `emisora = CETES`, and `monedaemision = MPS`. They are built
+as QuantLib zero-coupon bond helpers. `preciosucio` is the market quote, and
+`valornominal` defaults to `10` when Valmer details do not provide it.
+
+M Bonos rows are selected with
+`tipovalor = M`, `emisora = BONOS`, and `monedaemision = MPS`. They are built as
+QuantLib fixed-rate bond helpers with a Mexico calendar, `Actual360`, a
+backward 182-day schedule, clean-price quotes, and `BondPrice.Clean`.
+`valornominal` defaults to `100` when Valmer details do not provide it.
+
+`reglacupon` / `coupon_rule` is not currently loaded into the curve-source
+frame and is not consumed by the helper builder. If coupon-rule-specific M Bono
+scheduling becomes required, the change must add the detail-table field to the
+loader, use it in schedule construction, and update the validation tests in the
+same patch.
+
+Each emitted curve date must have at least one CETES helper and one M Bonos
+helper. Duplicate instrument identifiers fail. Duplicate maturities are reduced
+to one pillar, preferring CETES over M Bonos for the same maturity.
 
 The connector builder follows the current `msm_pricing.DiscountCurvesNode`
 contract:
@@ -305,8 +414,9 @@ time_index                 curve_identifier              curve
 2024-08-30T23:59:59Z       VALMER_MXN_GOVERNMENT_BOND    {6: 0.0562, 13: 0.0871, ...}
 ```
 
-The local sample file currently selects 37 CETES rows and 17 M Bonos rows for
-the first supported bootstrap universe. Exact counts vary by source file.
+Representative vector snapshots select CETES rows and M Bonos rows for the
+supported bootstrap universe. Exact counts vary by valuation date and by the
+assets present in `ValmerVectorPricesStorage`.
 
 ## What Pricing Does Not Own
 

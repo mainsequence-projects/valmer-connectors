@@ -92,6 +92,17 @@ Examples:
 
 This is source-adapter policy, not core pricing policy.
 
+This map must only point to real `Index` rows. Do not map any Valmer label to
+`MXN_GOVERNMENT_BOND`; that identifier is the Valmer government curve identity,
+not an index. M Bono benchmark pricing details may use real CETE selector
+indexes such as `CETE_28` or `CETE_182`. Z-spread valuation resolves those
+selectors to `VALMER_MXN_GOVERNMENT_BOND` through
+`PricingMarketDataSetCurveBinding` with `quote_side="mid"`.
+
+TIIE floaters keep their floating indexes as real TIIE selector indexes, for
+example `TIIE_28` or `TIIE_182`. Projection and TIIE z-spread curve selection
+also go through explicit market-data-set curve bindings.
+
 ## Schedule Construction
 
 Coupon schedule reconciliation is delegated to the shared pricing utility now

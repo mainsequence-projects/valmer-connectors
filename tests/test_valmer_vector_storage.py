@@ -1,4 +1,5 @@
 from contextlib import ExitStack
+import os
 from pathlib import Path
 import tempfile
 import uuid
@@ -1294,6 +1295,106 @@ class ValmerVectorStorageTest(unittest.TestCase):
         self.assertEqual(node.source_data["unique_identifier"].tolist(), ["M_BONOS_241205"])
         sync.assert_called_once()
         self.assertNotIn("register_pricing_target_assets_only", sync.call_args.kwargs)
+
+    def test_prepare_for_update_uses_force_pricing_patch_env(self):
+        node = ImportValmer.__new__(ImportValmer)
+        node.source_kind = "artifact"
+        source_data = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "M_BONOS_241205",
+                    "fecha": "20240102",
+                    "tipovalor": "M",
+                    "subyacente": "Bonos M",
+                    "monedaemision": "MPS",
+                    "emisora": "BONOS",
+                    "tasacupon": 10.0,
+                    "fechaemision": "2020-01-01",
+                },
+            ]
+        )
+        node.source_data = source_data
+        asset = SimpleNamespace(
+            uid=uuid.uuid4(),
+            unique_identifier="M_BONOS_241205",
+            asset_type=ASSET_TYPE_BOND,
+        )
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.dict(
+                    os.environ,
+                    {"VALMER_FORCE_PRICING_DETAILS_PATCH": "1"},
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "prepare_source_data",
+                    return_value=source_data,
+                )
+            )
+            sync = stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "_sync_asset_registry_and_pricing",
+                    return_value=[asset],
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "logger",
+                    new_callable=PropertyMock,
+                    return_value=Mock(),
+                )
+            )
+
+            ImportValmer.prepare_for_update(node)
+
+        self.assertTrue(sync.call_args.kwargs["force_update"])
+
+    def test_prepare_source_data_bypasses_artifact_cursor_filter_from_env(self):
+        node = ImportValmer.__new__(ImportValmer)
+        node.source_kind = "artifact"
+        node.source_data = None
+        node.artifact_data = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "M_BONOS_241205",
+                    "fecha": "20240102",
+                },
+            ]
+        )
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.dict(
+                    os.environ,
+                    {"VALMER_VECTOR_BYPASS_CURSOR_FILTER": "1"},
+                )
+            )
+            stack.enter_context(patch.object(ImportValmer, "_set_artifact_data"))
+            cursor_filter = stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "_filter_source_rows_from_last_vector_observation",
+                    side_effect=AssertionError("cursor filter should be bypassed"),
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "logger",
+                    new_callable=PropertyMock,
+                    return_value=Mock(),
+                )
+            )
+
+            result = ImportValmer.prepare_source_data(node)
+
+        cursor_filter.assert_not_called()
+        self.assertEqual(result["unique_identifier"].tolist(), ["M_BONOS_241205"])
 
     def test_sync_asset_registry_raises_when_current_pricing_persist_fails(self):
         asset_uid = uuid.uuid4()

@@ -183,6 +183,48 @@
       "justMyCode": false
     },
     {
+      "name": "Valmer Curve: Build TIIE",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "curves",
+        "update-tiie-zero",
+        "--curve-identifier",
+        "VALMER_TIIE_28"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "Valmer Curve: Build M Bonos",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "curves",
+        "update-mxn-government",
+        "--curve-identifier",
+        "VALMER_MXN_GOVERNMENT_BOND"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
       "name": "Valmer CLI: Update TIIE Zero Curve",
       "type": "python",
       "request": "launch",

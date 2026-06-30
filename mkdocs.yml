@@ -13,6 +13,9 @@ nav:
   - Dashboards: dashboards.md
   - Deployment: deployment.md
   - New Version Migration: new-version-migration.md
+  - Implementation Plans:
+      - MetaTable Source Import Plan: implementation/metatable-source-import-plan.md
+      - Curve Resolution And Asset Patching Plan: implementation/curve-resolution-and-asset-patching-plan.md
   - ADRs:
       - Core Pricing Library Boundary: adr/0000-core-pricing-library-boundary.md
       - Asset Registration Identity Migration: adr/0001-asset-registration-identity-migration.md

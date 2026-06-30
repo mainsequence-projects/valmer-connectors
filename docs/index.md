@@ -26,6 +26,7 @@ must follow when registering assets from different vector sources.
 ## Implementation Plans
 
 - [MetaTable Source Import Plan](implementation/metatable-source-import-plan.md)
+- [Curve Resolution And Asset Patching Plan](implementation/curve-resolution-and-asset-patching-plan.md)
 
 ## Workflow Boundaries
 

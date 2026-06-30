@@ -124,11 +124,26 @@ AssetTable.unique_identifier
 
 IndexTable.uid
     -> IndexConventionDetails.index_uid
-    -> Curve.index_uid
+
+CurveTable.uid
+    -> CurveBuildingDetails.curve_uid
+
+PricingMarketDataSet.uid
+    -> PricingMarketDataSetBinding.market_data_set_uid
+    -> PricingMarketDataSetCurveBinding.market_data_set_uid
+
+PricingMarketDataSetCurveBinding
+    -> selector index_uid + role_key + quote_side
+    -> CurveTable.uid
 
 AssetTable.uid
     -> current pricing details asset_uid
 ```
+
+Curve rows are not owned by `IndexTable`. Valmer seeds real TIIE/CETE indexes
+for instrument selectors and conventions, then binds those selectors to
+`VALMER_TIIE_28` or `VALMER_MXN_GOVERNMENT_BOND` through explicit
+`PricingMarketDataSetCurveBinding` rows with `quote_side="mid"`.
 
 ## Migration Commands
 

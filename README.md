@@ -20,9 +20,9 @@ Vector Analitico CETES and M Bonos rows.
   `vector_de_precios_valmer`.
 - Attaches `msm_pricing` pricing details for the supported Mexican bond
   universe.
-- Registers Mexican TIIE/CETE index identities, pricing conventions, and the
-  `VALMER_TIIE_28` and `VALMER_MXN_GOVERNMENT_BOND` curve identities through
-  `bootstrap_runtime()` and
+- Registers Mexican TIIE/CETE index identities, pricing conventions, Valmer
+  curve identities, curve build details, and explicit `mid` market-data-set
+  curve bindings through `bootstrap_runtime()` and
   `src/valmer_connectors/instruments/curve_bootstrap.py`.
 - Publishes the Valmer TIIE curve through the canonical
   `msm_pricing.data_nodes.DiscountCurvesNode` path.
@@ -219,6 +219,8 @@ for MkDocs through `mkdocs.yml`.
 - `docs/instruments.md`: row-to-instrument mapping rules
 - `docs/metatable-query-optimization.md`: thin MetaTable projection reads and
   bulk pricing-details persistence behavior
+- `docs/implementation/curve-resolution-and-asset-patching-plan.md`: planned
+  fix for Valmer curve/index bindings and forced pricing-details patch runs
 - `docs/agent-skills.md`: importing bundled Valmer Codex skills into host
   projects
 - `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up

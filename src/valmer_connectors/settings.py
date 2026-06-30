@@ -24,6 +24,8 @@ MAX_VALMER_ASSET_UPSERT_BATCH_SIZE = 500
 VALMER_PRICING_DETAILS_BATCH_SIZE_ENV = "VALMER_PRICING_DETAILS_BATCH_SIZE"
 DEFAULT_VALMER_PRICING_DETAILS_BATCH_SIZE = 5000
 MAX_VALMER_PRICING_DETAILS_BATCH_SIZE = 5000
+VALMER_FORCE_PRICING_DETAILS_PATCH_ENV = "VALMER_FORCE_PRICING_DETAILS_PATCH"
+VALMER_VECTOR_BYPASS_CURSOR_FILTER_ENV = "VALMER_VECTOR_BYPASS_CURSOR_FILTER"
 VALMER_VECTOR_FILE_BATCH_SIZE_ENV = "VALMER_VECTOR_FILE_BATCH_SIZE"
 DEFAULT_VALMER_VECTOR_FILE_BATCH_SIZE = 5
 VALMER_VECTOR_LOCAL_COPY_CHUNK_SIZE_ENV = "VALMER_VECTOR_LOCAL_COPY_CHUNK_SIZE"
@@ -42,6 +44,25 @@ DEFAULT_VALMER_ONEDRIVE_FOLDER_PATH = "clients/actinver/vector_de_precios_upload
 DEFAULT_VALMER_ONEDRIVE_CACHE_PATH = "/tmp/valmer-vector-cache"
 VALMER_ONEDRIVE_GRAPH_PAGE_SIZE_ENV = "VALMER_ONEDRIVE_GRAPH_PAGE_SIZE"
 DEFAULT_VALMER_ONEDRIVE_GRAPH_PAGE_SIZE = 999
+
+
+def _resolve_bool_env(
+    env_name: str,
+    value: bool | None,
+    *,
+    default: bool = False,
+) -> bool:
+    if value is not None:
+        return value
+    raw_value = os.environ.get(env_name)
+    if raw_value is None:
+        return default
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "f", "no", "n", "off", ""}:
+        return False
+    raise ValueError(f"{env_name} must be a boolean value, got {raw_value!r}.")
 
 
 def resolve_valmer_vector_file_batch_size(batch_size: int | None = None) -> int:
@@ -164,6 +185,30 @@ def resolve_valmer_pricing_details_batch_size(batch_size: int | None = None) -> 
     if batch_size <= 0:
         raise ValueError("Valmer pricing-details batch size must be positive.")
     return min(batch_size, MAX_VALMER_PRICING_DETAILS_BATCH_SIZE)
+
+
+def resolve_valmer_force_pricing_details_patch(
+    force: bool | None = None,
+    *,
+    default: bool = False,
+) -> bool:
+    return _resolve_bool_env(
+        VALMER_FORCE_PRICING_DETAILS_PATCH_ENV,
+        force,
+        default=default,
+    )
+
+
+def resolve_valmer_vector_bypass_cursor_filter(
+    bypass: bool | None = None,
+    *,
+    default: bool = False,
+) -> bool:
+    return _resolve_bool_env(
+        VALMER_VECTOR_BYPASS_CURSOR_FILTER_ENV,
+        bypass,
+        default=default,
+    )
 
 
 BUCKET_NAME_HISTORICAL_VECTORS = resolve_valmer_vector_bucket_name()

@@ -1,3 +1,4 @@
+import datetime as dt
 import unittest
 from unittest.mock import Mock, patch
 
@@ -67,68 +68,160 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         )
 
     def test_mxn_government_update_uses_shared_runner_with_vector_builder(self):
-        source_data = pd.DataFrame(
-            [
-                {
-                    "fecha": "20240830",
-                    "tipovalor": "BI",
-                    "emisora": "CETES",
-                    "serie": "240926",
-                    "sector": "GUBERNAMENTAL",
-                    "monedaemision": "MPS",
-                    "fechavcto": "2024-09-26",
-                    "preciosucio": 9.9,
-                }
-            ]
-        )
-        source_loader = Mock()
-        source_loader.prepare_source_data.return_value = source_data
-
         with (
-            patch("valmer_connectors.data_nodes.nodes.ImportValmer", return_value=source_loader),
-            patch("valmer_connectors.data_nodes.nodes.ImportValmerConfig") as config_class,
-            patch(
-                "valmer_connectors.settings.resolve_valmer_vector_bucket_name",
-                return_value="Vector Bucket",
-            ),
-            patch("valmer_connectors.services.vector_update._debug_artifact_path") as debug_path,
-            patch(
-                "valmer_connectors.services.curve_update.select_mxn_government_bootstrap_instruments",
-                return_value=source_data,
-            ),
             patch(
                 "valmer_connectors.services.curve_update._run_valmer_discount_curve_update"
             ) as run_curve,
         ):
-            debug_path.return_value.__enter__.return_value = None
-            debug_path.return_value.__exit__.return_value = False
-
             curve_update.run_mxn_government_curve_update(
                 curve_identifier="VALMER_MXN_GOVERNMENT_BOND",
                 bucket_name="bucket",
                 debug_artifact_path="sample.xls",
             )
 
-        config_class.assert_called_once_with(bucket_name="Vector Bucket")
-        run_curve.assert_called_once()
-        self.assertEqual(
-            run_curve.call_args.kwargs["curve_identifier"],
-            "VALMER_MXN_GOVERNMENT_BOND",
+        run_curve.assert_called_once_with(
+            curve_identifier="VALMER_MXN_GOVERNMENT_BOND",
+            curve_builder=run_curve.call_args.kwargs["curve_builder"],
+            logger=curve_update.LOGGER,
+            node_class=curve_update.ValmerMxnGovernmentBondDiscountCurvesNode,
         )
 
-        builder = run_curve.call_args.kwargs["curve_builder"]
+    def test_mxn_government_curve_node_uses_june_2026_offset_start(self):
+        self.assertTrue(
+            issubclass(
+                curve_update.ValmerMxnGovernmentBondDiscountCurvesNode,
+                curve_update.DiscountCurvesNode,
+            )
+        )
+        self.assertEqual(
+            curve_update.ValmerMxnGovernmentBondDiscountCurvesNode.OFFSET_START,
+            dt.datetime(2026, 6, 1, tzinfo=dt.UTC),
+        )
+
+    def test_vector_storage_builder_queries_from_node_offset_before_first_update(self):
+        source_data = _government_source_frame(
+            [
+                ("2026-06-01 23:59:59+00:00", "BI", "CETES", "260625"),
+                ("2026-06-02 23:59:59+00:00", "BI", "CETES", "260702"),
+            ]
+        )
+        update_statistics = Mock()
+        update_statistics.get_last_update_for_identity.return_value = None
+
         with patch(
-            "valmer_connectors.services.curve_update.build_mxn_government_curve_from_vector",
-            return_value="curve-frame",
+            "valmer_connectors.services.curve_update.load_mxn_government_curve_source_from_vector_storage",
+            return_value=source_data,
+        ) as load_source, patch(
+            "valmer_connectors.services.curve_update.build_mxn_government_curve_frame",
+            side_effect=_fake_government_curve_frame,
         ) as build_frame:
-            result = builder(
-                update_statistics=object(),
+            result = curve_update.build_mxn_government_curve_from_vector_storage(
+                update_statistics=update_statistics,
+                curve_identifier="VALMER_MXN_GOVERNMENT_BOND",
+                base_node_curve_points=None,
+                logger=Mock(),
+        )
+
+        load_source.assert_called_once_with(
+            start_time_index=(
+                curve_update.ValmerMxnGovernmentBondDiscountCurvesNode.OFFSET_START
+            ),
+            logger=load_source.call_args.kwargs["logger"],
+        )
+        self.assertEqual(build_frame.call_count, 2)
+        self.assertEqual(len(result), 2)
+
+    def test_vector_storage_builder_queries_after_existing_curve_update(self):
+        source_data = _government_source_frame(
+            [("2026-06-03 23:59:59+00:00", "BI", "CETES", "260709")]
+        )
+        update_statistics = Mock()
+        update_statistics.get_last_update_for_identity.return_value = pd.Timestamp(
+            "2026-06-02 23:59:59",
+            tz="UTC",
+        )
+
+        with patch(
+            "valmer_connectors.services.curve_update.load_mxn_government_curve_source_from_vector_storage",
+            return_value=source_data,
+        ) as load_source, patch(
+            "valmer_connectors.services.curve_update.build_mxn_government_curve_frame",
+            side_effect=_fake_government_curve_frame,
+        ):
+            curve_update.build_mxn_government_curve_from_vector_storage(
+                update_statistics=update_statistics,
                 curve_identifier="VALMER_MXN_GOVERNMENT_BOND",
                 base_node_curve_points=None,
             )
 
-        self.assertEqual(result, "curve-frame")
-        self.assertIs(build_frame.call_args.kwargs["source_df"], source_data)
+        load_source.assert_called_once_with(
+            after_time_index=dt.datetime(2026, 6, 2, 23, 59, 59, tzinfo=dt.UTC),
+            logger=None,
+        )
+
+    def test_vector_storage_rows_fill_curve_source_shape(self):
+        time_index = pd.Timestamp("2026-06-01 23:59:59", tz="UTC")
+        frame = curve_update._vector_storage_rows_to_curve_source_frame(
+            [
+                {
+                    "time_index": time_index,
+                    "unique_identifier": "BI_CETES_260625",
+                    "fecha": None,
+                    "tipovalor": "BI",
+                    "emisora": "CETES",
+                }
+            ],
+            time_index=time_index,
+        )
+
+        self.assertEqual(frame.loc[0, "fecha"], time_index)
+        self.assertIn("preciosucio", frame.columns)
+        self.assertIn("fechavcto", frame.columns)
+
+    def test_vector_storage_rows_can_return_empty_range_frame(self):
+        frame = curve_update._vector_storage_rows_to_curve_source_frame(
+            [],
+            time_index=None,
+            allow_empty=True,
+        )
+
+        self.assertTrue(frame.empty)
+        self.assertIn("time_index", frame.columns)
+        self.assertIn("tipovalor", frame.columns)
+
+
+def _government_source_frame(rows):
+    records = []
+    for time_index, security_type, issuer, series in rows:
+        timestamp = pd.Timestamp(time_index)
+        records.append(
+            {
+                "time_index": timestamp,
+                "unique_identifier": f"{security_type}_{issuer}_{series}",
+                "fecha": timestamp.normalize(),
+                "tipovalor": security_type,
+                "emisora": issuer,
+                "serie": series,
+                "sector": "GUBERNAMENTAL",
+                "monedaemision": "MPS",
+                "fechavcto": timestamp + pd.Timedelta(days=28),
+                "preciosucio": 9.9,
+            }
+        )
+    return pd.DataFrame(records)
+
+
+def _fake_government_curve_frame(source_df, *, curve_identifier):
+    time_index = pd.Timestamp(source_df["time_index"].iloc[0])
+    return pd.DataFrame(
+        [
+            {
+                "time_index": time_index,
+                "curve_identifier": curve_identifier,
+                "curve": {28: 0.1},
+            }
+        ]
+    ).set_index(["time_index", "curve_identifier"])
 
 
 if __name__ == "__main__":

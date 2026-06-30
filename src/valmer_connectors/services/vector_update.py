@@ -20,6 +20,8 @@ from valmer_connectors.data_nodes.nodes import (
 from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 from valmer_connectors.settings import DEFAULT_VECTOR_FIRST_LOOP_COUNT
 from valmer_connectors.settings import resolve_valmer_vector_bucket_name
+from valmer_connectors.settings import resolve_valmer_force_pricing_details_patch
+from valmer_connectors.settings import resolve_valmer_vector_bypass_cursor_filter
 from valmer_connectors.settings import resolve_valmer_vector_file_batch_size
 
 LOGGER = structlog.get_logger(__name__)
@@ -68,7 +70,8 @@ def build_import_valmer(
 def prepare_import_valmer(
     *,
     bucket_name: str | None = None,
-    force_pricing_update: bool = False,
+    force_pricing_update: bool | None = None,
+    bypass_vector_cursor_filter: bool | None = None,
     source_kind: str = "artifact",
     source_metatables: list[MetaTableValmerSourceConfig] | None = None,
 ) -> ImportValmer:
@@ -78,7 +81,12 @@ def prepare_import_valmer(
         source_metatables=source_metatables,
     )
     updater.prepare_for_update(
-        force_pricing_update=force_pricing_update,
+        force_pricing_update=resolve_valmer_force_pricing_details_patch(
+            force_pricing_update,
+        ),
+        bypass_vector_cursor_filter=resolve_valmer_vector_bypass_cursor_filter(
+            bypass_vector_cursor_filter,
+        ),
     )
     return updater
 
@@ -366,9 +374,18 @@ def run_vector_update(
     onedrive_tenant_id_secret_name: str | None = None,
     onedrive_client_id_secret_name: str | None = None,
     onedrive_client_secret_secret_name: str | None = None,
+    force_pricing_details_patch: bool | None = None,
+    bypass_vector_cursor_filter: bool | None = None,
 ) -> None:
     """Run the Valmer vector update through the package service boundary."""
 
+    resolved_force_pricing_details_patch = resolve_valmer_force_pricing_details_patch(
+        force_pricing_details_patch,
+        default=True,
+    )
+    resolved_bypass_vector_cursor_filter = resolve_valmer_vector_bypass_cursor_filter(
+        bypass_vector_cursor_filter,
+    )
     resolved_local_bucket_path = _resolve_local_bucket_path(
         local_bucket_path=local_bucket_path,
         local_bucket_path_env_var=local_bucket_path_env_var,
@@ -401,6 +418,8 @@ def run_vector_update(
         source_kind=source_kind,
         bucket_name=resolve_valmer_vector_bucket_name(bucket_name),
         local_source=source_artifact_path,
+        force_pricing_details_patch=resolved_force_pricing_details_patch,
+        bypass_vector_cursor_filter=resolved_bypass_vector_cursor_filter,
     )
     bootstrap_runtime(seed_static_rows=False)
 
@@ -413,7 +432,11 @@ def run_vector_update(
     if source_kind == "onedrive-graph":
         from valmer_connectors.services.onedrive_graph import stage_onedrive_vector_files
 
-        latest_time_index = _latest_vector_storage_time_index()
+        latest_time_index = (
+            None
+            if resolved_bypass_vector_cursor_filter
+            else _latest_vector_storage_time_index()
+        )
         local_files = stage_onedrive_vector_files(
             latest_time_index=latest_time_index,
             drive_id=onedrive_drive_id,
@@ -425,11 +448,16 @@ def run_vector_update(
         )
         data_node_source_kind = "artifact"
     if local_files is not None:
-        if source_kind != "onedrive-graph":
+        if source_kind != "onedrive-graph" and not resolved_bypass_vector_cursor_filter:
             latest_time_index = _latest_vector_storage_time_index()
             local_files = _select_local_vector_files_for_update(
                 local_files,
                 latest_time_index,
+            )
+        elif resolved_bypass_vector_cursor_filter:
+            LOGGER.info(
+                "Bypassing Valmer vector local-file cursor filter for repair run.",
+                file_count=len(local_files),
             )
         batch_size = resolve_valmer_vector_file_batch_size()
         total = len(local_files)
@@ -460,7 +488,10 @@ def run_vector_update(
                     source_kind=data_node_source_kind,
                     source_metatables=source_metatables,
                 )
-                batch_updater.prepare_for_update(force_pricing_update=True)
+                batch_updater.prepare_for_update(
+                    force_pricing_update=resolved_force_pricing_details_patch,
+                    bypass_vector_cursor_filter=resolved_bypass_vector_cursor_filter,
+                )
                 batch_updater.run(force_update=True)
             LOGGER.info(
                 "Vector batch complete",
@@ -503,7 +534,10 @@ def run_vector_update(
                     source_kind=source_kind,
                     source_metatables=source_metatables,
                 )
-                loop_updater.prepare_for_update(force_pricing_update=True)
+                loop_updater.prepare_for_update(
+                    force_pricing_update=resolved_force_pricing_details_patch,
+                    bypass_vector_cursor_filter=resolved_bypass_vector_cursor_filter,
+                )
                 loop_updater.run(force_update=True)
                 LOGGER.info(
                     "Vector backfill iteration complete",
@@ -520,7 +554,10 @@ def run_vector_update(
 
         LOGGER.info("Existing vector found — running incremental update")
         started = time.monotonic()
-        updater.prepare_for_update(force_pricing_update=True)
+        updater.prepare_for_update(
+            force_pricing_update=resolved_force_pricing_details_patch,
+            bypass_vector_cursor_filter=resolved_bypass_vector_cursor_filter,
+        )
         updater.run(force_update=True)
         LOGGER.info(
             "Incremental vector update complete",

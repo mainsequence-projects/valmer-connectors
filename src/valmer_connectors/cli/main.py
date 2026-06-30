@@ -16,7 +16,9 @@ from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
 )
 from valmer_connectors.settings import DEFAULT_VECTOR_FIRST_LOOP_COUNT
+from valmer_connectors.settings import VALMER_FORCE_PRICING_DETAILS_PATCH_ENV
 from valmer_connectors.settings import VALMER_VECTOR_BUCKET_NAME_ENV
+from valmer_connectors.settings import VALMER_VECTOR_BYPASS_CURSOR_FILTER_ENV
 from valmer_connectors.settings import VALMER_VECTOR_UPLOAD_DEBUG_PATH_ENV
 
 SOURCE_VALMER_SKILLS_PATH = (".agents", "skills", "valmer-connectors")
@@ -75,6 +77,8 @@ def _vector_update_command(args: argparse.Namespace) -> int:
         onedrive_tenant_id_secret_name=args.onedrive_tenant_id_secret_name,
         onedrive_client_id_secret_name=args.onedrive_client_id_secret_name,
         onedrive_client_secret_secret_name=args.onedrive_client_secret_secret_name,
+        force_pricing_details_patch=args.force_pricing_details_patch,
+        bypass_vector_cursor_filter=args.bypass_vector_cursor_filter,
     )
     return 0
 
@@ -396,6 +400,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_VECTOR_FIRST_LOOP_COUNT,
         help="Number of compatibility loop runs when update statistics are missing.",
     )
+    vector_update_parser.add_argument(
+        "--force-pricing-details-patch",
+        action="store_true",
+        default=None,
+        help=(
+            "Force current pricing detail rehydration for selected target bonds. "
+            f"Equivalent to setting {VALMER_FORCE_PRICING_DETAILS_PATCH_ENV}=1."
+        ),
+    )
+    vector_update_parser.add_argument(
+        "--bypass-vector-cursor-filter",
+        action="store_true",
+        default=None,
+        help=(
+            "Keep source rows even when vector storage already has equal or newer "
+            "observations. "
+            f"Equivalent to setting {VALMER_VECTOR_BYPASS_CURSOR_FILTER_ENV}=1."
+        ),
+    )
     vector_update_parser.set_defaults(func=_vector_update_command)
 
     curves_parser = subcommands.add_parser("curves", help="Valmer curve commands.")
@@ -427,14 +450,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--bucket-name",
         default=None,
         help=(
-            "Main Sequence Artifact bucket name for Valmer vector source files. "
-            f"If omitted, reads {VALMER_VECTOR_BUCKET_NAME_ENV} from the environment."
+            "Deprecated; ignored. The MXN government curve reads "
+            "ValmerVectorPricesStorage joined to ValmerAssetDetailsTable."
         ),
     )
     curves_mxn_government_parser.add_argument(
         "--debug-artifact-path",
         default=None,
-        help="Local Valmer Excel file or folder. Overrides bucket import for this command.",
+        help=(
+            "Deprecated; ignored. Run the vector DataNode with a debug artifact "
+            "first, then build this curve from persisted vector storage."
+        ),
     )
     curves_mxn_government_parser.set_defaults(func=_curves_update_mxn_government_command)
 

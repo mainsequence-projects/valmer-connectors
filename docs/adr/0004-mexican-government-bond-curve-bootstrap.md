@@ -1,8 +1,13 @@
-# ADR 0004: Bootstrap Mexican Government Bond Curves From Valmer Vector Files
+# ADR 0004: Bootstrap Mexican Government Bond Curves From Valmer Vector Storage
 
 ## Status
 
-Implemented
+Implemented; static curve relationship model superseded on 2026-06-30.
+
+The curve publication path remains active, but the static pricing rows in this
+ADR were updated after the `msm_pricing` curve model moved curve selection out
+of `Curve.index_uid` and into `PricingMarketDataSetCurveBinding`. The current
+implementation must not create `MXN_GOVERNMENT_BOND` as an `Index`.
 
 ## Date
 
@@ -24,8 +29,9 @@ The implementation that follows this ADR must:
 - persist the output through `msm_pricing.data_nodes.DiscountCurvesNode`
 - encode the official CETES and M Bonos valuation conventions before
   implementing helpers
-- keep interpolation, compounding, and curve identity on the core
-  `msm_pricing.api.Curve` row
+- keep curve identity on the core `msm_pricing.api.Curve` row, keep build
+  mechanics on `CurveBuildingDetails`, and keep index-selector-to-curve
+  resolution on `PricingMarketDataSetCurveBinding`
 - fail explicitly when required source fields or conventions are missing
 - leave `AssetTable` unchanged
 
@@ -57,19 +63,20 @@ different source and shape:
 
 The Mexican government bond curve is different:
 
-- source: Valmer `Vector Analitico` files
-- instrument set: tradable government bond rows in the vector file
+- source: persisted `ValmerVectorPricesStorage` rows joined to
+  `ValmerAssetDetailsTable`
+- instrument set: tradable government bond rows from persisted vector snapshots
 - output curve: bootstrapped from observed instrument prices
 
 Do not extend the TIIE CSV parser to handle this. This is a second curve source
-builder that consumes vector rows.
+builder that consumes persisted vector rows.
 
 ## Decision
 
 Add a Valmer Mexican government bond bootstrap path that:
 
-1. reads normalized Valmer vector rows
-2. groups or filters rows by vector valuation date
+1. reads persisted Valmer vector rows and static asset details
+2. groups rows by vector valuation date
 3. selects supported Mexican government MXN instruments
 4. builds QuantLib helpers for CETES and M Bonos
 5. bootstraps a discount curve with strict interpolation policy
@@ -91,32 +98,59 @@ Rows must also satisfy:
 - price fields needed by the selected QuantLib helper are present
 
 If `sector` is present, the selector requires `sector == "GUBERNAMENTAL"`.
-If a Valmer file omits `sector`, the selector proceeds only for the explicit
-`(tipovalor, emisora)` allow-list above.
+If persisted Valmer details omit `sector`, the selector proceeds only for the
+explicit `(tipovalor, emisora)` allow-list above.
 
 ## Source Row Contract
 
-The bootstrap builder must consume normalized Valmer vector columns. The first
-implementation needs these fields:
+The bootstrap builder consumes persisted vector snapshots, not raw vector
+files. The curve source is `ValmerVectorPricesStorage` joined to
+`ValmerAssetDetailsTable` on
+`ValmerAssetDetailsTable.valmer_unique_identifier =
+ValmerVectorPricesStorage.asset_identifier`.
 
-| Field | Required For | Meaning |
-| --- | --- | --- |
-| `fecha` | all rows | Valuation date from the vector file |
-| `tipovalor` | all rows | Valmer security type |
-| `emisora` | all rows | Valmer issuer/family code |
-| `serie` | all rows | Instrument series |
-| `fechavcto` | all rows | Maturity date |
-| `monedaemision` | all rows | Valmer issue currency code, must be `MPS` |
-| `preciolimpio` | M Bonos | Clean price |
-| `preciosucio` | all rows | Dirty price |
-| `interesesacumulados` | M Bonos validation | Accrued interest |
-| `tasacupon` | M Bonos | Coupon rate |
-| `freccpn` | M Bonos | Coupon frequency |
-| `reglacupon` | M Bonos | Coupon rule |
-| `valornominal` | all rows | Face value when available |
+Storage-to-builder mapping:
 
-The builder preserves `unique_identifier = tipovalor_emisora_serie` for
-diagnostics and helper attribution, but curve storage must not be asset-indexed.
+| Builder field | Source | Required for | Meaning |
+| --- | --- | --- | --- |
+| `time_index` | `ValmerVectorPricesStorage.time_index` | all rows | Snapshot timestamp and curve update boundary |
+| `unique_identifier` | `ValmerVectorPricesStorage.asset_identifier` | all rows | Valmer asset identifier for diagnostics and duplicate checks |
+| `fecha` | `ValmerVectorPricesStorage.valuation_date` | all rows | Valuation date; falls back to `time_index` when missing |
+| `preciolimpio` | `ValmerVectorPricesStorage.clean_price` | M Bonos | Clean price quote |
+| `preciosucio` | `ValmerVectorPricesStorage.dirty_price` | all rows | CETES quote and M Bonos dirty-price validation |
+| `interesesacumulados` | `ValmerVectorPricesStorage.accrued_interest` | M Bonos | Accrued interest for clean + accrued = dirty validation |
+| `diastransccpn` | `ValmerVectorPricesStorage.days_since_coupon` | M Bonos when present | Actual/360 accrued-interest validation input |
+| `valornominalactualizado` | `ValmerVectorPricesStorage.adjusted_face_value` | not consumed by helpers | Selected for source parity and future use |
+| `tipovalor` | `ValmerAssetDetailsTable.security_type` | all rows | Valmer security type |
+| `emisora` | `ValmerAssetDetailsTable.issuer` | all rows | Valmer issuer/family code |
+| `serie` | `ValmerAssetDetailsTable.series` | all rows | Instrument series |
+| `sector` | `ValmerAssetDetailsTable.sector` | all rows when present | Must be `GUBERNAMENTAL` when populated |
+| `fechaemision` | `ValmerAssetDetailsTable.issue_date` | M Bonos | Issue date for schedule generation |
+| `fechavcto` | `ValmerAssetDetailsTable.maturity_date` | all rows | Maturity date |
+| `valornominal` | `ValmerAssetDetailsTable.face_value` | optional | CETES default to `10`; M Bonos default to `100` |
+| `monedaemision` | `ValmerAssetDetailsTable.issue_currency` | all rows | Must be `MPS` |
+| `freccpn` | `ValmerAssetDetailsTable.coupon_frequency` | M Bonos | Must parse to `182` days |
+| `tasacupon` | `ValmerAssetDetailsTable.coupon_rate` | M Bonos | Coupon rate |
+
+CETES rows require `tipovalor = BI`, `emisora = CETES`, and
+`monedaemision = MPS`. They build zero-coupon bond helpers using `preciosucio`
+as the market quote. `valornominal` is optional and defaults to `10`.
+
+M Bonos rows require `tipovalor = M`, `emisora = BONOS`, and
+`monedaemision = MPS`. They build fixed-rate bond helpers using
+`preciolimpio`, `preciosucio`, `interesesacumulados`, `fechaemision`,
+`fechavcto`, `freccpn`, and `tasacupon`. `freccpn` must resolve to 182 days.
+`valornominal` is optional and defaults to `100`. `diastransccpn` is used for
+accrual validation when present.
+
+`reglacupon` / `coupon_rule` is not part of the current curve-source frame and
+is not consumed by the implemented helper builder. If a later M Bonos schedule
+requires coupon-rule-specific behavior, add `coupon_rule` to the storage
+loader, consume it in schedule construction, and update tests with the same
+change.
+
+The builder preserves `unique_identifier` for diagnostics and helper
+attribution, but curve storage must not be asset-indexed.
 
 ## Issuer And Valuation Standards
 
@@ -133,13 +167,13 @@ Source documents:
 
 ### Common MXN Government Convention
 
-Use these conventions for the `MXN_GOVERNMENT_BOND`
-`IndexConventionDetails.convention_dump`:
+Use these conventions for the `VALMER_MXN_GOVERNMENT_BOND`
+`CurveBuildingDetails` row and the government curve builder:
 
 | Convention Field | Value | Rationale |
 | --- | --- | --- |
 | `currency_code` | `MXN` | Instruments are selected from Valmer `monedaemision == "MPS"`, the Valmer MXN issue-currency code. |
-| `calendar_code` | `Mexico/BMV` | QuantLib exposes `Mexico` with the `BMV` market; official issuer text refers to banking business-day substitutions. |
+| `calendar_code` | `Mexico` | Current `msm_pricing` calendar JSON codec accepts `Mexico` for the QuantLib Mexico/BMV calendar. |
 | `day_counter_code` | `Actual360` | CETES and M Bonos valuation formulas use actual elapsed days over a 360-day year. |
 | `business_day_convention` | source schedule first; otherwise configured Mexico business-day adjustment | SHCP/Banxico says dates are replaced by a banking business day when holidays intervene, but the source text does not fully specify a universal roll convention for every secondary-market valuation. |
 | `coupon_period_days` | `182` for M Bonos | M Bonos pay interest every 182 days or the banking business day that substitutes that date. |
@@ -147,7 +181,7 @@ Use these conventions for the `MXN_GOVERNMENT_BOND`
 | `date_generation_rule` | `Backward` for generated fallback schedules | M Bonos series identify maturity; coupon schedules should be generated backward from maturity when source coupon dates are unavailable. |
 | `end_of_month` | `False` | The official descriptions use fixed day terms and 182-day periods, not end-of-month scheduling. |
 
-The implementation generates a backward 182-day schedule using the Mexico/BMV
+The implementation generates a backward 182-day schedule using the Mexico
 calendar and the configured business-day convention. If generated dates cannot
 reproduce Valmer accrued interest within tolerance, it fails instead of silently
 publishing a curve.
@@ -208,15 +242,15 @@ Recommended static identities:
 
 | Row Type | Identifier | Notes |
 | --- | --- | --- |
-| `Index` | `MXN_GOVERNMENT_BOND` | Mexican government MXN bond benchmark identity |
-| `IndexConventionDetails` | keyed by `MXN_GOVERNMENT_BOND.uid` | QuantLib calendar, day count, settlement, and currency conventions |
 | `Curve` | `VALMER_MXN_GOVERNMENT_BOND` | Valmer-sourced MXN government bond discount curve |
+| `CurveBuildingDetails` | keyed by `VALMER_MXN_GOVERNMENT_BOND.uid` | QuantLib calendar, day count, settlement, compounding, and interpolation build policy |
+| `PricingMarketDataSetCurveBinding` | `z_spread_base:index:<CETE_28.uid>:mid` and `z_spread_base:index:<CETE_182.uid>:mid` | Runtime benchmark selector to government curve resolution |
 
-The `IndexConventionDetails` row must encode at least:
+The `CurveBuildingDetails` row must encode at least:
 
 ```text
 currency_code = MXN
-calendar_code = Mexico/BMV
+calendar_code = Mexico
 day_counter_code = Actual360
 settlement_days = 0
 coupon_period_days = 182
@@ -234,11 +268,13 @@ The `Curve` row uses:
 - `source = "valmer"`
 - `interpolation_method = "log_linear_discount"`
 - `compounding = "compounded_annual"`
+- `quote_side = "mid"`
 - metadata only for stable source descriptors, not per-file observations
 
 Do not register CETES, M Bonos, or this curve as `Index` rows individually.
-The instruments remain `Asset` / bond rows. The `Index` row above is only the
-pricing benchmark identity required by the current `Curve` relationship model.
+The instruments remain `Asset` / bond rows. CETE indexes are real benchmark
+selectors; `PricingMarketDataSetCurveBinding` maps those selectors to
+`VALMER_MXN_GOVERNMENT_BOND` for z-spread valuation.
 
 ## Target DataNode Output
 
@@ -270,13 +306,18 @@ time_index                 curve_identifier              curve
 ## Workflow
 
 ```text
-Valmer Vector File
+ImportValmer vector DataNode
     |
     v
-normalize source columns
+ValmerVectorPricesStorage
+    + ValmerAssetDetailsTable
     |
     v
-derive unique_identifier and valuation time_index from fecha
+ValmerMxnGovernmentBondDiscountCurvesNode
+    OFFSET_START = 2026-06-01T00:00:00Z
+    |
+    v
+query persisted snapshots from the DataNode update boundary
     |
     v
 select bootstrap rows
@@ -381,9 +422,10 @@ Required validation:
 Exact duplicate maturity pillars are deduplicated before QuantLib bootstrap by
 preferring CETES over M Bonos for that maturity. The resulting helper set still
 must have strictly increasing pillars. This keeps the curve publishable for real
-Valmer files where a CETES row and an M Bono row can share the same maturity.
+Valmer snapshots where a CETES row and an M Bono row can share the same
+maturity.
 
-If a source file has only CETES or only M Bonos, the builder fails with a clear
+If a source snapshot has only CETES or only M Bonos, the builder fails with a clear
 "insufficient bootstrap instruments" error. There is no partial-curve
 publication mode.
 
@@ -424,10 +466,12 @@ Implementation locations:
   for row selection, source validation, QuantLib helper creation, and curve
   point extraction
 - `src/valmer_connectors/instruments/curve_bootstrap.py`
-  for `MXN_GOVERNMENT_BOND` `Index`, convention, and
-  `VALMER_MXN_GOVERNMENT_BOND` `Curve` upserts
+  for `VALMER_MXN_GOVERNMENT_BOND` `Curve`, `CurveBuildingDetails`, and
+  explicit `mid` `PricingMarketDataSetCurveBinding` upserts
 - `src/valmer_connectors/services/curve_update.py`
-  for a service function that runs the new `DiscountCurvesNode`
+  for a service function that runs the project-specific
+  `DiscountCurvesNode` subclass with `OFFSET_START = 2026-06-01T00:00:00Z`
+  and reads persisted vector storage snapshots
 - `src/valmer_connectors/cli/main.py`
   for the CLI command:
 
@@ -439,12 +483,13 @@ valmer-connectors curves update-mxn-government
 
 ## Implementation Tasks
 
-- [x] Add static curve identifiers for the Mexican government bond curve:
-  `MXN_GOVERNMENT_BOND` and `VALMER_MXN_GOVERNMENT_BOND`.
-- [x] Extend `curve_bootstrap.py` to upsert the benchmark `Index`,
-  `IndexConventionDetails`, and `Curve` rows for the Mexican government curve.
-- [x] Encode the `MXN_GOVERNMENT_BOND` convention dump with `MXN`,
-  `Mexico/BMV`, `Actual360`, `settlement_days = 0`, `coupon_period_days = 182`,
+- [x] Add the static curve identifier
+  `VALMER_MXN_GOVERNMENT_BOND`.
+- [x] Extend `curve_bootstrap.py` to upsert the government `Curve`,
+  `CurveBuildingDetails`, and explicit `mid`
+  `PricingMarketDataSetCurveBinding` rows.
+- [x] Encode the `VALMER_MXN_GOVERNMENT_BOND` build details with `MXN`,
+  `Mexico`, `Actual360`, `settlement_days = 0`, `coupon_period_days = 182`,
   `date_generation_rule = Backward`, and `end_of_month = false`.
 - [x] Add a vector-date extraction helper that mirrors vector price `fecha` to
   end-of-day `time_index` behavior.
@@ -467,6 +512,9 @@ valmer-connectors curves update-mxn-government
 - [x] Publish through `DiscountCurvesNode`; do not add a custom compressed
   storage table.
 - [x] Add a service and CLI command for running the new curve update.
+- [x] Build the curve from `ValmerVectorPricesStorage` joined to
+      `ValmerAssetDetailsTable`, not from a separate raw artifact read.
+- [x] Set the MXN government curve DataNode `OFFSET_START` to June 1, 2026.
 - [x] Add unit tests for row selection using the local sample shape.
 - [x] Add unit tests for CETES helper validation and M Bonos helper validation.
 - [x] Add a frame-shape test proving the builder returns
@@ -523,8 +571,12 @@ Do not mark the implementation complete until these checks pass:
 - selected rows use one valuation `time_index` per emitted curve row
 - `Curve.get_by_unique_identifier("VALMER_MXN_GOVERNMENT_BOND")` returns the
   expected curve row
-- `IndexConventionDetails` for `MXN_GOVERNMENT_BOND` stores `Mexico/BMV`,
+- `CurveBuildingDetails` for `VALMER_MXN_GOVERNMENT_BOND` stores `Mexico`,
   `Actual360`, 182-day coupon periods, and Valmer-specific `settlement_days = 0`
+- `PricingMarketDataSetCurveBinding` resolves CETE benchmark selectors to
+  `VALMER_MXN_GOVERNMENT_BOND` with `role_key="z_spread_base"` and
+  `quote_side="mid"`
+- no `Index` row is created for `MXN_GOVERNMENT_BOND`
 - the builder emits a frame accepted by `DiscountCurvesNode`
 - persisted curve rows decode through the core curve codec
 - no code path publishes the government bond curve as asset-indexed data

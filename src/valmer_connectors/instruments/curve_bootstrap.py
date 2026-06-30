@@ -15,12 +15,12 @@ TIIE_182_INDEX_UNIQUE_IDENTIFIER = "TIIE_182"
 CETE_28_INDEX_UNIQUE_IDENTIFIER = "CETE_28"
 CETE_91_INDEX_UNIQUE_IDENTIFIER = "CETE_91"
 CETE_182_INDEX_UNIQUE_IDENTIFIER = "CETE_182"
-MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER = "MXN_GOVERNMENT_BOND"
 
 VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER = "VALMER_TIIE_28"
 VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER = "VALMER_MXN_GOVERNMENT_BOND"
 VALMER_SOURCE = "valmer"
 VALMER_DISCOUNT_CURVES_CADENCE = "1d"
+VALMER_CURVE_QUOTE_SIDE = "mid"
 
 
 @dataclass(frozen=True)
@@ -104,13 +104,6 @@ MEXICAN_REFERENCE_INDEX_DEFINITIONS: tuple[MexicanReferenceIndexDefinition, ...]
         index_family="CETE",
         tenor_days=182,
         provider=BANCO_DE_MEXICO_PROVIDER,
-    ),
-    MexicanReferenceIndexDefinition(
-        unique_identifier=MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER,
-        display_name="MXN government bond benchmark",
-        description="Mexican government MXN bond benchmark used for Valmer curve pricing.",
-        index_family="MXN_GOVERNMENT_BOND",
-        tenor_days=182,
     ),
 )
 
@@ -207,17 +200,6 @@ MEXICAN_INDEX_CONVENTION_DEFINITIONS: tuple[MexicanIndexConventionDefinition, ..
         settlement_days=1,
         business_day_convention="Following",
     ),
-    MexicanIndexConventionDefinition(
-        index_unique_identifier=MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER,
-        index_family="MXN_GOVERNMENT_BOND",
-        tenor_days=182,
-        settlement_days=0,
-        business_day_convention="Following",
-        fixing_calendar_code="Mexico-BMV",
-        calendar_code="Mexico/BMV",
-        coupon_period_days=182,
-        date_generation_rule="Backward",
-    ),
 )
 
 
@@ -226,18 +208,20 @@ class ValmerCurveDefinition:
     unique_identifier: str
     display_name: str
     curve_type: str
-    index_unique_identifier: str
+    currency_code: str
+    quote_side: str
     interpolation_method: str
     compounding: str
     source: str
     metadata_json: Mapping[str, Any] = field(default_factory=dict)
 
-    def to_curve_payload(self, *, index_uid: Any) -> dict[str, Any]:
+    def to_curve_payload(self) -> dict[str, Any]:
         return {
             "unique_identifier": self.unique_identifier,
             "display_name": self.display_name,
             "curve_type": self.curve_type,
-            "index_uid": index_uid,
+            "currency_code": self.currency_code,
+            "quote_side": self.quote_side,
             "interpolation_method": self.interpolation_method,
             "compounding": self.compounding,
             "source": self.source,
@@ -245,11 +229,77 @@ class ValmerCurveDefinition:
         }
 
 
+@dataclass(frozen=True)
+class ValmerCurveBuildingDetailsDefinition:
+    curve_unique_identifier: str
+    builder_type: str = "zero_rate_curve"
+    quote_convention: str = "zero_rate"
+    rate_unit: str = "decimal"
+    day_counter_code: str = "Actual360"
+    calendar_code: str = "Mexico"
+    interpolation_method: str = "log_linear_discount"
+    compounding: str = "compounded_annual"
+    compounding_frequency: str | None = None
+    extrapolation_policy: str = "enabled"
+    bootstrap_method: str | None = None
+    builder_payload: Mapping[str, Any] = field(default_factory=dict)
+    source: str = VALMER_SOURCE
+    metadata_json: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_building_details_payload(self, *, curve_uid: Any) -> dict[str, Any]:
+        return {
+            "curve_uid": curve_uid,
+            "builder_type": self.builder_type,
+            "quote_convention": self.quote_convention,
+            "rate_unit": self.rate_unit,
+            "day_counter_code": self.day_counter_code,
+            "calendar_code": self.calendar_code,
+            "interpolation_method": self.interpolation_method,
+            "compounding": self.compounding,
+            "compounding_frequency": self.compounding_frequency,
+            "extrapolation_policy": self.extrapolation_policy,
+            "bootstrap_method": self.bootstrap_method,
+            "builder_payload": dict(self.builder_payload) or None,
+            "source": self.source,
+            "metadata_json": dict(self.metadata_json) or None,
+        }
+
+
+@dataclass(frozen=True)
+class ValmerIndexCurveBindingDefinition:
+    role_key: str
+    index_unique_identifier: str
+    curve_unique_identifier: str
+    quote_side: str = VALMER_CURVE_QUOTE_SIDE
+    source: str = VALMER_SOURCE
+    priority: int = 0
+    metadata_json: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_index_curve_selection_payload(
+        self,
+        *,
+        market_data_set_uid: Any,
+        index_uid: Any,
+        curve_uid: Any,
+    ) -> dict[str, Any]:
+        return {
+            "market_data_set_uid": market_data_set_uid,
+            "role_key": self.role_key,
+            "index_uid": index_uid,
+            "quote_side": self.quote_side,
+            "curve_uid": curve_uid,
+            "source": self.source,
+            "priority": self.priority,
+            "metadata_json": dict(self.metadata_json) or None,
+        }
+
+
 VALMER_TIIE_28_CURVE_DEFINITION = ValmerCurveDefinition(
     unique_identifier=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
     display_name="Valmer TIIE 28 zero curve",
-    curve_type="discount",
-    index_unique_identifier=TIIE_28_INDEX_UNIQUE_IDENTIFIER,
+    curve_type="projection",
+    currency_code="MXN",
+    quote_side=VALMER_CURVE_QUOTE_SIDE,
     interpolation_method="log_linear_discount",
     compounding="compounded_annual",
     source=VALMER_SOURCE,
@@ -264,7 +314,8 @@ VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION = ValmerCurveDefinition(
     unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
     display_name="Valmer MXN government bond discount curve",
     curve_type="discount",
-    index_unique_identifier=MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER,
+    currency_code="MXN",
+    quote_side=VALMER_CURVE_QUOTE_SIDE,
     interpolation_method="log_linear_discount",
     compounding="compounded_annual",
     source=VALMER_SOURCE,
@@ -278,6 +329,71 @@ VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION = ValmerCurveDefinition(
 VALMER_CURVE_DEFINITIONS: tuple[ValmerCurveDefinition, ...] = (
     VALMER_TIIE_28_CURVE_DEFINITION,
     VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION,
+)
+
+VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS: tuple[
+    ValmerCurveBuildingDetailsDefinition,
+    ...,
+] = (
+    ValmerCurveBuildingDetailsDefinition(
+        curve_unique_identifier=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+        metadata_json={"market": MEXICO_MARKET},
+    ),
+    ValmerCurveBuildingDetailsDefinition(
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+        metadata_json={"market": MEXICO_MARKET},
+    ),
+)
+
+VALMER_INDEX_CURVE_BINDING_DEFINITIONS: tuple[
+    ValmerIndexCurveBindingDefinition,
+    ...,
+] = (
+    ValmerIndexCurveBindingDefinition(
+        role_key="projection",
+        index_unique_identifier=TIIE_28_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="projection",
+        index_unique_identifier=TIIE_91_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="projection",
+        index_unique_identifier=TIIE_182_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="z_spread_base",
+        index_unique_identifier=TIIE_28_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="z_spread_base",
+        index_unique_identifier=TIIE_91_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="z_spread_base",
+        index_unique_identifier=TIIE_182_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="z_spread_base",
+        index_unique_identifier=CETE_28_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="z_spread_base",
+        index_unique_identifier=CETE_91_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="z_spread_base",
+        index_unique_identifier=CETE_182_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    ),
 )
 
 
@@ -316,9 +432,17 @@ def valmer_pricing_runtime_models() -> list[type[Any]]:
     """Pricing MetaTables required by Valmer instrument and curve workflows."""
 
     from msm.models import AssetTable, IndexTable, IndexTypeTable
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
     from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
+    from msm_pricing.models.curve_building_details import CurveBuildingDetailsTable
     from msm_pricing.models.curves import CurveTable
     from msm_pricing.models.index_convention_details import IndexConventionDetailsTable
+    from msm_pricing.models.market_data_bindings import (
+        PricingMarketDataSetBindingTable,
+        PricingMarketDataSetCurveBindingTable,
+        PricingMarketDataSetTable,
+    )
     from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
     return [
@@ -327,7 +451,13 @@ def valmer_pricing_runtime_models() -> list[type[Any]]:
         IndexTable,
         IndexConventionDetailsTable,
         CurveTable,
+        CurveBuildingDetailsTable,
         AssetCurrentPricingDetailsTable,
+        PricingMarketDataSetTable,
+        PricingMarketDataSetBindingTable,
+        PricingMarketDataSetCurveBindingTable,
+        DiscountCurvesStorage,
+        IndexFixingsStorage,
         AssetPricingDetailsStorage,
     ]
 
@@ -419,7 +549,6 @@ def upsert_mexican_index_convention_details(
 def upsert_valmer_tiie_curve(
     definition: ValmerCurveDefinition = VALMER_TIIE_28_CURVE_DEFINITION,
     *,
-    indexes: Mapping[str, Any] | None = None,
     attach_runtime: bool = True,
     create_schemas: bool | None = None,
     **runtime_kwargs: Any,
@@ -428,22 +557,14 @@ def upsert_valmer_tiie_curve(
 
     if create_schemas is not None:
         attach_runtime = create_schemas
-    resolved_indexes = indexes or upsert_mexican_reference_indexes(
-        attach_runtime=attach_runtime,
-        **runtime_kwargs,
-    )
-    upsert_mexican_index_convention_details(
-        indexes=resolved_indexes,
-        attach_runtime=False,
-    )
-    index = resolved_indexes[definition.index_unique_identifier]
-    return Curve.upsert(definition.to_curve_payload(index_uid=index.uid))
+    if attach_runtime:
+        attach_valmer_curve_pricing_runtime(**runtime_kwargs)
+    return Curve.upsert(definition.to_curve_payload())
 
 
 def upsert_valmer_mxn_government_bond_curve(
     definition: ValmerCurveDefinition = VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION,
     *,
-    indexes: Mapping[str, Any] | None = None,
     attach_runtime: bool = True,
     create_schemas: bool | None = None,
     **runtime_kwargs: Any,
@@ -452,16 +573,103 @@ def upsert_valmer_mxn_government_bond_curve(
 
     if create_schemas is not None:
         attach_runtime = create_schemas
-    resolved_indexes = indexes or upsert_mexican_reference_indexes(
-        attach_runtime=attach_runtime,
-        **runtime_kwargs,
+    if attach_runtime:
+        attach_valmer_curve_pricing_runtime(**runtime_kwargs)
+    return Curve.upsert(definition.to_curve_payload())
+
+
+def upsert_valmer_curve_building_details(
+    definitions: Sequence[ValmerCurveBuildingDetailsDefinition] = (
+        VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS
+    ),
+    *,
+    curves: Mapping[str, Any],
+) -> dict[str, Any]:
+    from msm_pricing.api import CurveBuildingDetails
+
+    upserted = {}
+    for definition in definitions:
+        curve = curves[definition.curve_unique_identifier]
+        detail = CurveBuildingDetails.upsert(
+            definition.to_building_details_payload(curve_uid=curve.uid)
+        )
+        upserted[definition.curve_unique_identifier] = detail
+    return upserted
+
+
+def upsert_valmer_market_data_source_bindings() -> dict[str, Any]:
+    from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+    from msm_pricing.settings import (
+        PRICING_CONCEPT_DISCOUNT_CURVES,
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+        PRICING_MARKET_DATA_SET_DEFAULT,
     )
-    upsert_mexican_index_convention_details(
-        indexes=resolved_indexes,
-        attach_runtime=False,
+
+    market_data_set = PricingMarketDataSet.upsert(
+        {
+            "set_key": PRICING_MARKET_DATA_SET_DEFAULT,
+            "display_name": "Default pricing market data",
+            "description": "Default Valmer pricing market-data set.",
+            "metadata_json": {"source": VALMER_SOURCE},
+        }
     )
-    index = resolved_indexes[definition.index_unique_identifier]
-    return Curve.upsert(definition.to_curve_payload(index_uid=index.uid))
+    discount_binding = PricingMarketDataSetBinding.upsert(
+        {
+            "market_data_set_uid": market_data_set.uid,
+            "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
+            "data_node_uid": DiscountCurvesStorage.get_meta_table_uid(),
+            "storage_table_identifier": DiscountCurvesStorage.get_identifier(),
+            "source": VALMER_SOURCE,
+        }
+    )
+    fixing_binding = PricingMarketDataSetBinding.upsert(
+        {
+            "market_data_set_uid": market_data_set.uid,
+            "concept_key": PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+            "data_node_uid": IndexFixingsStorage.get_meta_table_uid(),
+            "storage_table_identifier": IndexFixingsStorage.get_identifier(),
+            "source": VALMER_SOURCE,
+        }
+    )
+    return {
+        "market_data_set": market_data_set,
+        "discount_curves": discount_binding,
+        "interest_rate_index_fixings": fixing_binding,
+    }
+
+
+def upsert_valmer_curve_bindings(
+    definitions: Sequence[ValmerIndexCurveBindingDefinition] = (
+        VALMER_INDEX_CURVE_BINDING_DEFINITIONS
+    ),
+    *,
+    indexes: Mapping[str, Any],
+    curves: Mapping[str, Any],
+    market_data_set: Any,
+) -> dict[tuple[str, str, str], Any]:
+    from msm_pricing.api import PricingMarketDataSetCurveBinding
+
+    upserted = {}
+    for definition in definitions:
+        index = indexes[definition.index_unique_identifier]
+        curve = curves[definition.curve_unique_identifier]
+        selection = PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+            definition.to_index_curve_selection_payload(
+                market_data_set_uid=market_data_set.uid,
+                index_uid=index.uid,
+                curve_uid=curve.uid,
+            )
+        )
+        upserted[
+            (
+                definition.role_key,
+                definition.index_unique_identifier,
+                definition.quote_side,
+            )
+        ] = selection
+    return upserted
 
 
 def bootstrap_valmer_curve_pricing(
@@ -490,15 +698,25 @@ def bootstrap_valmer_curve_pricing(
     curves = {
         curve.unique_identifier: curve
         for curve in (
-            upsert_valmer_tiie_curve(indexes=indexes, attach_runtime=False),
-            upsert_valmer_mxn_government_bond_curve(indexes=indexes, attach_runtime=False),
+            upsert_valmer_tiie_curve(attach_runtime=False),
+            upsert_valmer_mxn_government_bond_curve(attach_runtime=False),
         )
     }
+    curve_building_details = upsert_valmer_curve_building_details(curves=curves)
+    market_data_bindings = upsert_valmer_market_data_source_bindings()
+    curve_bindings = upsert_valmer_curve_bindings(
+        indexes=indexes,
+        curves=curves,
+        market_data_set=market_data_bindings["market_data_set"],
+    )
     return {
         "index_type": index_type,
         "indexes": indexes,
         "index_conventions": conventions,
         "curves": curves,
+        "curve_building_details": curve_building_details,
+        "market_data_bindings": market_data_bindings,
+        "curve_bindings": curve_bindings,
     }
 
 
@@ -514,9 +732,11 @@ __all__ = [
     "MEXICAN_INDEX_CONVENTION_DEFINITIONS",
     "MEXICAN_MARKET_SOURCE",
     "MEXICAN_REFERENCE_INDEX_DEFINITIONS",
-    "MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER",
+    "VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS",
+    "VALMER_CURVE_QUOTE_SIDE",
     "VALMER_DISCOUNT_CURVES_CADENCE",
     "VALMER_CURVE_DEFINITIONS",
+    "VALMER_INDEX_CURVE_BINDING_DEFINITIONS",
     "VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION",
     "VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER",
     "VALMER_SOURCE",
@@ -531,7 +751,9 @@ __all__ = [
     "TIIE_28_INDEX_UNIQUE_IDENTIFIER",
     "TIIE_91_INDEX_UNIQUE_IDENTIFIER",
     "TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER",
+    "ValmerCurveBuildingDetailsDefinition",
     "ValmerCurveDefinition",
+    "ValmerIndexCurveBindingDefinition",
     "attach_valmer_curve_pricing_runtime",
     "bootstrap_valmer_curve_pricing",
     "bootstrap_valmer_curve_indexes",
@@ -541,6 +763,9 @@ __all__ = [
     "upsert_interest_rate_index_type",
     "upsert_mexican_index_convention_details",
     "upsert_mexican_reference_indexes",
+    "upsert_valmer_curve_bindings",
+    "upsert_valmer_curve_building_details",
+    "upsert_valmer_market_data_source_bindings",
     "upsert_valmer_mxn_government_bond_curve",
     "upsert_valmer_tiie_curve",
 ]

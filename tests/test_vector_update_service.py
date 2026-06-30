@@ -35,6 +35,7 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
         )
         updater.prepare_for_update.assert_called_once_with(
             force_pricing_update=True,
+            bypass_vector_cursor_filter=False,
         )
         updater.run.assert_called_once_with(force_update=True)
 
@@ -67,10 +68,12 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
         self.assertEqual(build_import.call_count, 3)
         first_loop_updater.prepare_for_update.assert_called_once_with(
             force_pricing_update=True,
+            bypass_vector_cursor_filter=False,
         )
         first_loop_updater.run.assert_called_once_with(force_update=True)
         second_loop_updater.prepare_for_update.assert_called_once_with(
             force_pricing_update=True,
+            bypass_vector_cursor_filter=False,
         )
         second_loop_updater.run.assert_called_once_with(force_update=True)
 
@@ -121,7 +124,10 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
         self.assertIsInstance(source, MetaTableValmerSourceConfig)
         self.assertEqual(source.source_name, "government")
         self.assertEqual(source.column_map["Fecha"], "fecha")
-        updater.prepare_for_update.assert_called_once_with(force_pricing_update=True)
+        updater.prepare_for_update.assert_called_once_with(
+            force_pricing_update=True,
+            bypass_vector_cursor_filter=False,
+        )
         updater.run.assert_called_once_with(force_update=True)
 
     def test_vector_update_uses_local_bucket_path(self):
@@ -158,7 +164,10 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
         debug_files.assert_called_once_with(
             os.pathsep.join(str(path) for path in [first_file, second_file])
         )
-        updater.prepare_for_update.assert_called_once_with(force_pricing_update=True)
+        updater.prepare_for_update.assert_called_once_with(
+            force_pricing_update=True,
+            bypass_vector_cursor_filter=False,
+        )
         updater.run.assert_called_once_with(force_update=True)
 
     def test_vector_update_resolves_local_bucket_path_from_env_var(self):
@@ -195,7 +204,10 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
                 )
 
         debug_files.assert_called_once_with(str(vector_file))
-        updater.prepare_for_update.assert_called_once_with(force_pricing_update=True)
+        updater.prepare_for_update.assert_called_once_with(
+            force_pricing_update=True,
+            bypass_vector_cursor_filter=False,
+        )
         updater.run.assert_called_once_with(force_update=True)
 
     def test_vector_update_filters_local_bucket_files_by_persisted_vector_date(self):
@@ -230,7 +242,51 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
                 )
 
         debug_files.assert_called_once_with(str(new_file))
-        updater.prepare_for_update.assert_called_once_with(force_pricing_update=True)
+        updater.prepare_for_update.assert_called_once_with(
+            force_pricing_update=True,
+            bypass_vector_cursor_filter=False,
+        )
+        updater.run.assert_called_once_with(force_update=True)
+
+    def test_vector_update_bypasses_local_cursor_filter_for_repair_runs(self):
+        updater = Mock()
+        updater.get_update_statistics.return_value = object()
+
+        with TemporaryDirectory() as tmpdir:
+            folder = Path(tmpdir)
+            old_file = folder / "VectorAnalitico24h_2024-12-03.xls"
+            new_file = folder / "VectorAnalitico24h_2024-12-04.xls"
+            old_file.write_text("", encoding="utf-8")
+            new_file.write_text("", encoding="utf-8")
+
+            with (
+                patch("valmer_connectors.services.vector_update.bootstrap_runtime"),
+                patch(
+                    "valmer_connectors.services.vector_update._latest_vector_storage_time_index",
+                    side_effect=AssertionError("cursor lookup should be bypassed"),
+                ),
+                patch("valmer_connectors.services.vector_update._debug_artifact_files") as debug_files,
+                patch(
+                    "valmer_connectors.services.vector_update.build_import_valmer",
+                    return_value=updater,
+                ),
+            ):
+                debug_files.return_value.__enter__.return_value = None
+                debug_files.return_value.__exit__.return_value = False
+
+                vector_update.run_vector_update(
+                    bucket_name="Vector Bucket",
+                    local_bucket_path=str(folder),
+                    bypass_vector_cursor_filter=True,
+                )
+
+        debug_files.assert_called_once_with(
+            os.pathsep.join(str(path) for path in [old_file, new_file])
+        )
+        updater.prepare_for_update.assert_called_once_with(
+            force_pricing_update=True,
+            bypass_vector_cursor_filter=True,
+        )
         updater.run.assert_called_once_with(force_update=True)
 
     def test_vector_update_uses_onedrive_graph_source(self):
@@ -291,7 +347,10 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
             source_kind="artifact",
             source_metatables=None,
         )
-        updater.prepare_for_update.assert_called_once_with(force_pricing_update=True)
+        updater.prepare_for_update.assert_called_once_with(
+            force_pricing_update=True,
+            bypass_vector_cursor_filter=False,
+        )
         updater.run.assert_called_once_with(force_update=True)
 
     def test_local_vector_file_selection_keeps_undated_files(self):

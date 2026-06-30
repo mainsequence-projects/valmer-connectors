@@ -38,6 +38,24 @@ keep row when asset_identifier has no stored vector observation
 This is the same asset-indexed update rule regardless of source type. There is
 no global latest-date source skip.
 
+Repair runs can bypass this row-level cursor so the normal DataNode path still
+revisits rows whose vector observations already exist:
+
+```bash
+valmer-connectors vector update --bypass-vector-cursor-filter
+```
+
+The equivalent environment control is:
+
+```text
+VALMER_VECTOR_BYPASS_CURSOR_FILTER=1
+```
+
+Use this only for repair workflows such as patching pricing details or
+rebuilding static asset metadata. It keeps source rows available for
+pre-update hydration; vector publication still writes through the normal
+DataNode update path.
+
 ## Source Selection
 
 `prepare_source_data()` has three source paths. The CLI exposes the platform
@@ -148,6 +166,10 @@ For each artifact, the importer:
 Artifact rows are concatenated first and then filtered by the per-asset vector
 cursor described above.
 
+When `VALMER_VECTOR_BYPASS_CURSOR_FILTER=1` or
+`--bypass-vector-cursor-filter` is set, artifact rows skip that row-level
+cursor before asset and pricing hydration.
+
 ## Local Folder Bucket Path
 
 For local multi-file upload testing, use a folder path as the source:
@@ -181,6 +203,10 @@ with the latest persisted vector `time_index`. Files whose date is not newer
 than storage are not staged or read. Files without a parseable date remain
 selected and are still checked by the row-level DataNode cursor filter.
 
+For repair runs, `--bypass-vector-cursor-filter` also bypasses this local
+filename-date prefilter so older files can be staged and passed to
+`prepare_for_update()`.
+
 The local folder path also preflights each selected batch for cloud-provider
 placeholders before reading that batch. If a selected OneDrive/FileProvider file
 exists but has not been downloaded/materialized locally, the command opens the
@@ -208,6 +234,10 @@ The source adapter:
 4. selects only `VectorAnalitico24h_*.xls` files newer than storage
 5. downloads selected files into a local cache directory
 6. runs the existing local-file Valmer parser on the cached files
+
+With `--bypass-vector-cursor-filter`, the OneDrive adapter does not send the
+latest vector time index to file selection, so historical files can be
+downloaded for a repair pass.
 
 Credential values are resolved by key. The default keys are:
 
@@ -399,6 +429,27 @@ data.
 
 Local rows then pass through the same normalization and unique-identifier
 construction as platform artifacts.
+
+## Pricing Detail Repair Controls
+
+Pricing details are patched through the same `valmer-connectors vector update`
+execution path as normal source imports. The repair controls are:
+
+| Control | Effect |
+| --- | --- |
+| `--force-pricing-details-patch` / `VALMER_FORCE_PRICING_DETAILS_PATCH=1` | Rebuild pricing details for every selected supported target bond, even when a current row already exists. |
+| `--bypass-vector-cursor-filter` / `VALMER_VECTOR_BYPASS_CURSOR_FILTER=1` | Keep source rows available before hydration even when vector observations already exist. |
+
+Example:
+
+```bash
+VALMER_FORCE_PRICING_DETAILS_PATCH=1 \
+VALMER_VECTOR_BYPASS_CURSOR_FILTER=1 \
+valmer-connectors vector update
+```
+
+The force flag only controls pricing-detail hydration. It does not create a
+separate patching script and does not bypass `msm_pricing.api.add_many_pricing_details(...)`.
 
 ## Output Of Source Import
 

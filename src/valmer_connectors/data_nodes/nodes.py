@@ -46,7 +46,9 @@ from valmer_connectors.meta_tables.valmer_asset_details import (
     upsert_valmer_asset_details,
 )
 from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
+from valmer_connectors.settings import resolve_valmer_force_pricing_details_patch
 from valmer_connectors.settings import resolve_valmer_pricing_details_batch_size
+from valmer_connectors.settings import resolve_valmer_vector_bypass_cursor_filter
 from valmer_connectors.settings import resolve_valmer_vector_local_copy_chunk_size
 
 _VALMER_EXCEL_NA_VALUES = (
@@ -1700,7 +1702,11 @@ class ImportValmer(AssetIndexedDataNode):
                 f"after concatenating MetaTable sources. Sample: {sample}"
             )
 
-    def _set_metatable_source_data(self):
+    def _set_metatable_source_data(
+        self,
+        *,
+        bypass_vector_cursor_filter: bool = False,
+    ):
         if self.source_data is not None:
             return None
 
@@ -1709,12 +1715,15 @@ class ImportValmer(AssetIndexedDataNode):
         for source in self.source_metatables:
             raw_frame = self._read_metatable_source_frame(source, logger=self.logger)
             normalized_frame = self._normalize_metatable_source_frame(raw_frame, source)
-            filtered_frame = self._filter_source_rows_from_last_vector_observation(
-                normalized_frame,
-                cursor_by_asset,
-                source_name=source.source_name,
-                logger=self.logger,
-            )
+            if bypass_vector_cursor_filter:
+                filtered_frame = normalized_frame
+            else:
+                filtered_frame = self._filter_source_rows_from_last_vector_observation(
+                    normalized_frame,
+                    cursor_by_asset,
+                    source_name=source.source_name,
+                    logger=self.logger,
+                )
             if not filtered_frame.empty:
                 frames.append(filtered_frame)
 
@@ -2394,10 +2403,19 @@ class ImportValmer(AssetIndexedDataNode):
         unique_identifiers = df["unique_identifier"].unique().tolist()
         return df_latest, all_target_bonds, unique_identifiers
 
-    def prepare_source_data(self) -> pd.DataFrame:
+    def prepare_source_data(
+        self,
+        *,
+        bypass_vector_cursor_filter: bool | None = None,
+    ) -> pd.DataFrame:
         """Load Valmer artifact rows for the current DataNode update."""
+        resolved_bypass_vector_cursor_filter = resolve_valmer_vector_bypass_cursor_filter(
+            bypass_vector_cursor_filter,
+        )
         if self.source_kind == "metatable":
-            self._set_metatable_source_data()
+            self._set_metatable_source_data(
+                bypass_vector_cursor_filter=resolved_bypass_vector_cursor_filter,
+            )
         else:
             self._set_artifact_data()
             self.source_data = self.artifact_data
@@ -2405,19 +2423,24 @@ class ImportValmer(AssetIndexedDataNode):
             self.source_data = pd.DataFrame()
         if not self.source_data.empty:
             self.source_data = self._materialize_optional_source_columns(self.source_data)
-            if self.source_kind != "metatable":
+            if self.source_kind != "metatable" and not resolved_bypass_vector_cursor_filter:
                 self.source_data = self._filter_source_rows_from_last_vector_observation(
                     self.source_data,
                     self._latest_vector_cursor_by_asset(),
                     source_name="artifact",
                     logger=self.logger,
                 )
+            elif self.source_kind != "metatable":
+                self.logger.info(
+                    "Bypassing Valmer artifact source-row cursor filter for repair run."
+                )
         return self.source_data
 
     def prepare_for_update(
         self,
         *,
-        force_pricing_update: bool = False,
+        force_pricing_update: bool | None = None,
+        bypass_vector_cursor_filter: bool | None = None,
     ) -> list:
         """
         Prepare the Valmer update explicitly before the DataNode run.
@@ -2426,7 +2449,12 @@ class ImportValmer(AssetIndexedDataNode):
         hydrates current pricing details for target bonds, and stores the
         resulting AssetTable scope for get_asset_list().
         """
-        source_data = self.prepare_source_data()
+        resolved_force_pricing_update = resolve_valmer_force_pricing_details_patch(
+            force_pricing_update,
+        )
+        source_data = self.prepare_source_data(
+            bypass_vector_cursor_filter=bypass_vector_cursor_filter,
+        )
         if self.source_data.empty:
             self.asset_list = None
             return []
@@ -2437,7 +2465,7 @@ class ImportValmer(AssetIndexedDataNode):
             unique_identifiers,
             df_latest,
             all_target_bonds,
-            force_update=force_pricing_update,
+            force_update=resolved_force_pricing_update,
         )
 
         publication_uids = set(getattr(self, "_publication_unique_identifiers", set()))

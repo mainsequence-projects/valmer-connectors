@@ -28,6 +28,9 @@
 - `docs/implementation/metatable-source-import-plan.md`: plan for adding a
   one-or-many MetaTable-backed Valmer vector source alongside local files and
   Artifact buckets.
+- `docs/implementation/curve-resolution-and-asset-patching-plan.md`: plan for
+  migrating Valmer curve/index resolution to market-data-set curve bindings and
+  patching existing asset pricing details through the normal vector DataNode.
 
 ## ADRs
 

@@ -7,13 +7,22 @@ from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPrice
 from valmer_connectors.instruments.bootstrap import seed_static_defaults
 from valmer_connectors.instruments.curve_bootstrap import (
     BANCO_DE_MEXICO_PROVIDER,
+    CETE_182_INDEX_UNIQUE_IDENTIFIER,
+    CETE_28_INDEX_UNIQUE_IDENTIFIER,
+    CETE_91_INDEX_UNIQUE_IDENTIFIER,
     MEXICAN_INDEX_CONVENTION_DEFINITIONS,
     MEXICAN_REFERENCE_INDEX_DEFINITIONS,
-    MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER,
     TIIE_28_INDEX_UNIQUE_IDENTIFIER,
+    TIIE_91_INDEX_UNIQUE_IDENTIFIER,
+    TIIE_182_INDEX_UNIQUE_IDENTIFIER,
+    VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS,
+    VALMER_CURVE_QUOTE_SIDE,
     VALMER_DISCOUNT_CURVES_CADENCE,
+    VALMER_INDEX_CURVE_BINDING_DEFINITIONS,
     VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION,
+    VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
     VALMER_TIIE_28_CURVE_DEFINITION,
+    VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
     attach_valmer_curve_pricing_runtime,
     configure_valmer_discount_curves_cadence,
     create_valmer_curve_pricing_schemas,
@@ -39,7 +48,6 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
                 "CETE_28",
                 "CETE_91",
                 "CETE_182",
-                "MXN_GOVERNMENT_BOND",
             },
         )
 
@@ -67,8 +75,6 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
                 BANCO_DE_MEXICO_PROVIDER,
             )
 
-        self.assertIsNone(payload_by_identifier["MXN_GOVERNMENT_BOND"]["provider"])
-
     def test_convention_payload_keeps_pricing_terms_off_index_payload(self):
         definition = next(
             item
@@ -86,45 +92,112 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             "ModifiedFollowing",
         )
 
-    def test_mxn_government_convention_payload_follows_ms_markets_curve_contract(self):
-        definition = next(
-            item
-            for item in MEXICAN_INDEX_CONVENTION_DEFINITIONS
-            if item.index_unique_identifier == MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER
-        )
+    def test_no_mxn_government_bond_index_convention_is_seeded(self):
+        identifiers = {
+            item.index_unique_identifier for item in MEXICAN_INDEX_CONVENTION_DEFINITIONS
+        }
 
-        payload = definition.to_convention_payload(index_uid="fake-index-uid")
-        convention_dump = payload["convention_dump"]
+        self.assertNotIn("MXN_GOVERNMENT_BOND", identifiers)
 
-        self.assertEqual(payload["index_family"], "MXN_GOVERNMENT_BOND")
-        self.assertEqual(convention_dump["currency_code"], "MXN")
-        self.assertEqual(convention_dump["fixing_calendar_code"], "Mexico-BMV")
-        self.assertEqual(convention_dump["calendar_code"], "Mexico/BMV")
-        self.assertEqual(convention_dump["day_counter_code"], "Actual360")
-        self.assertEqual(convention_dump["settlement_days"], 0)
-        self.assertEqual(convention_dump["coupon_period_days"], 182)
-        self.assertEqual(convention_dump["date_generation_rule"], "Backward")
-        self.assertFalse(convention_dump["end_of_month"])
-
-    def test_valmer_curve_payload_links_to_tiie_index(self):
-        payload = VALMER_TIIE_28_CURVE_DEFINITION.to_curve_payload(index_uid="fake-index-uid")
+    def test_valmer_curve_payload_is_curve_identity_without_index_uid(self):
+        payload = VALMER_TIIE_28_CURVE_DEFINITION.to_curve_payload()
 
         self.assertEqual(payload["unique_identifier"], "VALMER_TIIE_28")
-        self.assertEqual(payload["curve_type"], "discount")
+        self.assertEqual(payload["curve_type"], "projection")
+        self.assertEqual(payload["currency_code"], "MXN")
+        self.assertEqual(payload["quote_side"], VALMER_CURVE_QUOTE_SIDE)
         self.assertEqual(payload["source"], "valmer")
-        self.assertEqual(payload["index_uid"], "fake-index-uid")
+        self.assertNotIn("index_uid", payload)
 
-    def test_valmer_mxn_government_curve_payload_links_to_benchmark_index(self):
-        payload = VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION.to_curve_payload(
-            index_uid="fake-index-uid"
-        )
+    def test_valmer_mxn_government_curve_payload_is_curve_identity_without_index_uid(self):
+        payload = VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION.to_curve_payload()
 
         self.assertEqual(payload["unique_identifier"], "VALMER_MXN_GOVERNMENT_BOND")
         self.assertEqual(payload["curve_type"], "discount")
+        self.assertEqual(payload["currency_code"], "MXN")
+        self.assertEqual(payload["quote_side"], VALMER_CURVE_QUOTE_SIDE)
         self.assertEqual(payload["source"], "valmer")
-        self.assertEqual(payload["index_uid"], "fake-index-uid")
+        self.assertNotIn("index_uid", payload)
+
+    def test_curve_building_details_cover_all_valmer_curves(self):
+        definitions = {
+            definition.curve_unique_identifier: definition
+            for definition in VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS
+        }
+
+        self.assertEqual(
+            set(definitions),
+            {
+                VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+                VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+            },
+        )
+        payload = definitions[
+            VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER
+        ].to_building_details_payload(curve_uid="fake-curve-uid")
+        self.assertEqual(payload["curve_uid"], "fake-curve-uid")
+        self.assertEqual(payload["builder_type"], "zero_rate_curve")
+        self.assertEqual(payload["quote_convention"], "zero_rate")
+        self.assertEqual(payload["rate_unit"], "decimal")
+        self.assertEqual(payload["calendar_code"], "Mexico")
+        self.assertEqual(payload["interpolation_method"], "log_linear_discount")
+        self.assertEqual(payload["compounding"], "compounded_annual")
+
+    def test_curve_binding_definitions_use_real_index_selectors_and_mid_side(self):
+        bindings = {
+            (definition.role_key, definition.index_unique_identifier): definition
+            for definition in VALMER_INDEX_CURVE_BINDING_DEFINITIONS
+        }
+
+        self.assertEqual(
+            bindings[("projection", TIIE_28_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
+            VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+        )
+        self.assertEqual(
+            bindings[("projection", TIIE_182_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
+            VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+        )
+        self.assertEqual(
+            bindings[("z_spread_base", CETE_28_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
+            VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+        )
+        self.assertEqual(
+            bindings[("z_spread_base", CETE_182_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
+            VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+        )
+        self.assertEqual(
+            bindings[("z_spread_base", CETE_91_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
+            VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+        )
+        self.assertEqual(
+            bindings[("projection", TIIE_91_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
+            VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+        )
+        for definition in VALMER_INDEX_CURVE_BINDING_DEFINITIONS:
+            self.assertEqual(definition.quote_side, "mid")
+
+        payload = bindings[
+            ("z_spread_base", CETE_28_INDEX_UNIQUE_IDENTIFIER)
+        ].to_index_curve_selection_payload(
+            market_data_set_uid="market-data-set-uid",
+            index_uid="index-uid",
+            curve_uid="curve-uid",
+        )
+        self.assertEqual(payload["role_key"], "z_spread_base")
+        self.assertEqual(payload["quote_side"], "mid")
+        self.assertEqual(payload["index_uid"], "index-uid")
+        self.assertEqual(payload["curve_uid"], "curve-uid")
 
     def test_curve_runtime_attach_includes_valmer_details_by_default(self):
+        from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+        from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+        from msm_pricing.models.curve_building_details import CurveBuildingDetailsTable
+        from msm_pricing.models.market_data_bindings import (
+            PricingMarketDataSetBindingTable,
+            PricingMarketDataSetCurveBindingTable,
+            PricingMarketDataSetTable,
+        )
+
         with (
             patch("msm.start_engine") as start_engine,
             patch("msm_pricing.bootstrap.attach_pricing_schemas", return_value="pricing-runtime")
@@ -138,6 +211,13 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             models=valmer_pricing_runtime_models(),
             timeout=15,
         )
+        pricing_models = pricing_bootstrap.call_args.kwargs["models"]
+        self.assertIn(CurveBuildingDetailsTable, pricing_models)
+        self.assertIn(PricingMarketDataSetTable, pricing_models)
+        self.assertIn(PricingMarketDataSetBindingTable, pricing_models)
+        self.assertIn(PricingMarketDataSetCurveBindingTable, pricing_models)
+        self.assertIn(DiscountCurvesStorage, pricing_models)
+        self.assertIn(IndexFixingsStorage, pricing_models)
         self.assertEqual(result, "pricing-runtime")
 
     def test_curve_runtime_sets_discount_curve_storage_cadence(self):
