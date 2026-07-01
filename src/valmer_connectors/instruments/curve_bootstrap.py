@@ -26,6 +26,13 @@ VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER = "VALMER_USD_SOFR_OVERNIGHT"
 VALMER_SOURCE = "valmer"
 VALMER_DISCOUNT_CURVES_CADENCE = "1d"
 VALMER_CURVE_QUOTE_SIDE = "mid"
+MEXICO_BMV_QUANTLIB_CALENDAR = {"name": "Mexico"}
+
+
+def _json_payload(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return value
 
 
 @dataclass(frozen=True)
@@ -159,7 +166,9 @@ class MexicanIndexConventionDefinition:
     settlement_days: int
     business_day_convention: str
     day_counter_code: str = "Actual360"
-    fixing_calendar_code: str = "Mexico-BMV"
+    fixing_calendar_code: Mapping[str, Any] | str = field(
+        default_factory=lambda: dict(MEXICO_BMV_QUANTLIB_CALENDAR)
+    )
     calendar_code: str | None = None
     currency_code: str = "MXN"
     end_of_month: bool = False
@@ -172,7 +181,7 @@ class MexicanIndexConventionDefinition:
         convention_dump = {
             "currency_code": self.currency_code,
             "day_counter_code": self.day_counter_code,
-            "fixing_calendar_code": self.fixing_calendar_code,
+            "fixing_calendar_code": _json_payload(self.fixing_calendar_code),
             "period": f"{self.tenor_days}D",
             "settlement_days": self.settlement_days,
             "business_day_convention": self.business_day_convention,
@@ -400,6 +409,7 @@ VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION = ValmerCurveDefinition(
         "source_file": "IRS_MXN_CURVE.csv",
         "source_url": "https://www.valmer.com.mx/VAL/Web_Benchmarks/IRS_MXN_CURVE.csv",
         "date_source_url": "https://www.valmer.com.mx/en/",
+        "date_ajax_url": "https://www.valmer.com.mx/public/getInsumoVectorGubernamental.do",
         "included_source_family": "Swap.<tenor>.MXN.FTIIE.1D/28D.BANXICO",
         "excluded_source_families": [
             "FX.USD.MXN",
@@ -438,6 +448,7 @@ VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION = ValmerCurveDefinition(
         "source_file": "IRS_USD_CURVE.csv",
         "source_url": "https://www.valmer.com.mx/VAL/Web_Benchmarks/IRS_USD_CURVE.csv",
         "date_source_url": "https://www.valmer.com.mx/en/",
+        "date_ajax_url": "https://www.valmer.com.mx/public/getInsumoVectorGubernamental.do",
         "included_source_families": [
             "Future.USD.CME.CME SR1 EOM.<MMM>.<YY>",
             "Future.USD.CME.CME SR3 IMM.<MMM>.<YY>",
@@ -470,7 +481,7 @@ VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS: tuple[
             "key_node_schema": "CurveKeyNode",
             "source_file": "IRS_MXN_CURVE.csv",
             "source_row_pattern": "Swap.<tenor>.MXN.FTIIE.1D/28D.BANXICO",
-            "date_source": "https://www.valmer.com.mx/en/#tablaMismoDia span.lbFechaIndice",
+            "date_source": "https://www.valmer.com.mx/public/getInsumoVectorGubernamental.do:Indices_Benchmarks",
             "output_quote_type": "zero_rate",
             "output_quote_unit": "decimal",
             "implied_front_zero_days": [1],
@@ -569,7 +580,7 @@ VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS: tuple[
                 "Swap.<tenor>.USD.FEDFUNDS.1D/1Y.FEDFUNDS1",
                 "Swap.USD.<tenor>.FEDFUNDS.1D/SOFR.1D.SOFR",
             ],
-            "date_source": "https://www.valmer.com.mx/en/#tablaMismoDia span.lbFechaIndice",
+            "date_source": "https://www.valmer.com.mx/public/getInsumoVectorGubernamental.do:Indices_Benchmarks",
             "output_quote_type": "zero_rate",
             "output_quote_unit": "decimal",
             "implied_front_zero_days": [1],

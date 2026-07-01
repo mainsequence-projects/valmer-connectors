@@ -59,6 +59,8 @@ vector_de_precios_valmer  current pricing details
 - [ADR 0003: Migration-First MetaTable Lifecycle](adr/0003-migration-first-metatable-lifecycle.md)
 - [ADR 0004: Mexican Government Bond Curve Bootstrap](adr/0004-mexican-government-bond-curve-bootstrap.md)
 - [ADR 0005: Valmer TIIE IRS MXN Curve Source](adr/0005-valmer-tiie-irs-mxn-curve-source.md)
+- [ADR 0006: Valmer USD SOFR Curve Source](adr/0006-valmer-usd-sofr-curve-source.md)
+- [ADR 0007: Banxico TIIE And CETE Fixings](adr/0007-banxico-tiie-cete-fixings.md)
 - [ADR 0004: Valmer Connectors CLI Design](adr/cli/0004-valmer-connectors-cli-design.md)
 
 ## Operational Files

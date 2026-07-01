@@ -218,9 +218,9 @@ is the Valmer provider parser and OIS bootstrapper for the TIIE curve.
 It:
 
 - downloads `IRS_MXN_CURVE.csv`
-- resolves the Valmer benchmark date from
-  `https://www.valmer.com.mx/en/` by parsing
-  `#tablaMismoDia span.lbFechaIndice`
+- resolves the Valmer benchmark date through the AJAX flow used by
+  `https://www.valmer.com.mx/en/`, selecting the `Indices_Benchmarks` date
+  record
 - includes only `Swap.<tenor>.MXN.FTIIE.1D/28D.BANXICO` rows
 - builds QuantLib OIS helpers for observed domestic FTIIE swap quotes
 - produces curve point dictionaries keyed by days to maturity

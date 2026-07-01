@@ -98,17 +98,19 @@ first source instrument.
 
 Decision:
 
-- resolve the source date through the same Valmer English homepage contract
-  used for the TIIE IRS source: `https://www.valmer.com.mx/en/`
-- parse `#tablaMismoDia span.lbFechaIndice` using `DD/MM/YYYY`
+- resolve the source date through the same Valmer English homepage AJAX
+  contract used for the TIIE IRS source: open
+  `https://www.valmer.com.mx/en/`, then read
+  `https://www.valmer.com.mx/public/getInsumoVectorGubernamental.do`
+- parse the `Indices_Benchmarks` record's `fecha` using `DD/MM/YYYY`
 - on production updates, check this source date before downloading
   `IRS_USD_CURVE.csv`; if the source date is not greater than the latest
   persisted `VALMER_USD_SOFR_OVERNIGHT` observation, return an empty frame and
   do not download the CSV
 - emit the SOFR curve row with that valuation date localized to UTC at start
   of day
-- fail the update when the homepage is unavailable or the date cannot be
-  parsed
+- fail the update when the homepage context, AJAX date endpoint, or date parse
+  fails
 - do not fall back to `datetime.utcnow()` or source download time
 
 ## QuantLib Instruments
@@ -431,8 +433,8 @@ bootstrap.
 
 Unit tests must cover:
 
-- date resolver parses the Valmer English homepage and selects
-  `#tablaMismoDia span.lbFechaIndice`
+- date resolver follows the Valmer English homepage AJAX flow and selects the
+  `Indices_Benchmarks` date record
 - parser reads `IRS_USD_CURVE.csv` as two columns
 - parser classifies SOFR futures, SOFR OIS swaps, Fed Funds OIS swaps, Fed
   Funds/SOFR basis swaps, and unsupported rows

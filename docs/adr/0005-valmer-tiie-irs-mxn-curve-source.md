@@ -97,41 +97,46 @@ be used as front-end anchors for `VALMER_TIIE_OVERNIGHT`.
 infer the date from runtime clock time, file download time, or the first source
 tenor.
 
-The Valmer English homepage is the benchmark-date source:
+The Valmer English homepage is the benchmark-date source page:
 
 ```text
 https://www.valmer.com.mx/en/
 ```
 
-The curve builder reads that page directly and parses the rendered same-day
-benchmark table caption:
+The raw page contains an empty `#tablaMismoDia span.lbFechaIndice` placeholder.
+The page fills that span through `home.js`, which calls the public date endpoint
+declared in `urls.urlObtenerFechas`:
 
 ```text
-#tablaMismoDia span.lbFechaIndice
+POST https://www.valmer.com.mx/public/getInsumoVectorGubernamental.do
 ```
 
-On 2026-07-01 the observed table used:
+On 2026-07-01 the verified endpoint response included:
 
-```html
-<caption>Fecha <span class="lbFechaIndice">30/06/2026</span></caption>
+```json
+{
+  "descripcion": "Indices y Benchmarks",
+  "fecha": "30/06/2026",
+  "nombre": "Indices_Benchmarks"
+}
 ```
 
-On each update run, the production builder reads this homepage before it reads
-`IRS_MXN_CURVE.csv`. If the Valmer benchmark date is not greater than the
-latest persisted `DiscountCurvesStorage.time_index` for
-`VALMER_TIIE_OVERNIGHT`, the builder returns an empty curve frame and does not
-download the CSV. The local `data/IRS_MXN_CURVE.csv` file is only a temporary
-analysis/test fixture and is not part of the production update path.
+On each update run, the production builder opens the homepage context and then
+uses the same AJAX date endpoint before it reads `IRS_MXN_CURVE.csv`. If the
+Valmer benchmark date is not greater than the latest persisted
+`DiscountCurvesStorage.time_index` for `VALMER_TIIE_OVERNIGHT`, the builder
+returns an empty curve frame and does not download the CSV. The local
+`data/IRS_MXN_CURVE.csv` file is only a temporary analysis/test fixture and is
+not part of the production update path.
 
 Decision:
 
-- parse the date text from `#tablaMismoDia span.lbFechaIndice` using
-  `DD/MM/YYYY`
+- parse the `Indices_Benchmarks` record's `fecha` using `DD/MM/YYYY`
 - emit the TIIE curve row with that valuation date
 - localize the TIIE `time_index` to UTC at start of day, for example
   `2026-06-30T00:00:00Z`
-- fail the update when the homepage is unavailable or the date cannot be
-  parsed
+- fail the update when the homepage context, AJAX date endpoint, or date parse
+  fails
 - do not fall back to `datetime.utcnow()` or source download time
 
 ## Front-End Anchor
@@ -394,8 +399,8 @@ belong in `CurveBuildingDetails`.
 
 Unit tests must cover:
 
-- date resolver parses the Valmer English homepage and selects
-  `#tablaMismoDia span.lbFechaIndice`
+- date resolver follows the Valmer English homepage AJAX flow and selects the
+  `Indices_Benchmarks` date record
 - parser classifies FX, cross-currency, and domestic OIS rows
 - parser rejects missing domestic OIS rows
 - tenor parser preserves `D`, `W`, and `M` source units

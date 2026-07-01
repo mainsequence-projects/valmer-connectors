@@ -448,8 +448,31 @@ VALMER_VECTOR_BYPASS_CURSOR_FILTER=1 \
 valmer-connectors vector update
 ```
 
-The force flag only controls pricing-detail hydration. It does not create a
-separate patching script and does not bypass `msm_pricing.api.add_many_pricing_details(...)`.
+The force flag only controls pricing-detail hydration during a source import.
+Use it when new source rows should rebuild pricing details while the vector
+DataNode is already running.
+
+For already-persisted bad pricing-detail payloads, use the targeted repair
+script instead of replaying vector files:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/patch_valmer_asset_pricing_details.py
+PYTHONPATH=src .venv/bin/python scripts/patch_valmer_asset_pricing_details.py --apply
+```
+
+The script queries `AssetCurrentPricingDetails` and `AssetPricingDetailsTS` for
+Valmer rows whose serialized `instrument_dump` contains known stale signatures,
+patches those JSON payloads in memory, and bulk upserts the same persisted keys
+back to the pricing-detail tables. It does not import or loop through Valmer
+vectors. Normal Valmer source imports must continue to persist pricing details
+through `msm_pricing.api.add_many_pricing_details(...)`, which owns instrument
+serialization through the ms-markets instrument model.
+
+Calendar repair targets persisted instrument calendar JSON only. Invalid
+calendar tokens such as `Mexico-BMV` and `Mexico/BMV`, plus the stale class-name
+object `{"name": "Mexico"}`, are rewritten to the QuantLib display-name payload
+`{"name": "Mexican stock exchange"}` for instrument calendar objects. Scalar
+`*_calendar_code` fields remain `Mexico`.
 
 ## Output Of Source Import
 

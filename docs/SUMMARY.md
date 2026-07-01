@@ -41,4 +41,5 @@
 - `docs/adr/0004-mexican-government-bond-curve-bootstrap.md`
 - `docs/adr/0005-valmer-tiie-irs-mxn-curve-source.md`
 - `docs/adr/0006-valmer-usd-sofr-curve-source.md`
+- `docs/adr/0007-banxico-tiie-cete-fixings.md`
 - `docs/adr/cli/0004-valmer-connectors-cli-design.md`

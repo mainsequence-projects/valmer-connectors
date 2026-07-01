@@ -408,12 +408,21 @@ Rules:
 - The builder returns a mapping from days-to-maturity to zero rates; the node
   compresses it before persistence.
 - The builder also returns `key_nodes` construction provenance. `key_nodes` is
-  source-owned JSON and may use the producer's own schema. Prefer the optional
-  `CurveKeyNode` helper when the standard fields fit: `maturity_date`,
+  source-owned JSON object/list provenance. The node compresses it before
+  persistence and read/API helpers return decompressed JSON. Prefer the
+  optional `CurveKeyNode` helper when the standard fields fit: `maturity_date`,
   `asset_identifier`, `instrument_type`, `quote`, `quote_type`, `quote_unit`,
   `quote_side`, and optional yield-native `yield` via the Python field
-  `yield_value`. Per-node `quote_type` and `quote_unit` describe raw source
-  inputs; `CurveBuildingDetails` describes the final stored curve.
+  `yield_value`. Producers may add source-specific extensions and enforce them
+  through `normalize_key_nodes(...)` or `set_key_nodes_validator(...)`.
+  Per-node `quote_type` and `quote_unit` describe raw source inputs;
+  `CurveBuildingDetails` describes the final stored curve.
+- When a producer needs stricter source-specific semantics, override
+  `DiscountCurvesNode.normalize_key_nodes(...)` or attach a runtime callable
+  with `set_key_nodes_validator(...)`. The hook receives the normalized
+  key-node value, the full row, and the curve identifier. It must return JSON
+  object/list provenance. Do not put validator callables in `CurveConfig`; they
+  are execution behavior, not hashed DataNode configuration.
 - Optional row diagnostics belong in the storage column named `metadata_json`.
 - The builder configuration's `curve_unique_identifier` must exist as a `Curve`
   row before publishing; emitted storage rows use `curve_identifier`.

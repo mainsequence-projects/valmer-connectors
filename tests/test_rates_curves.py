@@ -1,8 +1,9 @@
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
+import QuantLib as ql
 from msm_pricing.data_nodes import DiscountCurvesNode
 
 from valmer_connectors.instruments.curve_key_nodes import (
@@ -10,18 +11,21 @@ from valmer_connectors.instruments.curve_key_nodes import (
     validate_usd_sofr_key_nodes,
 )
 from valmer_connectors.instruments.rates_curves import (
+    VALMER_BENCHMARK_DATE_URL,
     VALMER_BENCHMARK_PAGE_URL,
     VALMER_TIIE_IRS_MXN_URL,
     VALMER_USD_SOFR_IRS_URL,
     ValmerTiieCurveError,
     ValmerUsdSofrCurveError,
+    build_tiie_discount_curve_from_key_nodes,
     build_tiie_irs_mxn_curve_frame,
     build_tiie_irs_mxn_valmer,
     build_usd_sofr_curve_frame,
     build_usd_sofr_valmer,
     classify_tiie_irs_mxn_row,
     classify_usd_sofr_irs_row,
-    parse_valmer_benchmark_page_date,
+    fetch_valmer_benchmark_date_content,
+    parse_valmer_benchmark_date,
     read_tiie_irs_mxn_csv,
     read_usd_sofr_irs_csv,
 )
@@ -51,19 +55,13 @@ IRS_MXN_SAMPLE = (
     b"Swap.364M.MXN.FTIIE.1D/28D.BANXICO,8.33190000\n"
 )
 
-BENCHMARK_PAGE_RESPONSE = b"""
-<table class="data-2" id="tablaMismoDia" style="display: table;">
-  <caption style="display: table-caption;">
-    Fecha <span class="lbFechaIndice">30/06/2026</span>
-  </caption>
-  <tbody>
-    <tr>
-      <th class="col-01">name</th>
-      <th class="col-02">index</th>
-    </tr>
-  </tbody>
-</table>
-"""
+BENCHMARK_DATE_RESPONSE = b"""for(;;);({
+  "exito": "true",
+  "respuesta": [
+    {"nombre": "Vector_Gubernamental", "fecha": "30/06/2026"},
+    {"nombre": "Indices_Benchmarks", "descripcion": "Indices y Benchmarks", "fecha": "30/06/2026"}
+  ]
+})"""
 
 
 class ValmerRatesCurvesTests(unittest.TestCase):
@@ -102,10 +100,35 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         )
         self.assertEqual(classify_usd_sofr_irs_row("Swap.BAD"), "unsupported")
 
-    def test_parse_valmer_benchmark_page_date_selects_same_day_table(self):
-        parsed = parse_valmer_benchmark_page_date(BENCHMARK_PAGE_RESPONSE)
+    def test_parse_valmer_benchmark_date_selects_indices_benchmarks(self):
+        parsed = parse_valmer_benchmark_date(BENCHMARK_DATE_RESPONSE)
 
         self.assertEqual(parsed, pd.Timestamp("2026-06-30", tz="UTC"))
+
+    def test_fetch_valmer_benchmark_date_content_uses_homepage_ajax_flow(self):
+        page_response = Mock()
+        date_response = Mock(content=BENCHMARK_DATE_RESPONSE)
+        session = Mock()
+        session.get.return_value = page_response
+        session.post.return_value = date_response
+
+        with patch(
+            "valmer_connectors.instruments.rates_curves.requests.Session",
+            return_value=session,
+        ) as session_factory:
+            content = fetch_valmer_benchmark_date_content()
+
+        session_factory.assert_called_once_with()
+        session.headers.update.assert_called_once()
+        session.get.assert_called_once_with(VALMER_BENCHMARK_PAGE_URL, timeout=30)
+        session.post.assert_called_once_with(
+            VALMER_BENCHMARK_DATE_URL,
+            data={"rand": "0"},
+            timeout=30,
+        )
+        page_response.raise_for_status.assert_called_once_with()
+        date_response.raise_for_status.assert_called_once_with()
+        self.assertEqual(content, BENCHMARK_DATE_RESPONSE)
 
     def test_read_tiie_irs_mxn_csv_is_two_column_source_shape(self):
         frame = read_tiie_irs_mxn_csv(IRS_MXN_SAMPLE)
@@ -184,6 +207,28 @@ class ValmerRatesCurvesTests(unittest.TestCase):
             curve_identifier="VALMER_TIIE_OVERNIGHT",
         )
         self.assertEqual(validated_nodes, row["key_nodes"])
+
+    def test_build_tiie_discount_curve_from_key_nodes_rebuilds_source_curve(self):
+        frame = build_tiie_irs_mxn_curve_frame(
+            IRS_MXN_SAMPLE,
+            curve_identifier="VALMER_TIIE_OVERNIGHT",
+            valuation_date="2026-06-30",
+        )
+        row = frame.reset_index().iloc[0]
+
+        curve = build_tiie_discount_curve_from_key_nodes(
+            row["key_nodes"],
+            valuation_date="2026-06-30",
+        )
+
+        rebuilt_rate = curve.zeroRate(
+            ql.Date(29, 7, 2026),
+            ql.Actual360(),
+            ql.Compounded,
+            ql.Annual,
+            False,
+        ).rate()
+        self.assertAlmostEqual(rebuilt_rate, row["curve"][29], delta=1e-5)
 
     def test_tiie_key_node_validator_rejects_non_ois_source_family(self):
         frame = build_tiie_irs_mxn_curve_frame(
@@ -325,20 +370,21 @@ class ValmerRatesCurvesTests(unittest.TestCase):
             "2026-06-30",
             tz="UTC",
         )
-        date_response = Mock(content=BENCHMARK_PAGE_RESPONSE)
-
         with (
+            patch(
+                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
+                return_value=BENCHMARK_DATE_RESPONSE,
+            ) as fetch_date,
             patch("valmer_connectors.instruments.rates_curves.requests.get") as get,
         ):
-            get.return_value = date_response
             frame = build_tiie_irs_mxn_valmer(
                 update_statistics=update_statistics,
                 curve_identifier="VALMER_TIIE_OVERNIGHT",
                 base_node_curve_points=None,
             )
 
-        get.assert_called_once_with(VALMER_BENCHMARK_PAGE_URL, timeout=30)
-        date_response.raise_for_status.assert_called_once_with()
+        fetch_date.assert_called_once_with()
+        get.assert_not_called()
         update_statistics.get_last_update_for_identity.assert_called_once_with(
             "VALMER_TIIE_OVERNIGHT"
         )
@@ -353,20 +399,21 @@ class ValmerRatesCurvesTests(unittest.TestCase):
             "2026-06-30",
             tz="UTC",
         )
-        date_response = Mock(content=BENCHMARK_PAGE_RESPONSE)
-
         with (
+            patch(
+                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
+                return_value=BENCHMARK_DATE_RESPONSE,
+            ) as fetch_date,
             patch("valmer_connectors.instruments.rates_curves.requests.get") as get,
         ):
-            get.return_value = date_response
             frame = build_usd_sofr_valmer(
                 update_statistics=update_statistics,
                 curve_identifier="VALMER_USD_SOFR_OVERNIGHT",
                 base_node_curve_points=None,
             )
 
-        get.assert_called_once_with(VALMER_BENCHMARK_PAGE_URL, timeout=30)
-        date_response.raise_for_status.assert_called_once_with()
+        fetch_date.assert_called_once_with()
+        get.assert_not_called()
         update_statistics.get_last_update_for_identity.assert_called_once_with(
             "VALMER_USD_SOFR_OVERNIGHT"
         )
@@ -381,13 +428,16 @@ class ValmerRatesCurvesTests(unittest.TestCase):
             "2026-06-29",
             tz="UTC",
         )
-        date_response = Mock(content=BENCHMARK_PAGE_RESPONSE)
         curve_response = Mock(content=IRS_MXN_SAMPLE)
 
         with (
             patch(
+                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
+                return_value=BENCHMARK_DATE_RESPONSE,
+            ) as fetch_date,
+            patch(
                 "valmer_connectors.instruments.rates_curves.requests.get",
-                side_effect=[date_response, curve_response],
+                return_value=curve_response,
             ) as get,
         ):
             frame = build_tiie_irs_mxn_valmer(
@@ -396,13 +446,8 @@ class ValmerRatesCurvesTests(unittest.TestCase):
                 base_node_curve_points=None,
             )
 
-        get.assert_has_calls(
-            [
-                call(VALMER_BENCHMARK_PAGE_URL, timeout=30),
-                call(VALMER_TIIE_IRS_MXN_URL, timeout=30),
-            ]
-        )
-        date_response.raise_for_status.assert_called_once_with()
+        fetch_date.assert_called_once_with()
+        get.assert_called_once_with(VALMER_TIIE_IRS_MXN_URL, timeout=30)
         curve_response.raise_for_status.assert_called_once_with()
         row = frame.reset_index().iloc[0]
         self.assertEqual(row["time_index"], pd.Timestamp("2026-06-30", tz="UTC"))
@@ -414,13 +459,16 @@ class ValmerRatesCurvesTests(unittest.TestCase):
             "2026-06-29",
             tz="UTC",
         )
-        date_response = Mock(content=BENCHMARK_PAGE_RESPONSE)
         curve_response = Mock(content=(DATA_DIR / "IRS_USD_CURVE.csv").read_bytes())
 
         with (
             patch(
+                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
+                return_value=BENCHMARK_DATE_RESPONSE,
+            ) as fetch_date,
+            patch(
                 "valmer_connectors.instruments.rates_curves.requests.get",
-                side_effect=[date_response, curve_response],
+                return_value=curve_response,
             ) as get,
         ):
             frame = build_usd_sofr_valmer(
@@ -429,13 +477,8 @@ class ValmerRatesCurvesTests(unittest.TestCase):
                 base_node_curve_points=None,
             )
 
-        get.assert_has_calls(
-            [
-                call(VALMER_BENCHMARK_PAGE_URL, timeout=30),
-                call(VALMER_USD_SOFR_IRS_URL, timeout=30),
-            ]
-        )
-        date_response.raise_for_status.assert_called_once_with()
+        fetch_date.assert_called_once_with()
+        get.assert_called_once_with(VALMER_USD_SOFR_IRS_URL, timeout=30)
         curve_response.raise_for_status.assert_called_once_with()
         row = frame.reset_index().iloc[0]
         self.assertEqual(row["time_index"], pd.Timestamp("2026-06-30", tz="UTC"))

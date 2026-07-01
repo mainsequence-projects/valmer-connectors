@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import io
+import json
 import re
 from dataclasses import dataclass
-from html.parser import HTMLParser
 from typing import Any
 
 import pandas as pd
@@ -24,6 +24,8 @@ VALMER_USD_SOFR_IRS_URL = VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION.metadata_js
     "source_url"
 ]
 VALMER_BENCHMARK_PAGE_URL = "https://www.valmer.com.mx/en/"
+VALMER_BENCHMARK_DATE_URL = "https://www.valmer.com.mx/public/getInsumoVectorGubernamental.do"
+VALMER_BROWSER_USER_AGENT = "Mozilla/5.0"
 VALMER_TIIE_IRS_MXN_COLUMNS = ["instrument_identifier", "quote"]
 VALMER_USD_SOFR_IRS_COLUMNS = ["instrument_identifier", "quote"]
 VALMER_TIIE_DOMESTIC_OIS_SUFFIX = ".MXN.FTIIE.1D/28D.BANXICO"
@@ -33,6 +35,7 @@ VALMER_USD_FEDFUNDS_OIS_SUFFIX = ".USD.FEDFUNDS.1D/1Y.FEDFUNDS1"
 VALMER_USD_FEDFUNDS_SOFR_BASIS_SUFFIX = ".FEDFUNDS.1D/SOFR.1D.SOFR"
 VALMER_TIIE_IRS_SOURCE_FILE = "IRS_MXN_CURVE.csv"
 VALMER_USD_SOFR_IRS_SOURCE_FILE = "IRS_USD_CURVE.csv"
+VALMER_BENCHMARK_DATE_NAME = "Indices_Benchmarks"
 VALMER_TIIE_IMPLIED_FRONT_DAYS = (1,)
 VALMER_USD_SOFR_IMPLIED_FRONT_DAYS = (1,)
 VALMER_TIIE_PAYMENT_FREQUENCY = "EveryFourthWeek"
@@ -106,51 +109,6 @@ class ValmerUsdSofrHelper:
     helper_type: str
 
 
-class _ValmerBenchmarkPageParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.target_table_dates: list[str] = []
-        self.all_benchmark_dates: list[str] = []
-        self._target_table_depth = 0
-        self._capture_depth = 0
-        self._capture_target_table = False
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attrs_map = {name.lower(): value or "" for name, value in attrs}
-        normalized_tag = tag.lower()
-
-        if normalized_tag == "table" and attrs_map.get("id") == "tablaMismoDia":
-            self._target_table_depth = 1
-        elif self._target_table_depth:
-            self._target_table_depth += 1
-
-        classes = set(attrs_map.get("class", "").split())
-        if normalized_tag == "span" and "lbFechaIndice" in classes:
-            self._capture_depth = 1
-            self._capture_target_table = bool(self._target_table_depth)
-        elif self._capture_depth:
-            self._capture_depth += 1
-
-    def handle_endtag(self, tag: str) -> None:
-        _ = tag
-        if self._capture_depth:
-            self._capture_depth -= 1
-            if not self._capture_depth:
-                self._capture_target_table = False
-        if self._target_table_depth:
-            self._target_table_depth -= 1
-
-    def handle_data(self, data: str) -> None:
-        if not self._capture_depth:
-            return
-        value = data.strip()
-        if not value:
-            return
-        self.all_benchmark_dates.append(value)
-        if self._capture_target_table:
-            self.target_table_dates.append(value)
-
-
 def read_tiie_irs_mxn_csv(content: bytes) -> pd.DataFrame:
     """Read the Valmer IRS MXN benchmark CSV as raw source quotes."""
 
@@ -220,28 +178,57 @@ def classify_usd_sofr_irs_row(instrument_identifier: str) -> str:
     return "unsupported"
 
 
-def parse_valmer_benchmark_page_date(
+def parse_valmer_benchmark_date(
     content: bytes | str,
     *,
     error_class: type[ValueError] = ValmerTiieCurveError,
 ) -> pd.Timestamp:
-    """Parse the Valmer English homepage benchmark table date."""
+    """Parse the Valmer homepage AJAX benchmark-date response."""
 
-    text = (
-        content.decode("utf-8", errors="replace")
-        if isinstance(content, bytes)
-        else str(content)
-    )
-    parser = _ValmerBenchmarkPageParser()
-    parser.feed(text)
-    candidates = parser.target_table_dates or parser.all_benchmark_dates
-    for candidate in candidates:
-        try:
-            return _parse_valuation_date(candidate, error_class=error_class)
-        except ValueError:
+    text = content.decode("utf-8") if isinstance(content, bytes) else str(content)
+    text = text.strip()
+    if text.startswith("for(;;);"):
+        text = text.removeprefix("for(;;);").strip()
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise error_class("Unable to parse Valmer benchmark date response.") from exc
+
+    records = payload.get("respuesta")
+    if not isinstance(records, list):
+        raise error_class("Valmer benchmark date response missing respuesta list.")
+
+    for record in records:
+        if not isinstance(record, dict):
             continue
+        if record.get("nombre") == VALMER_BENCHMARK_DATE_NAME:
+            return _parse_valuation_date(record.get("fecha"), error_class=error_class)
+        if record.get("descripcion") == "Indices y Benchmarks":
+            return _parse_valuation_date(record.get("fecha"), error_class=error_class)
 
-    raise error_class("Valmer benchmark homepage missing tablaMismoDia lbFechaIndice date.")
+    raise error_class("Valmer benchmark date response missing Indices_Benchmarks date.")
+
+
+def fetch_valmer_benchmark_date_content() -> bytes:
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": VALMER_BROWSER_USER_AGENT,
+            "Referer": VALMER_BENCHMARK_PAGE_URL,
+        }
+    )
+    page_response = session.get(VALMER_BENCHMARK_PAGE_URL, timeout=30)
+    page_response.raise_for_status()
+    date_response = session.post(
+        VALMER_BENCHMARK_DATE_URL,
+        data={"rand": "0"},
+        timeout=30,
+    )
+    date_response.raise_for_status()
+    return date_response.content
 
 
 def build_tiie_irs_mxn_curve_frame_from_sources(
@@ -253,7 +240,7 @@ def build_tiie_irs_mxn_curve_frame_from_sources(
     return build_tiie_irs_mxn_curve_frame(
         curve_content,
         curve_identifier=curve_identifier,
-        valuation_date=parse_valmer_benchmark_page_date(benchmark_date_content),
+        valuation_date=parse_valmer_benchmark_date(benchmark_date_content),
     )
 
 
@@ -266,7 +253,7 @@ def build_usd_sofr_curve_frame_from_sources(
     return build_usd_sofr_curve_frame(
         curve_content,
         curve_identifier=curve_identifier,
-        valuation_date=parse_valmer_benchmark_page_date(
+        valuation_date=parse_valmer_benchmark_date(
             benchmark_date_content,
             error_class=ValmerUsdSofrCurveError,
         ),
@@ -311,6 +298,28 @@ def build_tiie_irs_mxn_curve_frame(
             }
         ]
     ).set_index(["time_index", "curve_identifier"])
+
+
+def build_tiie_discount_curve_from_key_nodes(
+    key_nodes: list[dict[str, Any]],
+    *,
+    valuation_date: Any,
+    overnight_rate: float | None = None,
+):
+    """Rebuild the Valmer TIIE OIS discount curve from stored source key nodes."""
+
+    valuation_ts = _parse_valuation_date(valuation_date)
+    ql = _quantlib()
+    previous_evaluation_date = ql.Settings.instance().evaluationDate
+    ql.Settings.instance().evaluationDate = _ql_date(valuation_ts)
+    try:
+        helpers = _build_tiie_ois_helpers_from_key_nodes(key_nodes)
+        ql_helpers = _build_rate_helper_vector(helpers, overnight_rate=overnight_rate)
+        curve = _bootstrap_tiie_discount_curve(valuation_ts, ql_helpers)
+        curve.enableExtrapolation()
+        return curve
+    finally:
+        ql.Settings.instance().evaluationDate = previous_evaluation_date
 
 
 def build_usd_sofr_curve_frame(
@@ -367,9 +376,7 @@ def build_tiie_irs_mxn_valmer(
     base_node_curve_points=None,
 ) -> pd.DataFrame:
     _ = base_node_curve_points
-    date_response = requests.get(VALMER_BENCHMARK_PAGE_URL, timeout=30)
-    date_response.raise_for_status()
-    valuation_date = parse_valmer_benchmark_page_date(date_response.content)
+    valuation_date = parse_valmer_benchmark_date(fetch_valmer_benchmark_date_content())
     last_update = _last_curve_update_time(update_statistics, curve_identifier)
     if last_update is not None and valuation_date <= last_update:
         return _empty_curve_frame()
@@ -390,10 +397,8 @@ def build_usd_sofr_valmer(
     base_node_curve_points=None,
 ) -> pd.DataFrame:
     _ = base_node_curve_points
-    date_response = requests.get(VALMER_BENCHMARK_PAGE_URL, timeout=30)
-    date_response.raise_for_status()
-    valuation_date = parse_valmer_benchmark_page_date(
-        date_response.content,
+    valuation_date = parse_valmer_benchmark_date(
+        fetch_valmer_benchmark_date_content(),
         error_class=ValmerUsdSofrCurveError,
     )
     last_update = _last_curve_update_time(
@@ -601,6 +606,39 @@ def _build_tiie_ois_helpers(quotes: list[ValmerIrsMxnQuote]) -> list[ValmerTiieO
         )
         helpers.append(ValmerTiieOisHelper(quote=quote, helper=helper))
     return helpers
+
+
+def _build_tiie_ois_helpers_from_key_nodes(
+    key_nodes: list[dict[str, Any]],
+) -> list[ValmerTiieOisHelper]:
+    quotes: list[ValmerIrsMxnQuote] = []
+    for node in key_nodes:
+        helper_type = str(node.get("helper_type") or "").strip().lower()
+        instrument_type = str(node.get("instrument_type") or "").strip().lower()
+        if helper_type not in {"ois_rate_helper", "overnight_indexed_swap_helper"} and (
+            instrument_type != "overnight_indexed_swap"
+        ):
+            continue
+        tenor = str(node.get("tenor") or "").strip().upper()
+        if not tenor:
+            raise ValmerTiieCurveError(f"TIIE key node is missing tenor: {node!r}.")
+        _parse_tenor_components(tenor)
+        quote = _key_node_decimal_rate(node, field_name=f"{tenor} quote")
+        source_quote = node.get("source_quote")
+        if source_quote in (None, ""):
+            source_quote = quote * 100.0
+        quotes.append(
+            ValmerIrsMxnQuote(
+                instrument_identifier=str(node.get("asset_identifier") or f"Swap.{tenor}"),
+                tenor=tenor,
+                quote_decimal=quote,
+                source_quote=float(source_quote),
+            )
+        )
+    if not quotes:
+        raise ValmerTiieCurveError("TIIE key nodes contained no OIS rate helpers.")
+    quotes.sort(key=lambda item: _tenor_sort_key(item.tenor))
+    return _build_tiie_ois_helpers(quotes)
 
 
 def _build_rate_helper_vector(
@@ -924,6 +962,28 @@ def _parse_float(
     if parsed <= 0:
         raise error_class(f"{field_name} must be positive.")
     return parsed
+
+
+def _key_node_decimal_rate(node: dict[str, Any], *, field_name: str) -> float:
+    value = node.get("quote")
+    unit = str(node.get("quote_unit") or "").strip().lower()
+    if value in (None, ""):
+        value = node.get("yield")
+        unit = str(node.get("yield_unit") or "").strip().lower()
+    parsed = _parse_float(value, field_name=field_name)
+    if unit in {"decimal", "decimals"}:
+        return parsed
+    if unit in {"percent", "percentage"}:
+        return parsed / 100.0
+    raise ValmerTiieCurveError(
+        f"TIIE key node {field_name} has unsupported rate unit {unit!r}."
+    )
+
+
+def _tenor_sort_key(tenor: str) -> tuple[int, int]:
+    value, unit = _parse_tenor_components(tenor)
+    order = {"D": 1, "W": 7, "M": 30, "Y": 365}
+    return value * order[unit], value
 
 
 def _ql_month_from_token(token: str) -> int:

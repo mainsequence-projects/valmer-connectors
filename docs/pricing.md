@@ -130,9 +130,9 @@ Their input quote conventions differ:
   `quote_convention = key_node_quote`, and `rate_unit = key_node_unit`.
   It reads Valmer
   `https://www.valmer.com.mx/VAL/Web_Benchmarks/IRS_USD_CURVE.csv` only after
-  the Valmer English homepage benchmark table shows a source date newer than
-  the latest stored observation. It includes CME SR1/SR3 SOFR futures and USD
-  SOFR OIS swaps, and excludes Fed Funds OIS and Fed Funds/SOFR basis rows. The
+  the Valmer English homepage AJAX date feed shows a source date newer than the
+  latest stored observation. It includes CME SR1/SR3 SOFR futures and USD SOFR
+  OIS swaps, and excludes Fed Funds OIS and Fed Funds/SOFR basis rows. The
   persisted `curve` output remains bootstrapped zero rates. The Valmer curve
   runner validates that `key_nodes` contain only the included SOFR futures/OIS
   construction families before the core `DiscountCurvesNode` compresses them.
@@ -321,9 +321,9 @@ publication path.
 TIIE rows are built from Valmer `IRS_MXN_CURVE.csv`, not from a direct
 zero-rate CSV. The builder:
 
-- resolves the Valmer benchmark date from
-  `https://www.valmer.com.mx/en/` by parsing
-  `#tablaMismoDia span.lbFechaIndice`
+- resolves the Valmer benchmark date through the same AJAX flow used by
+  `https://www.valmer.com.mx/en/`: open the homepage context, then parse the
+  `Indices_Benchmarks` date from `getInsumoVectorGubernamental.do`
 - compares that source date with the latest persisted
   `DiscountCurvesStorage.time_index` for `VALMER_TIIE_OVERNIGHT`
 - downloads `IRS_MXN_CURVE.csv` only when the Valmer source date is newer than

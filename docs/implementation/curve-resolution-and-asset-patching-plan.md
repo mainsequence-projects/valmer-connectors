@@ -220,7 +220,7 @@ Initial build-detail policy:
 
 | Curve | Builder Details |
 | --- | --- |
-| `VALMER_TIIE_OVERNIGHT` | `builder_type="zero_rate_curve"`, `quote_convention="zero_rate"`, `rate_unit="decimal"`, `day_counter_code="Actual360"`, `calendar_code="Mexico/BMV"` or the supported JSON-codec equivalent, `interpolation_method="log_linear_discount"`, `compounding="compounded_annual"`, `extrapolation_policy="enabled"` |
+| `VALMER_TIIE_OVERNIGHT` | `builder_type="zero_rate_curve"`, `quote_convention="zero_rate"`, `rate_unit="decimal"`, `day_counter_code="Actual360"`, `calendar_code="Mexico"` for `CurveBuildingDetails`; index convention dumps use QuantLib calendar JSON `{"name": "Mexico"}`, `interpolation_method="log_linear_discount"`, `compounding="compounded_annual"`, `extrapolation_policy="enabled"` |
 | `VALMER_MXN_GOVERNMENT_BOND` | same zero-rate build policy, matching the zero-rate points exported by `build_mxn_government_curve_frame(...)` |
 
 The current Valmer builders already emit decimal zero rates:
@@ -229,9 +229,11 @@ The current Valmer builders already emit decimal zero rates:
 - `src/valmer_connectors/instruments/mexican_government_bond_curve.py`
 
 The implementation must verify that `calendar_code` is accepted by
-`msm_pricing.instruments.json_codec.calendar_from_json(...)`. If
-`"Mexico/BMV"` is not accepted by the current codec, use the supported Mexico
-calendar token and document it in `docs/pricing.md`.
+`msm_pricing.instruments.json_codec.calendar_from_json(...)`. The unsupported
+literal string `"Mexico/BMV"` must not be persisted. Use `calendar_code="Mexico"`
+where the schema requires a string calendar code, and use QuantLib calendar JSON
+`{"name": "Mexico"}` inside convention dumps that are decoded by
+`calendar_from_json(...)`.
 
 ### Market-Data Set Source Bindings
 

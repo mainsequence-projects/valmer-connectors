@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from msm.constants import INDEX_TYPE_INTEREST_RATE
+from msm_pricing.instruments.json_codec import calendar_from_json
 
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.bootstrap import seed_static_defaults
@@ -112,6 +113,14 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
         self.assertEqual(payload["index_family"], "TIIE")
         self.assertEqual(payload["convention_dump"]["period"], "28D")
         self.assertEqual(payload["convention_dump"]["day_counter_code"], "Actual360")
+        self.assertEqual(
+            payload["convention_dump"]["fixing_calendar_code"],
+            {"name": "Mexico"},
+        )
+        self.assertEqual(
+            calendar_from_json(payload["convention_dump"]["fixing_calendar_code"]).name(),
+            "Mexican stock exchange",
+        )
         self.assertEqual(
             payload["convention_dump"]["business_day_convention"],
             "ModifiedFollowing",
