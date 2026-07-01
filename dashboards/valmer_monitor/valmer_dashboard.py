@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pandas as pd
 import streamlit as st
-from mainsequence.meta_tables import APIDataNode
 from msm.api.base import operation_result_rows
 from msm.repositories.crud import search_model
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
@@ -18,9 +17,12 @@ from msm_pricing.settings import (
     default_pricing_market_data_identifier,
 )
 
+from mainsequence.meta_tables import APIDataNode
 from valmer_connectors.data_nodes.nodes import ImportValmer
 from valmer_connectors.instruments.asset_identity import resolve_valmer_assets
-from valmer_connectors.instruments.curve_bootstrap import VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER
+from valmer_connectors.instruments.curve_bootstrap import (
+    VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+)
 from valmer_connectors.meta_tables.valmer_asset_details import resolve_valmer_asset_details
 
 VECTOR_NODE_IDENTIFIER = "vector_de_precios_valmer"
@@ -458,7 +460,7 @@ def _load_discount_curve_history(lookback_days: int = 30) -> QueryResult:
         frame = node.get_df_between_dates(
             dimension_range_map=dimension_range_for_identity(
                 identity_dimension=CURVE_UNIQUE_IDENTIFIER_DIMENSION,
-                identity=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+                identity=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
                 date_info={
                     "start_date": utc_now() - timedelta(days=lookback_days),
                     "start_date_operand": ">=",
@@ -570,6 +572,6 @@ def selected_asset_snapshot(frame: pd.DataFrame, unique_identifier: str | None) 
 def runtime_notes() -> list[str]:
     return [
         f"Discount curve DataNode identifier: `{DISCOUNT_CURVE_NODE_IDENTIFIER}`.",
-        f"Valmer curve unique identifier: `{VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER}`.",
+        f"Valmer curve unique identifier: `{VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER}`.",
         "TIIE and CETE identities are core `Index` rows with `index_type=interest_rate`.",
     ]

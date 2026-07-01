@@ -14,7 +14,6 @@ The project previously exposed operational behavior through loose scripts under
 `scripts/`:
 
 - `scripts/update_vector_valmer.py`
-- `scripts/update_tiie_zero_curve.py`
 - `scripts/validate_runtime.py`
 
 Those scripts are useful, but they are not a stable package interface. They also
@@ -204,15 +203,15 @@ ignored for this command. To test a local Vector Analitico artifact, run the
 vector DataNode with the debug artifact first, then run this curve command
 against persisted vector storage.
 
-### `valmer-connectors curves update-tiie-zero`
+### `valmer-connectors curves update-tiie-irs-mxn`
 
-Own the behavior previously exposed by `scripts/update_tiie_zero_curve.py`.
+Own the Valmer TIIE overnight OIS curve update from `IRS_MXN_CURVE.csv`.
 
 Default behavior:
 
 - call `bootstrap_runtime()`;
-- build `DiscountCurvesNode` with the Valmer TIIE 28 curve identifier;
-- attach `build_tiie_valmer`;
+- build `DiscountCurvesNode` with the Valmer TIIE overnight OIS curve identifier;
+- attach `build_tiie_irs_mxn_valmer`;
 - run the curve DataNode update with the current script behavior,
   `run(force_update=True)`.
 
@@ -223,7 +222,33 @@ Options:
 ```
 
 The default curve identifier is
-`VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER`.
+`VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER`.
+
+Do not expose `--force` / `--no-force`.
+`force_update=True` is the current script behavior and the intended default.
+
+### `valmer-connectors curves update-usd-sofr`
+
+Own the Valmer USD SOFR overnight curve update from `IRS_USD_CURVE.csv`.
+
+Default behavior:
+
+- call `bootstrap_runtime()`;
+- build `DiscountCurvesNode` with the Valmer USD SOFR overnight curve
+  identifier;
+- attach `build_usd_sofr_valmer`;
+- resolve the Valmer benchmark date before downloading the CSV;
+- run the curve DataNode update with the current script behavior,
+  `run(force_update=True)`.
+
+Options:
+
+```text
+--curve-identifier TEXT
+```
+
+The default curve identifier is
+`VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER`.
 
 Do not expose `--force` / `--no-force`.
 `force_update=True` is the current script behavior and the intended default.
@@ -260,15 +285,16 @@ This ADR does not:
 
 - [x] Add `src/valmer_connectors/services/`.
 - [x] Add reusable service functions for runtime validation, vector update,
-      TIIE zero curve update, and migration command rendering.
+      TIIE IRS MXN curve update, and migration command rendering.
 - [x] Add reusable service function for the MXN government bond curve update.
+- [x] Add reusable service function for the USD SOFR curve update.
 - [x] Add `src/valmer_connectors/cli/main.py` using `argparse`.
 - [x] Add `[project.scripts] valmer-connectors = "valmer_connectors.cli.main:main"`.
 - [x] Add `valmer-connectors copy-valmer-skills`.
 - [x] Convert `scripts/update_vector_valmer.py` into a thin wrapper.
-- [x] Convert `scripts/update_tiie_zero_curve.py` into a thin wrapper.
 - [x] Convert `scripts/validate_runtime.py` into a thin wrapper.
 - [x] Add `valmer-connectors curves update-mxn-government`.
+- [x] Add `valmer-connectors curves update-usd-sofr`.
 - [x] Document CLI usage in project docs after implementation.
 
 ## Validation
@@ -286,7 +312,8 @@ Live validation after credentials and migrations:
 ```bash
 valmer-connectors runtime validate
 valmer-connectors vector update
-valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-tiie-irs-mxn
+valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-mxn-government
 ```
 

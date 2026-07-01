@@ -1,6 +1,6 @@
 import datetime as dt
-import uuid
 import unittest
+import uuid
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 

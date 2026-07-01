@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 
 from valmer_connectors.instruments.curve_bootstrap import (
+    VALMER_CURVE_QUOTE_SIDE,
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
 )
 
@@ -41,6 +42,8 @@ class BootstrapInstrument:
     family: str
     valuation_date: pd.Timestamp
     maturity_date: pd.Timestamp
+    quote: float
+    key_node: dict[str, Any]
     helper: Any
 
 
@@ -121,6 +124,27 @@ def build_cetes_zero_coupon_helper(row: pd.Series) -> BootstrapInstrument:
         family="CETES",
         valuation_date=valuation_date,
         maturity_date=maturity_date,
+        quote=price,
+        key_node=_clean_key_node(
+            {
+                "maturity_date": maturity_date.date().isoformat(),
+                "asset_identifier": str(row["unique_identifier"]),
+                "instrument_type": "zero_coupon_bond",
+                "helper_type": "zero_coupon_bond_helper",
+                "quote": price,
+                "quote_type": "clean_price",
+                "quote_unit": "price_per_10",
+                "quote_side": VALMER_CURVE_QUOTE_SIDE,
+                "quote_source": "preciosucio",
+                "source_quote_type": "dirty_price",
+                "yield": _optional_decimal_yield(row),
+                "yield_type": "yield_to_maturity",
+                "yield_unit": "decimal",
+                "yield_source": "tasaderendimiento",
+                "face_value": face_value,
+                "day_counter": "Actual360",
+            }
+        ),
         helper=helper,
     )
 
@@ -181,6 +205,32 @@ def build_m_bono_fixed_rate_helper(row: pd.Series) -> BootstrapInstrument:
         family="M_BONOS",
         valuation_date=valuation_date,
         maturity_date=maturity_date,
+        quote=clean_price,
+        key_node=_clean_key_node(
+            {
+                "maturity_date": maturity_date.date().isoformat(),
+                "asset_identifier": str(row["unique_identifier"]),
+                "instrument_type": "fixed_rate_bond",
+                "helper_type": "fixed_rate_bond_helper",
+                "quote": clean_price,
+                "quote_type": "clean_price",
+                "quote_unit": "price_per_100",
+                "quote_side": VALMER_CURVE_QUOTE_SIDE,
+                "quote_source": "preciolimpio",
+                "source_quote_type": "clean_price",
+                "yield": _optional_decimal_yield(row),
+                "yield_type": "yield_to_maturity",
+                "yield_unit": "decimal",
+                "yield_source": "tasaderendimiento",
+                "dirty_price": dirty_price,
+                "dirty_price_source": "preciosucio",
+                "accrued_interest": accrued_interest,
+                "coupon_rate": coupon_rate,
+                "coupon_period_days": M_BONOS_COUPON_PERIOD_DAYS,
+                "face_value": face_value,
+                "day_counter": "Actual360",
+            }
+        ),
         helper=helper,
     )
 
@@ -242,6 +292,7 @@ def build_mxn_government_curve_frame(
                 "time_index": time_index,
                 "curve_identifier": curve_identifier,
                 "curve": curve_points,
+                "key_nodes": _build_curve_key_nodes(instruments),
             }
         ]
     ).set_index(["time_index", "curve_identifier"])
@@ -303,6 +354,12 @@ def _export_zero_rate_points(curve: Any, valuation_date: pd.Timestamp) -> dict[i
     if not points:
         raise MexicanGovernmentBondCurveError("Bootstrapped curve produced no pillar points.")
     return points
+
+
+def _build_curve_key_nodes(
+    instruments: list[BootstrapInstrument],
+) -> list[dict[str, Any]]:
+    return [dict(instrument.key_node) for instrument in instruments]
 
 
 def _deduplicate_pillars(
@@ -426,10 +483,34 @@ def _optional_float(row: pd.Series, column: str) -> float | None:
     return float(value)
 
 
+def _optional_decimal_yield(row: pd.Series) -> float | None:
+    for column in ("yield_rate", "tasaderendimiento"):
+        value = _optional_float(row, column)
+        if value is not None:
+            return _normalise_percent_rate(value)
+    return None
+
+
 def _normalise_coupon_rate(value: float) -> float:
-    if value > 1:
+    return _normalise_percent_rate(value)
+
+
+def _normalise_percent_rate(value: float) -> float:
+    if abs(value) > 1:
         return value / 100
     return value
+
+
+def _clean_key_node(node: dict[str, Any]) -> dict[str, Any]:
+    has_yield = node.get("yield") is not None
+    normalized = {}
+    for key, value in node.items():
+        if value is None:
+            continue
+        if key in {"yield_type", "yield_unit", "yield_source"} and not has_yield:
+            continue
+        normalized[key] = value
+    return normalized
 
 
 def _normalized_string_series(series: pd.Series) -> pd.Series:

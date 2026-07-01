@@ -19,7 +19,6 @@ def _valmer_markets_models(
     extra_markets_models: Sequence[Any] | None = None,
 ) -> list[Any]:
     from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
-
     from valmer_connectors.meta_tables.valmer_asset_details import (
         ValmerAssetDetailsTable,
     )

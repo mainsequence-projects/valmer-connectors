@@ -142,7 +142,7 @@ AssetTable.uid
 
 Curve rows are not owned by `IndexTable`. Valmer seeds real TIIE/CETE indexes
 for instrument selectors and conventions, then binds those selectors to
-`VALMER_TIIE_28` or `VALMER_MXN_GOVERNMENT_BOND` through explicit
+`VALMER_TIIE_OVERNIGHT` or `VALMER_MXN_GOVERNMENT_BOND` through explicit
 `PricingMarketDataSetCurveBinding` rows with `quote_side="mid"`.
 
 ## Migration Commands
@@ -171,7 +171,8 @@ After migrations and credentials are available:
 ```bash
 valmer-connectors runtime validate
 valmer-connectors vector update
-valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-tiie-irs-mxn
+valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-mxn-government
 ```
 

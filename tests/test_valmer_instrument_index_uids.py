@@ -1,6 +1,6 @@
 import datetime as dt
-import uuid
 import unittest
+import uuid
 from unittest.mock import patch
 
 import QuantLib as ql

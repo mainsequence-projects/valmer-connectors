@@ -25,7 +25,8 @@ mainsequence project project_resource list 113 --path . --timeout 60
 mainsequence project images list 113 --timeout 60
 mainsequence markets portfolios list --timeout 60
 valmer-connectors runtime validate
-valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-tiie-irs-mxn
+valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-mxn-government
 ```
 

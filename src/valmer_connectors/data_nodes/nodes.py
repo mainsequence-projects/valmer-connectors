@@ -11,17 +11,12 @@ from typing import Any, List, Literal, Union
 from urllib.parse import urlparse
 
 import pandas as pd
-from mainsequence.client.exceptions import ApiError, raise_for_response
-from mainsequence.client.metatables import MetaTable
-from mainsequence.client.utils import make_request
-from mainsequence.client.models_foundry import Artifact
 from msm.api.assets import Asset as MarketsAsset
 from msm.api.base import operation_result_rows
 from msm.constants import ASSET_TYPE_BOND
 from msm.data_nodes import AssetIndexedDataNode, AssetIndexedDataNodeConfiguration
 from msm.data_nodes.assets import AssetSnapshot
-from msm.repositories.base import compile_markets_statement
-from msm.repositories.base import execute_markets_operation
+from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_pricing.api import add_many_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
@@ -29,6 +24,10 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from tqdm import tqdm
 
+from mainsequence.client.exceptions import ApiError, raise_for_response
+from mainsequence.client.metatables import MetaTable
+from mainsequence.client.models_foundry import Artifact
+from mainsequence.client.utils import make_request
 from valmer_connectors.asset_classification import classify_valmer_asset_type
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.asset_identity import (
@@ -45,11 +44,13 @@ from valmer_connectors.meta_tables.valmer_asset_details import (
     VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
     upsert_valmer_asset_details,
 )
-from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
-from valmer_connectors.settings import resolve_valmer_force_pricing_details_patch
-from valmer_connectors.settings import resolve_valmer_pricing_details_batch_size
-from valmer_connectors.settings import resolve_valmer_vector_bypass_cursor_filter
-from valmer_connectors.settings import resolve_valmer_vector_local_copy_chunk_size
+from valmer_connectors.settings import (
+    resolve_valmer_force_pricing_details_patch,
+    resolve_valmer_meta_operation_batch_size,
+    resolve_valmer_pricing_details_batch_size,
+    resolve_valmer_vector_bypass_cursor_filter,
+    resolve_valmer_vector_local_copy_chunk_size,
+)
 
 _VALMER_EXCEL_NA_VALUES = (
     "",

@@ -22,5 +22,7 @@ nav:
       - Curve and Fixing Architecture Refactor: adr/0002-curve-and-fixing-architecture-refactor.md
       - Migration-First MetaTable Lifecycle: adr/0003-migration-first-metatable-lifecycle.md
       - Mexican Government Bond Curve Bootstrap: adr/0004-mexican-government-bond-curve-bootstrap.md
+      - Valmer TIIE IRS MXN Curve Source: adr/0005-valmer-tiie-irs-mxn-curve-source.md
+      - Valmer USD SOFR Curve Source: adr/0006-valmer-usd-sofr-curve-source.md
       - CLI:
           - Valmer Connectors CLI Design: adr/cli/0004-valmer-connectors-cli-design.md

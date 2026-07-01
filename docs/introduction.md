@@ -15,11 +15,14 @@ with Valmer market data for Mexican fixed income.
   through `msm_pricing.api.add_many_pricing_details(...)`, which bulk upserts
   timestamped pricing-detail rows and reconciles current rows by strict source
   date.
-- Seeds Mexican TIIE/CETE index identities, pricing conventions, Valmer curve
-  identities, curve build details, and explicit `mid` market-data-set curve
-  bindings for `VALMER_TIIE_28` and `VALMER_MXN_GOVERNMENT_BOND`.
+- Seeds Mexican TIIE/CETE and USD SOFR index identities, pricing conventions,
+  Valmer curve identities, curve build details, and explicit `mid`
+  market-data-set curve bindings for `VALMER_TIIE_OVERNIGHT`,
+  `VALMER_USD_SOFR_OVERNIGHT`, and `VALMER_MXN_GOVERNMENT_BOND`.
 - Publishes the Valmer TIIE curve through the canonical
   `msm_pricing.data_nodes.DiscountCurvesNode` path.
+- Publishes the Valmer USD SOFR curve through the same
+  `DiscountCurvesNode` path.
 - Publishes the Valmer MXN government curve through the same
   `DiscountCurvesNode` path from CETES and M Bonos Vector Analitico rows.
 - Ships a multipage Streamlit dashboard for source coverage, pricing hydration,
@@ -52,7 +55,8 @@ ValmerVectorPricesStorage
 ## Current Entry Points
 
 - `valmer-connectors vector update`
-- `valmer-connectors curves update-tiie-zero`
+- `valmer-connectors curves update-tiie-irs-mxn`
+- `valmer-connectors curves update-usd-sofr`
 - `valmer-connectors curves update-mxn-government`
 - `valmer-connectors runtime validate`
 - `src/valmer_connectors/data_nodes/nodes.py`

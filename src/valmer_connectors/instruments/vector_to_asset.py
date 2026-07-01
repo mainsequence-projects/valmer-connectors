@@ -15,7 +15,6 @@ import pandas as pd
 # noinspection PyPackageRequirements
 import pytz
 import QuantLib as ql
-from mainsequence.client.models_foundry import Artifact
 from msm_pricing.pricing_engine.bond_analytics import compare_bond_to_market_quote
 from msm_pricing.pricing_engine.coupon_schedules import (
     compute_coupon_schedule_force_match,
@@ -23,6 +22,7 @@ from msm_pricing.pricing_engine.coupon_schedules import (
 from msm_pricing.valuation import ValuationLine, ValuationPosition
 from tqdm import tqdm
 
+from mainsequence.client.models_foundry import Artifact
 from valmer_connectors.instruments.asset_identity import resolve_valmer_asset_uids
 from valmer_connectors.settings import SUBYACENTE_TO_INDEX_MAP
 

@@ -11,18 +11,20 @@ from pathlib import Path
 
 import structlog
 
-from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.data_nodes.nodes import (
     ImportValmer,
     ImportValmerConfig,
     MetaTableValmerSourceConfig,
 )
+from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.bootstrap import bootstrap_runtime
-from valmer_connectors.settings import DEFAULT_VECTOR_FIRST_LOOP_COUNT
-from valmer_connectors.settings import resolve_valmer_vector_bucket_name
-from valmer_connectors.settings import resolve_valmer_force_pricing_details_patch
-from valmer_connectors.settings import resolve_valmer_vector_bypass_cursor_filter
-from valmer_connectors.settings import resolve_valmer_vector_file_batch_size
+from valmer_connectors.settings import (
+    DEFAULT_VECTOR_FIRST_LOOP_COUNT,
+    resolve_valmer_force_pricing_details_patch,
+    resolve_valmer_vector_bucket_name,
+    resolve_valmer_vector_bypass_cursor_filter,
+    resolve_valmer_vector_file_batch_size,
+)
 
 LOGGER = structlog.get_logger(__name__)
 

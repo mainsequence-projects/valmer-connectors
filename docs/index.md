@@ -57,6 +57,8 @@ vector_de_precios_valmer  current pricing details
 - [ADR 0001: Asset Registration Identity Migration](adr/0001-asset-registration-identity-migration.md)
 - [ADR 0002: Curve and Fixing Architecture Refactor](adr/0002-curve-and-fixing-architecture-refactor.md)
 - [ADR 0003: Migration-First MetaTable Lifecycle](adr/0003-migration-first-metatable-lifecycle.md)
+- [ADR 0004: Mexican Government Bond Curve Bootstrap](adr/0004-mexican-government-bond-curve-bootstrap.md)
+- [ADR 0005: Valmer TIIE IRS MXN Curve Source](adr/0005-valmer-tiie-irs-mxn-curve-source.md)
 - [ADR 0004: Valmer Connectors CLI Design](adr/cli/0004-valmer-connectors-cli-design.md)
 
 ## Operational Files

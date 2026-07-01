@@ -12,13 +12,15 @@ from msm.base import (
     markets_table_args,
 )
 from msm.models.assets import AssetTable
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String
-from sqlalchemy import select
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, select
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
+
 from valmer_connectors.markets import ValmerMarketsMetaTableMixin
-from valmer_connectors.settings import resolve_valmer_asset_upsert_batch_size
-from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
+from valmer_connectors.settings import (
+    resolve_valmer_asset_upsert_batch_size,
+    resolve_valmer_meta_operation_batch_size,
+)
 
 VALMER_ASSET_DETAIL_VECTOR_COLUMNS = frozenset(
     {
@@ -329,8 +331,7 @@ def resolve_valmer_asset_detail_versions(
         return {}
 
     from msm.api.base import operation_result_rows
-    from msm.repositories.base import compile_markets_statement
-    from msm.repositories.base import execute_markets_operation
+    from msm.repositories.base import compile_markets_statement, execute_markets_operation
 
     context = ensure_valmer_asset_detail_runtime(timeout=timeout)
     versions: dict[str, ValmerAssetDetailVersion] = {}

@@ -4,8 +4,9 @@
 with Valmer market data for Mexican fixed income. The repository imports Valmer
 vector source rows, registers or reuses Valmer bond assets, stores static Valmer
 asset descriptors, publishes source vector observations, hydrates supported bond
-pricing details, publishes a Valmer TIIE 28 curve from the public Valmer
-MexDer benchmark CSV, and publishes a Valmer MXN government discount curve from
+pricing details, publishes a Valmer TIIE overnight OIS curve from Valmer
+`IRS_MXN_CURVE.csv`, publishes a Valmer USD SOFR overnight curve from Valmer
+`IRS_USD_CURVE.csv`, and publishes a Valmer MXN government discount curve from
 Vector Analitico CETES and M Bonos rows.
 
 ## What The Project Does
@@ -26,6 +27,8 @@ Vector Analitico CETES and M Bonos rows.
   `src/valmer_connectors/instruments/curve_bootstrap.py`.
 - Publishes the Valmer TIIE curve through the canonical
   `msm_pricing.data_nodes.DiscountCurvesNode` path.
+- Publishes the Valmer USD SOFR curve through the same
+  `DiscountCurvesNode` path.
 - Publishes the Valmer MXN government curve through the same
   `DiscountCurvesNode` path from CETES and M Bonos Vector Analitico rows.
 - Includes a project-specific multipage Streamlit dashboard under
@@ -161,7 +164,8 @@ valmer-connectors migrations commands
 valmer-connectors runtime validate
 valmer-connectors copy-valmer-skills --path .
 valmer-connectors vector update
-valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-tiie-irs-mxn
+valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-mxn-government
 ```
 
@@ -191,7 +195,8 @@ library cannot accidentally overwrite its own skill bundle.
 ```bash
 valmer-connectors runtime validate
 valmer-connectors vector update
-valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-tiie-irs-mxn
+valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-mxn-government
 ```
 
@@ -199,8 +204,6 @@ valmer-connectors curves update-mxn-government
 
 - `scripts/update_vector_valmer.py`: compatibility wrapper for the Valmer vector
   refresh.
-- `scripts/update_tiie_zero_curve.py`: compatibility wrapper for the TIIE 28
-  discount-curve refresh.
 - `scripts/validate_runtime.py`: compatibility wrapper for runtime validation.
 
 ## Documentation

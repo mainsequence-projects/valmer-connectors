@@ -105,6 +105,155 @@ mainsequence agent session a2a send \
   --message "Now identify the highest priority follow-up."
 ```
 
+## Handle Shortcut Helper
+
+For repeated communication with the same target agent, use a stable handle. On
+first use, include the target agent UID so the CLI can create or resolve the
+target session and cache the returned session UID:
+
+```bash
+mainsequence agent session a2a send \
+  <stable_handle_unique_id> \
+  --target-agent-uid <target_agent_uid> \
+  --message "Return a JSON object with keys: summary, risk_level, next_action." \
+  --strict-dictionary
+```
+
+`--name` is optional and only affects the session if the backend creates it:
+
+```bash
+mainsequence agent session a2a send \
+  portfolios \
+  --target-agent-uid <target_agent_uid> \
+  --name "Portfolio analysis" \
+  --message "Return a JSON object with keys: summary, risk_level, next_action." \
+  --strict-dictionary
+```
+
+After the handle is cached, reuse it without the target agent UID:
+
+```bash
+mainsequence agent session a2a send \
+  portfolios \
+  --message "Now identify the highest priority follow-up." \
+  --strict-dictionary
+```
+
+## Send Files
+
+A2A can send inline files as raw parts. For PDFs, use `--file`; the CLI reads
+the file bytes, enforces the 15 MiB inline limit, base64 encodes the bytes, and
+sends the part with `filename` and `mediaType`.
+
+```bash
+mainsequence agent session a2a send \
+  <target_agent_session_uid> \
+  --message "Please summarize this PDF." \
+  --file report.pdf \
+  --media-type application/pdf
+```
+
+The same handle shortcut works with files:
+
+```bash
+mainsequence agent session a2a send \
+  portfolios \
+  --message "Please summarize this PDF." \
+  --file report.pdf \
+  --media-type application/pdf
+```
+
+For retries of the exact same message and file attachment, reuse the same
+`--message-id`.
+
+## Python Usage
+
+In Python, use the backend handle to get or create the target session, then
+reuse the returned session UID for every message in the same conversation. The
+binding is:
+
+```text
+handle_unique_id -> AgentSession.uid -> A2A message.contextId
+```
+
+Direct SDK flow:
+
+```python
+from mainsequence.client.agent_runtime_models import Agent, AgentSession
+
+
+agent = Agent.get_by_uid(target_agent_uid)
+session = agent.get_or_create_session(
+    handle_unique_id="portfolios",
+    name="Portfolio analysis",
+)
+
+response = AgentSession.send_a2a_message(
+    session.uid,
+    message="Return a JSON object with keys: summary, risk_level, next_action.",
+    strict_dictionary=True,
+)
+```
+
+For another message in the same conversation, reuse the same `session.uid`:
+
+```python
+response = AgentSession.send_a2a_message(
+    session.uid,
+    message="Now identify the highest priority follow-up.",
+    strict_dictionary=True,
+)
+```
+
+To send a PDF, pass a file attachment. The SDK reads the raw bytes, enforces the
+15 MiB inline limit, base64 encodes them, and sends `filename` plus `mediaType`:
+
+```python
+response = AgentSession.send_a2a_message(
+    session.uid,
+    message="Please summarize this PDF.",
+    files=[
+        {
+            "path": "report.pdf",
+            "media_type": "application/pdf",
+            "filename": "report.pdf",
+        }
+    ],
+)
+```
+
+Reusable helper:
+
+```python
+from mainsequence.client.agent_runtime_models import Agent, AgentSession
+
+
+def send_to_agent_handle(
+    target_agent_uid: str,
+    handle_unique_id: str,
+    message: str,
+    *,
+    name: str | None = None,
+    files: list[dict[str, str]] | None = None,
+    strict_dictionary: bool = False,
+):
+    agent = Agent.get_by_uid(target_agent_uid)
+    session = agent.get_or_create_session(
+        handle_unique_id=handle_unique_id,
+        name=name,
+    )
+
+    return AgentSession.send_a2a_message(
+        session.uid,  # The SDK sends this as A2A message.contextId.
+        message=message,
+        files=files,
+        strict_dictionary=strict_dictionary,
+    )
+```
+
+Use the same `handle_unique_id` for the same target conversation. Use a new
+handle for a different task or conversation.
+
 ## Response Handling
 
 - Parse the CLI output as the standard A2A JSON response.

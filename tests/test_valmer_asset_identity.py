@@ -1,5 +1,5 @@
-import uuid
 import unittest
+import uuid
 from unittest.mock import Mock, patch
 
 import pandas as pd
@@ -7,9 +7,9 @@ from msm.api.assets import Asset
 from msm.constants import ASSET_TYPE_BOND, ASSET_TYPE_BOND_DEFINITION
 
 from valmer_connectors.instruments.asset_identity import (
+    ValmerAssetRef,
     _normalize_asset_type_map,
     _upsert_asset_table_rows,
-    ValmerAssetRef,
     add_valmer_unique_identifier,
     build_valmer_unique_identifier,
     ensure_valmer_asset_runtime,

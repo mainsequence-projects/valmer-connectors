@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valmer-connectors"
-version = "0.1.20"
+version = "0.1.21"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,6 +13,7 @@ dependencies = [
     "pandas-market-calendars>=5.4.0",
     "pymssql>=2.3.13",
     "quantlib>=1.42.1",
+    "ruff>=0.15.20",
     "streamlit>=1.58.0",
     "xlrd>=2.0.2",
 ]
@@ -34,6 +35,7 @@ target-version = "py311"          # Optimize checks/fixes for Python 3.10.
 extend-exclude = [                # Extra paths to ignore.
   "build", "dist", ".venv", ".tox", ".mypy_cache", ".ruff_cache"
 ]
+src = ["src", "agents"]
 fix = true                        # Apply fixes on `ruff check` without --fix.
 
 [tool.ruff.lint]
@@ -78,5 +80,6 @@ ignore = ["E203", "E501"]
 [tool.ruff.lint.isort]
 # Treat these as your own packages so they sort as "first-party".
 known-first-party = ["mainsequence","valmer_connectors","migrations","agents"]
-# (If you use a src/ layout, also set: src-paths = ["src"])
-src-paths = ["src", "agents"]
+
+[tool.uv.sources]
+ms-markets = { path = "../mainsequencemarkets-21f6783c-041a-4631-80ef-934e1dfa3d2b" }

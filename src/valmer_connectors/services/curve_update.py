@@ -11,17 +11,27 @@ from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
 from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
-    VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+    VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     configure_valmer_discount_curves_cadence,
+)
+from valmer_connectors.instruments.curve_key_nodes import (
+    validate_mxn_government_key_nodes,
+    validate_tiie_ois_key_nodes,
+    validate_usd_sofr_key_nodes,
 )
 from valmer_connectors.instruments.mexican_government_bond_curve import (
     MexicanGovernmentBondCurveError,
     build_mxn_government_curve_frame,
     select_mxn_government_bootstrap_instruments,
 )
-from valmer_connectors.instruments.rates_curves import build_tiie_valmer
+from valmer_connectors.instruments.rates_curves import (
+    build_tiie_irs_mxn_valmer,
+    build_usd_sofr_valmer,
+)
 
 CurveBuilder = Callable[..., pd.DataFrame]
+KeyNodesValidator = Callable[..., Any]
 LOGGER = structlog.get_logger(__name__)
 VALMER_MXN_GOVERNMENT_BOND_OFFSET_START = dt.datetime(2026, 6, 1, tzinfo=dt.UTC)
 _VECTOR_CURVE_SOURCE_COLUMNS = [
@@ -43,7 +53,9 @@ _VECTOR_CURVE_SOURCE_COLUMNS = [
     "monedaemision",
     "freccpn",
     "tasacupon",
+    "yield_rate",
 ]
+_DISCOUNT_CURVE_REQUIRED_PAYLOAD_COLUMNS = frozenset({"curve", "key_nodes"})
 
 
 class ValmerMxnGovernmentBondDiscountCurvesNode(DiscountCurvesNode):
@@ -58,6 +70,7 @@ def _run_valmer_discount_curve_update(
     curve_builder: CurveBuilder,
     logger=None,
     node_class: type[DiscountCurvesNode] | None = None,
+    key_nodes_validator: KeyNodesValidator | None = None,
 ) -> None:
     """Run a Valmer discount curve builder through the canonical pricing node."""
 
@@ -72,6 +85,8 @@ def _run_valmer_discount_curve_update(
             logger=logger or LOGGER,
         )
     )
+    if key_nodes_validator is not None:
+        node = node.set_key_nodes_validator(key_nodes_validator)
     node.run(force_update=True)
 
 
@@ -82,10 +97,25 @@ def _with_curve_summary_logging(
 ) -> CurveBuilder:
     def build_curve(**kwargs: Any) -> pd.DataFrame:
         frame = curve_builder(**kwargs)
+        frame = _ensure_discount_curve_storage_contract(frame)
         _log_curve_frame_summary(frame, logger=logger)
         return frame
 
     return build_curve
+
+
+def _ensure_discount_curve_storage_contract(frame: pd.DataFrame) -> pd.DataFrame:
+    """Return a frame compatible with the backend DiscountCurvesStorage contract."""
+
+    normalized = frame.copy()
+    columns = set(normalized.reset_index().columns)
+    missing_required = sorted(_DISCOUNT_CURVE_REQUIRED_PAYLOAD_COLUMNS - columns)
+    if missing_required:
+        raise ValueError(
+            "Valmer discount curve builders must include storage contract columns: "
+            f"{missing_required}."
+        )
+    return normalized
 
 
 def _log_curve_frame_summary(frame: pd.DataFrame, *, logger) -> None:
@@ -102,15 +132,29 @@ def _log_curve_frame_summary(frame: pd.DataFrame, *, logger) -> None:
         )
 
 
-def run_tiie_zero_curve_update(
+def run_tiie_irs_mxn_curve_update(
     *,
-    curve_identifier: str = VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    curve_identifier: str = VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
 ) -> None:
-    """Publish the Valmer TIIE 28 curve through the canonical DiscountCurvesNode."""
+    """Publish the Valmer TIIE overnight OIS curve from IRS_MXN_CURVE."""
 
     _run_valmer_discount_curve_update(
         curve_identifier=curve_identifier,
-        curve_builder=build_tiie_valmer,
+        curve_builder=build_tiie_irs_mxn_valmer,
+        key_nodes_validator=validate_tiie_ois_key_nodes,
+    )
+
+
+def run_usd_sofr_curve_update(
+    *,
+    curve_identifier: str = VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+) -> None:
+    """Publish the Valmer USD SOFR overnight OIS curve from IRS_USD_CURVE."""
+
+    _run_valmer_discount_curve_update(
+        curve_identifier=curve_identifier,
+        curve_builder=build_usd_sofr_valmer,
+        key_nodes_validator=validate_usd_sofr_key_nodes,
     )
 
 
@@ -139,6 +183,7 @@ def run_mxn_government_curve_update(
         curve_builder=build_curve,
         logger=LOGGER,
         node_class=ValmerMxnGovernmentBondDiscountCurvesNode,
+        key_nodes_validator=validate_mxn_government_key_nodes,
     )
 
 
@@ -237,9 +282,9 @@ def load_mxn_government_curve_source_from_vector_storage(
         )
 
     from msm.api.base import operation_result_rows
-    from msm.repositories.base import compile_markets_statement
-    from msm.repositories.base import execute_markets_operation
+    from msm.repositories.base import compile_markets_statement, execute_markets_operation
     from sqlalchemy import and_, func, or_, select
+
     from valmer_connectors.data_nodes.valmer_vector_storage import (
         ValmerVectorPricesStorage,
     )
@@ -334,6 +379,7 @@ def load_mxn_government_curve_source_from_vector_storage(
             details_table.c.issue_currency.label("monedaemision"),
             details_table.c.coupon_frequency.label("freccpn"),
             details_table.c.coupon_rate.label("tasacupon"),
+            vector_table.c.yield_rate.label("yield_rate"),
         )
         .select_from(joined)
         .where(*filters)
@@ -412,6 +458,12 @@ def _normalize_query_time_index(value: Any) -> dt.datetime:
 
 
 def _empty_curve_frame() -> pd.DataFrame:
-    return pd.DataFrame(columns=["time_index", "curve_identifier", "curve"]).set_index(
-        ["time_index", "curve_identifier"]
-    )
+    return pd.DataFrame(
+        columns=[
+            "time_index",
+            "curve_identifier",
+            "curve",
+            "key_nodes",
+            "metadata_json",
+        ]
+    ).set_index(["time_index", "curve_identifier"])

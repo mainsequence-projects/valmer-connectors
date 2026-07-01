@@ -1,8 +1,8 @@
 # Curve Resolution And Asset Patching Plan
 
-This document is an implementation plan only. It records the required code,
-data, documentation, and validation changes for the Valmer curve-resolution
-fix. It does not change runtime behavior yet.
+This document records the Valmer curve-resolution fix, the local implementation
+state, and the remaining live platform validation steps. Live platform updates
+remain separate from local code and documentation changes.
 
 ## Goal
 
@@ -30,9 +30,8 @@ The implementation must:
 
 ## Sources Checked
 
-The local Valmer skill and several project docs still describe the old
-`Curve.index_uid` model. For this work, the current source of truth is the
-neighboring `ms-markets` checkout:
+The current source of truth is the copied `ms-markets` fixed-income curve skill
+at `ms-markets==0.0.89` and the neighboring `ms-markets` checkout:
 
 - `/Users/jose/mainsequence-dev/main-sequence-workbench/projects/mainsequencemarkets-21f6783c-041a-4631-80ef-934e1dfa3d2b/docs/ADR/0035-pricing-curve-identity-and-market-data-curve-bindings.md`
 - `/Users/jose/mainsequence-dev/main-sequence-workbench/projects/mainsequencemarkets-21f6783c-041a-4631-80ef-934e1dfa3d2b/docs/knowledge/msm_pricing/curves.md`
@@ -40,40 +39,38 @@ neighboring `ms-markets` checkout:
 - `/Users/jose/mainsequence-dev/main-sequence-workbench/projects/mainsequencemarkets-21f6783c-041a-4631-80ef-934e1dfa3d2b/docs/knowledge/msm_pricing/runtime_resolution.md`
 - `/Users/jose/mainsequence-dev/main-sequence-workbench/projects/mainsequencemarkets-21f6783c-041a-4631-80ef-934e1dfa3d2b/examples/msm_pricing/bond_pricing_example/main.py`
 
-Local startup note:
+Local startup state after refresh:
 
 - `.agents/skills/mainsequence/PINNED_FROM.txt` is pinned to
-  `mainsequence==4.4.22`.
-- The installed local CLI reports `mainsequence 4.4.23`.
-- Before implementing code, refresh the managed scaffold/skills according to
-  `AGENTS.md`, or explicitly record why that cannot be done in the same change.
+  `mainsequence==4.4.25`.
+- `.agents/skills/ms_markets/PINNED_FROM.txt` is pinned to
+  `ms-markets==0.0.89`.
+- The copied fixed-income curve skill documents the current
+  `PricingMarketDataSetCurveBinding` and `CurveKeyNode` model.
 
-## Current Gaps
+## Resolved Gaps
 
-### 1. Valmer Still Creates A Fake Government Bond Index
+### 1. Synthetic Government Bond Index Removed
 
-`src/valmer_connectors/instruments/curve_bootstrap.py` currently defines:
+The broken implementation created this synthetic index:
 
 ```text
 MXN_GOVERNMENT_BOND_INDEX_UNIQUE_IDENTIFIER = "MXN_GOVERNMENT_BOND"
 ```
 
-It then includes that identifier in:
-
-- `MEXICAN_REFERENCE_INDEX_DEFINITIONS`
-- `MEXICAN_INDEX_CONVENTION_DEFINITIONS`
-- `VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION.index_unique_identifier`
-
-That is wrong under the fixed model. `MXN_GOVERNMENT_BOND` is a curve family
+That was wrong under the fixed model. `MXN_GOVERNMENT_BOND` is a curve family
 and valuation curve identity. It is not a rate index, fixing index, or coupon
 index.
 
-### 2. Curve Creation Still Uses `index_uid`
+Current local code removes it from:
 
-`ValmerCurveDefinition` still stores `index_unique_identifier`, and
-`to_curve_payload(...)` still emits `index_uid`.
+- `MEXICAN_REFERENCE_INDEX_DEFINITIONS`
+- `MEXICAN_INDEX_CONVENTION_DEFINITIONS`
+- `VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION`
 
-Both Valmer curve upserts still resolve an index first:
+### 2. Curve Creation No Longer Uses `index_uid`
+
+The old curve definitions resolved an index first:
 
 ```text
 upsert_valmer_tiie_curve(...)
@@ -87,11 +84,14 @@ index-scoped selectors, the public API is
 `PricingMarketDataSetCurveBinding.upsert(...)` only for generic selectors such
 as `currency`.
 
-### 3. Runtime Attachment Omits New Pricing Tables
+Current local code emits curve-only payloads and uses
+`PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)` for
+TIIE/CETE index selectors.
 
-`valmer_pricing_runtime_models()` currently attaches the old minimum runtime
-set. It must include the new market-data and build-detail tables needed by
-runtime resolution:
+### 3. Runtime Attachment Includes Pricing Tables
+
+`valmer_pricing_runtime_models()` attaches the market-data and build-detail
+tables needed by runtime resolution:
 
 - `CurveBuildingDetailsTable`
 - `PricingMarketDataSetTable`
@@ -100,26 +100,18 @@ runtime resolution:
 - `DiscountCurvesStorage`
 - `IndexFixingsStorage`
 
-The sibling `ms-markets` floating bond example uses this exact model set.
+### 4. Valmer Seeds Build Details And Bindings
 
-### 4. Valmer Seeds Curves But Not Build Details Or Bindings
-
-`bootstrap_valmer_curve_pricing()` currently creates:
+`bootstrap_valmer_curve_pricing()` creates:
 
 - index type
 - reference indexes
 - index conventions
 - curves
-
-It does not create:
-
 - `CurveBuildingDetails`
 - `PricingMarketDataSet`
 - `PricingMarketDataSetBinding`
 - `PricingMarketDataSetCurveBinding`
-
-That means the new resolver cannot select or build the curve even if curve
-observations exist in `DiscountCurvesNode`.
 
 Getting a usable curve requires all of these rows:
 
@@ -140,15 +132,16 @@ DiscountCurvesNode observations
 A `z_spread_base` binding alone is not the general mechanism for getting a
 curve. It selects the benchmark curve for z-spread analytics only.
 
-### 5. TIIE Curve Type Is Wrong For Floating Index Resolution
+### 5. TIIE Curve Identity And Type
 
 The new `resolve_quantlib_index(...)` path resolves floating indexes with
 `role_key="projection"` and validates the selected curve has
 `curve_type="projection"`.
 
-Current Valmer code defines `VALMER_TIIE_28` as `curve_type="discount"`.
-That can break floating-rate instrument resolution after the binding model is
-used.
+Valmer TIIE bootstrapping must publish the overnight/OIS curve identity
+`VALMER_TIIE_OVERNIGHT` with `curve_type="projection"`. `TIIE_28`, `TIIE_91`,
+and `TIIE_182` remain index tenor/frequency selectors that can resolve to that
+overnight/OIS curve through market-data-set curve bindings.
 
 ### 6. Existing Asset Pricing Details Need Rehydration
 
@@ -206,7 +199,7 @@ Create independent `Curve` rows:
 
 | Curve | Curve Type | Currency | Purpose |
 | --- | --- | --- | --- |
-| `VALMER_TIIE_28` | `projection` | `MXN` | Mid forward/projection curve for TIIE-indexed floaters |
+| `VALMER_TIIE_OVERNIGHT` | `projection` | `MXN` | Mid forward/projection curve for TIIE-indexed floaters |
 | `VALMER_MXN_GOVERNMENT_BOND` | `discount` | `MXN` | Mid government discount and z-spread base curve for CETE/M Bono benchmark selectors |
 
 Do not put `index_uid` on either curve.
@@ -227,7 +220,7 @@ Initial build-detail policy:
 
 | Curve | Builder Details |
 | --- | --- |
-| `VALMER_TIIE_28` | `builder_type="zero_rate_curve"`, `quote_convention="zero_rate"`, `rate_unit="decimal"`, `day_counter_code="Actual360"`, `calendar_code="Mexico/BMV"` or the supported JSON-codec equivalent, `interpolation_method="log_linear_discount"`, `compounding="compounded_annual"`, `extrapolation_policy="enabled"` |
+| `VALMER_TIIE_OVERNIGHT` | `builder_type="zero_rate_curve"`, `quote_convention="zero_rate"`, `rate_unit="decimal"`, `day_counter_code="Actual360"`, `calendar_code="Mexico/BMV"` or the supported JSON-codec equivalent, `interpolation_method="log_linear_discount"`, `compounding="compounded_annual"`, `extrapolation_policy="enabled"` |
 | `VALMER_MXN_GOVERNMENT_BOND` | same zero-rate build policy, matching the zero-rate points exported by `build_mxn_government_curve_frame(...)` |
 
 The current Valmer builders already emit decimal zero rates:
@@ -277,25 +270,20 @@ Required TIIE projection bindings:
 
 | Role | Selector | Curve |
 | --- | --- | --- |
-| `projection` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_28` |
-| `projection` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_28` |
-
-Recommended TIIE bindings if the current Valmer source map can produce these
-instrument selectors:
-
-| Role | Selector | Curve |
-| --- | --- | --- |
-| `projection` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_28` |
-| `projection` | `index:<TIIE_OVERNIGHT.uid>:mid` | `VALMER_TIIE_28`, only if the domain agrees overnight TIIE should use this curve |
+| `projection` | `index:<TIIE_OVERNIGHT.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `projection` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `projection` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `projection` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 
 If floating-rate instruments keep `benchmark_rate_index_uid` equal to their
 floating index UID for z-spread analytics, also create:
 
 | Role | Selector | Curve |
 | --- | --- | --- |
-| `z_spread_base` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_28` |
-| `z_spread_base` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_28` |
-| `z_spread_base` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_28`, if used |
+| `z_spread_base` | `index:<TIIE_OVERNIGHT.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `z_spread_base` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `z_spread_base` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `z_spread_base` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 
 Required CETE/M Bono benchmark bindings:
 
@@ -338,10 +326,10 @@ the target project.
 
 - [x] Remove synthetic government-bond index.
 - [x] Refactor Valmer curve rows so `Curve.upsert(...)` receives no
-      `index_uid`; `VALMER_TIIE_28` is `projection`,
+      `index_uid`; `VALMER_TIIE_OVERNIGHT` is `projection`,
       `VALMER_MXN_GOVERNMENT_BOND` is `discount`, and both use
       `quote_side="mid"`.
-- [x] Seed `CurveBuildingDetails` for `VALMER_TIIE_28` and
+- [x] Seed `CurveBuildingDetails` for `VALMER_TIIE_OVERNIGHT` and
       `VALMER_MXN_GOVERNMENT_BOND`; verified `calendar_code="Mexico"` with the
       current `msm_pricing` JSON codec.
 - [x] Seed the default `PricingMarketDataSet` source bindings for
@@ -363,6 +351,10 @@ the target project.
 - [x] Add focused local tests for no synthetic index, no curve `index_uid`,
       `CurveBuildingDetails`, source bindings, explicit `mid` curve bindings,
       real instrument index selectors, and DataNode repair controls.
+- [x] Attach Valmer source-specific `key_nodes` semantic validators for
+      `VALMER_TIIE_OVERNIGHT`, `VALMER_USD_SOFR_OVERNIGHT`, and
+      `VALMER_MXN_GOVERNMENT_BOND` before core `DiscountCurvesNode`
+      compression.
 - [x] Run local validation:
       `py_compile`, `tests.test_curve_bootstrap`,
       `tests.test_valmer_instrument_index_uids`,
@@ -375,15 +367,16 @@ the target project.
       `docs/pricing.md`, `docs/instruments.md`, `docs/source-import.md`,
       `docs/new-version-migration.md`, and ADR 0004.
 - [ ] Run live curve and asset patch:
-      `valmer-connectors curves update-tiie-zero`;
+      `valmer-connectors curves update-tiie-irs-mxn`;
+      `valmer-connectors curves update-usd-sofr`;
       `valmer-connectors curves update-mxn-government`;
       `VALMER_FORCE_PRICING_DETAILS_PATCH=1
       VALMER_VECTOR_BYPASS_CURSOR_FILTER=1 valmer-connectors vector update`.
-- [ ] Verify live curve observations exist for `VALMER_TIIE_28` and
-      `VALMER_MXN_GOVERNMENT_BOND`.
+- [ ] Verify live curve observations exist for `VALMER_TIIE_OVERNIGHT`,
+      `VALMER_USD_SOFR_OVERNIGHT`, and `VALMER_MXN_GOVERNMENT_BOND`.
 - [ ] Verify live pricing-detail patch results: sample M Bono current pricing
       details use a real CETE benchmark index UID; TIIE projection resolves to
-      `VALMER_TIIE_28` with `curve_quote_side="mid"`; CETE z-spread resolves to
+      `VALMER_TIIE_OVERNIGHT` with `curve_quote_side="mid"`; CETE z-spread resolves to
       `VALMER_MXN_GOVERNMENT_BOND` with
       `benchmark_curve_quote_side="mid"`.
 - [ ] Clean old backend static rows after live payload references are gone:
@@ -422,7 +415,7 @@ Required changes:
 4. Remove `index_unique_identifier` from `ValmerCurveDefinition`.
 5. Replace `to_curve_payload(index_uid=...)` with a curve-only payload.
 6. Add `currency_code` and optional `quote_side` to curve definitions.
-7. Set `VALMER_TIIE_28.curve_type = "projection"`.
+7. Set `VALMER_TIIE_OVERNIGHT.curve_type = "projection"`.
 8. Keep `VALMER_MXN_GOVERNMENT_BOND.curve_type = "discount"`.
 9. Add static definition objects for `CurveBuildingDetails`.
 10. Add static definition objects for market-data source bindings and mid curve
@@ -620,13 +613,16 @@ z-spread or benchmark-index hydration errors will become harder to diagnose.
 Commands:
 
 ```bash
-valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-tiie-irs-mxn
+valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-mxn-government
 ```
 
 Required validation:
 
-- `Curve.get_by_unique_identifier("VALMER_TIIE_28")` exists and has
+- `Curve.get_by_unique_identifier("VALMER_TIIE_OVERNIGHT")` exists and has
+  `curve_type="projection"`
+- `Curve.get_by_unique_identifier("VALMER_USD_SOFR_OVERNIGHT")` exists and has
   `curve_type="projection"`
 - `Curve.get_by_unique_identifier("VALMER_MXN_GOVERNMENT_BOND")` exists and
   has `curve_type="discount"`
@@ -671,7 +667,7 @@ Specific assertions to add:
 - reference index definitions exclude `MXN_GOVERNMENT_BOND`
 - CETE indexes remain registered
 - TIIE indexes remain registered
-- `VALMER_TIIE_28` curve payload has no `index_uid` and has
+- `VALMER_TIIE_OVERNIGHT` curve payload has no `index_uid` and has
   `curve_type="projection"` and `quote_side="mid"`
 - `VALMER_MXN_GOVERNMENT_BOND` curve payload has no `index_uid` and has
   `curve_type="discount"` and `quote_side="mid"`
@@ -702,7 +698,7 @@ No newly seeded Index row:
   MXN_GOVERNMENT_BOND
 
 Curve rows:
-  VALMER_TIIE_28
+  VALMER_TIIE_OVERNIGHT
   VALMER_MXN_GOVERNMENT_BOND
 
 Build rows:
@@ -713,8 +709,8 @@ Market-data bindings:
   default + interest_rate_index_fixings -> IndexFixingsStorage
 
 Curve bindings:
-  projection:index:<TIIE_28.uid>:mid -> VALMER_TIIE_28
-  projection:index:<TIIE_182.uid>:mid -> VALMER_TIIE_28
+  projection:index:<TIIE_28.uid>:mid -> VALMER_TIIE_OVERNIGHT
+  projection:index:<TIIE_182.uid>:mid -> VALMER_TIIE_OVERNIGHT
   z_spread_base:index:<CETE_28.uid>:mid -> VALMER_MXN_GOVERNMENT_BOND
   z_spread_base:index:<CETE_182.uid>:mid -> VALMER_MXN_GOVERNMENT_BOND
 ```
@@ -722,7 +718,8 @@ Curve bindings:
 Then run curve updates and asset patch:
 
 ```bash
-valmer-connectors curves update-tiie-zero
+valmer-connectors curves update-tiie-irs-mxn
+valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-mxn-government
 
 export VALMER_FORCE_PRICING_DETAILS_PATCH=1
@@ -739,7 +736,7 @@ Success requires:
   synthetic government-bond index UID
 - sample CETE benchmark z-spread curve resolution selects
   `VALMER_MXN_GOVERNMENT_BOND` when `benchmark_curve_quote_side="mid"`
-- sample TIIE floater projection resolution selects `VALMER_TIIE_28` when
+- sample TIIE floater projection resolution selects `VALMER_TIIE_OVERNIGHT` when
   `curve_quote_side="mid"`
 
 ## Non-Goals

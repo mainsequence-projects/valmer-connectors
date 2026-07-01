@@ -1,23 +1,22 @@
-from contextlib import ExitStack
 import os
-from pathlib import Path
 import tempfile
-import uuid
 import unittest
+import uuid
+from contextlib import ExitStack
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, PropertyMock, patch
 
 import pandas as pd
-from mainsequence.client.exceptions import ApiError
-from mainsequence.meta_tables.data_nodes.run_operations import UpdateRunner
 from msm.base import markets_table_name
 from msm.constants import ASSET_TYPE_BOND
 from msm.data_nodes.assets import AssetSnapshot as CoreAssetSnapshot
 from msm.models.assets import AssetTable
-from msm.settings import ASSET_IDENTIFIER_DIMENSION
-from msm.settings import markets_auto_register_namespace
+from msm.settings import ASSET_IDENTIFIER_DIMENSION, markets_auto_register_namespace
 from sqlalchemy import Float
 
+from mainsequence.client.exceptions import ApiError
+from mainsequence.meta_tables.data_nodes.run_operations import UpdateRunner
 from valmer_connectors.data_nodes.nodes import (
     VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
     VALMER_SOURCE_COLUMN_SPECS,
@@ -26,8 +25,8 @@ from valmer_connectors.data_nodes.nodes import (
     ImportValmerConfig,
     MetaTableValmerSourceConfig,
     _build_valmer_asset_snapshot_rows,
-    _pricing_adapter_failure_detail,
     _persist_valmer_pricing_details_batch,
+    _pricing_adapter_failure_detail,
     _publish_valmer_asset_snapshots,
 )
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage

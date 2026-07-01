@@ -124,6 +124,11 @@ market-data set. Use it for `discount`, `projection`, `forwarding`,
 `z_spread_base`, bid/mid/offer, source/scenario, basis/spread, and future
 volatility curve or surface selection decisions. Do not encode those policy
 choices as foreign keys from `CurveTable` to `IndexConventionDetailsTable`.
+The binding uniqueness boundary is `(market_data_set_uid, binding_key)`, where
+`binding_key` is derived from role, selector type, selector key, and quote side.
+`curve_uid` is not unique: multiple roles, indices, quote sides, source sets,
+or selector types may deliberately select the same curve. Do not infer a single
+owning index or selector from a `Curve` row.
 
 ## Runtime Usability Invariant
 
@@ -344,7 +349,7 @@ Subclass `DiscountCurvesNode` when the curve source is specific:
 ```python
 import pandas as pd
 
-from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
+from msm_pricing.data_nodes import CurveConfig, CurveKeyNode, DiscountCurvesNode
 
 
 class ExampleDiscountCurveNode(DiscountCurvesNode):
@@ -361,6 +366,32 @@ class ExampleDiscountCurveNode(DiscountCurvesNode):
                     "time_index": "2026-05-27T00:00:00Z",
                     "curve_identifier": curve_identifier,
                     "curve": {30: 0.05, 90: 0.051, 365: 0.052},
+                    "key_nodes": [
+                        CurveKeyNode(
+                            maturity_date="2026-06-26",
+                            instrument_type="direct_zero_rate",
+                            quote=0.05,
+                            quote_type="zero_rate",
+                            quote_unit="decimal",
+                            yield_value=0.05,
+                        ).model_dump(mode="json", by_alias=True, exclude_none=True),
+                        CurveKeyNode(
+                            maturity_date="2026-08-25",
+                            instrument_type="direct_zero_rate",
+                            quote=0.051,
+                            quote_type="zero_rate",
+                            quote_unit="decimal",
+                            yield_value=0.051,
+                        ).model_dump(mode="json", by_alias=True, exclude_none=True),
+                        CurveKeyNode(
+                            maturity_date="2027-05-27",
+                            instrument_type="direct_zero_rate",
+                            quote=0.052,
+                            quote_type="zero_rate",
+                            quote_unit="decimal",
+                            yield_value=0.052,
+                        ).model_dump(mode="json", by_alias=True, exclude_none=True),
+                    ],
                 }
             ]
         )
@@ -376,10 +407,27 @@ Rules:
 
 - The builder returns a mapping from days-to-maturity to zero rates; the node
   compresses it before persistence.
+- The builder also returns `key_nodes` construction provenance. `key_nodes` is
+  source-owned JSON and may use the producer's own schema. Prefer the optional
+  `CurveKeyNode` helper when the standard fields fit: `maturity_date`,
+  `asset_identifier`, `instrument_type`, `quote`, `quote_type`, `quote_unit`,
+  `quote_side`, and optional yield-native `yield` via the Python field
+  `yield_value`. Per-node `quote_type` and `quote_unit` describe raw source
+  inputs; `CurveBuildingDetails` describes the final stored curve.
+- Optional row diagnostics belong in the storage column named `metadata_json`.
 - The builder configuration's `curve_unique_identifier` must exist as a `Curve`
   row before publishing; emitted storage rows use `curve_identifier`.
 - Keep interpolation and compounding metadata on `CurveBuildingDetails`, not in
-  ad hoc builder globals.
+  ad hoc builder globals. Runtime curve construction must dispatch to native
+  QuantLib constructors by `interpolation_method`; do not hardcode every curve
+  as log-linear discount.
+- Supported `interpolation_method` values are `log_linear_discount`,
+  `log_cubic_discount`, `linear_zero`, `cubic_zero`, `natural_cubic_zero`,
+  `monotone_cubic_zero`, and `linear_forward` only when
+  `quote_convention="forward_rate"`.
+- Reject deprecated QuantLib method names such as `log_linear_zero`,
+  `LogLinearZeroCurve`, `monotonic_log_cubic_discount`, and
+  `MonotonicLogCubicDiscountCurve`. Do not add aliases for them.
 
 ## Runtime Resolution
 
@@ -477,6 +525,10 @@ Before finishing a change:
   non-runtime registry/staging row.
 - Market-data-set curve selection uses `PricingMarketDataSetCurveBinding`, and
   index-scoped selections use `upsert_index_curve_selection(...)`.
+- Curve-binding reviews distinguish selector uniqueness from curve sharing:
+  duplicate `(market_data_set_uid, binding_key)` rows are invalid, but multiple
+  bindings pointing at the same `curve_uid` are valid when the policy calls for
+  shared curve identity.
 - Runtime curve reads have a `PricingMarketDataSetBinding` for
   `PRICING_CONCEPT_DISCOUNT_CURVES`.
 - Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.

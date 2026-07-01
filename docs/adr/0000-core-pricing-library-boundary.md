@@ -173,7 +173,7 @@ Current locations:
 - Valmer standalone TIIE curve DataNode:
   removed from the active publication path
 - Valmer curve builder:
-  `src/valmer_connectors/instruments/rates_curves.py::build_tiie_valmer(...)`
+  `src/valmer_connectors/instruments/rates_curves.py::build_tiie_irs_mxn_valmer(...)`
 - Curve and rate constants:
   `src/valmer_connectors/instruments/curve_bootstrap.py`
 - Discount-curve builder registration:
@@ -206,8 +206,8 @@ Target core responsibility:
 
 Valmer-specific handling that should stay here:
 
-- downloading `MEXDERSWAP_IRSTIIEPR.csv`
-- decoding Valmer CSV columns and date semantics
+- downloading `IRS_MXN_CURVE.csv`
+- decoding Valmer IRS MXN source rows and benchmark date semantics
 - mapping Valmer curve source names to core curve constants
 - registering the Valmer provider builder with the core discount-curve builder
   registry

@@ -183,16 +183,16 @@
       "justMyCode": false
     },
     {
-      "name": "Valmer Curve: Build TIIE",
+      "name": "Valmer Curve: Build TIIE Overnight OIS",
       "type": "python",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
       "module": "valmer_connectors.cli.main",
       "args": [
         "curves",
-        "update-tiie-zero",
+        "update-tiie-irs-mxn",
         "--curve-identifier",
-        "VALMER_TIIE_28"
+        "VALMER_TIIE_OVERNIGHT"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -225,33 +225,16 @@
       "justMyCode": false
     },
     {
-      "name": "Valmer CLI: Update TIIE Zero Curve",
+      "name": "Valmer Curve: Build USD SOFR Overnight",
       "type": "python",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
       "module": "valmer_connectors.cli.main",
       "args": [
         "curves",
-        "update-tiie-zero"
-      ],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
-        "PYTHONUNBUFFERED": "1"
-      },
-      "justMyCode": false
-    },
-    {
-      "name": "Valmer CLI: Update MXN Government Curve",
-      "type": "python",
-      "request": "launch",
-      "python": "${workspaceFolder}/.venv/bin/python",
-      "module": "valmer_connectors.cli.main",
-      "args": [
-        "curves",
-        "update-mxn-government"
+        "update-usd-sofr",
+        "--curve-identifier",
+        "VALMER_USD_SOFR_OVERNIGHT"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",

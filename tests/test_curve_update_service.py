@@ -4,6 +4,12 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
+import valmer_connectors.services as services
+from valmer_connectors.instruments.curve_key_nodes import (
+    validate_mxn_government_key_nodes,
+    validate_tiie_ois_key_nodes,
+    validate_usd_sofr_key_nodes,
+)
 from valmer_connectors.services import curve_update
 
 
@@ -15,6 +21,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
                     "time_index": pd.Timestamp("2024-08-30 23:59:59", tz="UTC"),
                     "curve_identifier": "TEST_CURVE",
                     "curve": {28: 0.1, 91: 0.102},
+                    "key_nodes": [{"maturity_date": "2024-09-27", "quote": 0.1}],
                 }
             ]
         ).set_index(["time_index", "curve_identifier"])
@@ -52,19 +59,107 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
             base_node_curve_points=None,
         )
 
-        self.assertIs(result, frame)
+        self.assertIsNot(result, frame)
+        self.assertNotIn("metadata_json", result.reset_index().columns)
         builder.assert_called_once()
         logger.info.assert_called_once()
 
-    def test_tiie_update_uses_shared_runner(self):
+    def test_shared_runner_attaches_key_nodes_validator(self):
+        validator = Mock()
+        builder = Mock(
+            return_value=pd.DataFrame(
+                [
+                    {
+                        "time_index": pd.Timestamp("2024-08-30 23:59:59", tz="UTC"),
+                        "curve_identifier": "TEST_CURVE",
+                        "curve": {28: 0.1},
+                        "key_nodes": [{"maturity_date": "2024-09-27", "quote": 0.1}],
+                    }
+                ]
+            ).set_index(["time_index", "curve_identifier"])
+        )
+
+        with (
+            patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
+            patch("valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"),
+            patch("valmer_connectors.services.curve_update.CurveConfig"),
+            patch("valmer_connectors.services.curve_update.DiscountCurvesNode") as node_class,
+        ):
+            node = Mock()
+            node.set_curve_builder.return_value = node
+            node.set_key_nodes_validator.return_value = node
+            node_class.return_value = node
+
+            curve_update._run_valmer_discount_curve_update(
+                curve_identifier="TEST_CURVE",
+                curve_builder=builder,
+                key_nodes_validator=validator,
+            )
+
+        node.set_key_nodes_validator.assert_called_once_with(validator)
+        node.run.assert_called_once_with(force_update=True)
+
+    def test_shared_runner_rejects_curve_frame_without_key_nodes(self):
+        frame = pd.DataFrame(
+            [
+                {
+                    "time_index": pd.Timestamp("2024-08-30 23:59:59", tz="UTC"),
+                    "curve_identifier": "TEST_CURVE",
+                    "curve": {28: 0.1},
+                }
+            ]
+        ).set_index(["time_index", "curve_identifier"])
+        wrapped_builder = curve_update._with_curve_summary_logging(
+            Mock(return_value=frame),
+            logger=Mock(),
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "key_nodes",
+        ):
+            wrapped_builder(
+                update_statistics=object(),
+                curve_identifier="TEST_CURVE",
+                base_node_curve_points=None,
+            )
+
+    def test_tiie_irs_mxn_update_uses_shared_runner(self):
         with patch(
             "valmer_connectors.services.curve_update._run_valmer_discount_curve_update"
         ) as run_curve:
-            curve_update.run_tiie_zero_curve_update(curve_identifier="VALMER_TIIE_28")
+            curve_update.run_tiie_irs_mxn_curve_update()
 
         run_curve.assert_called_once_with(
-            curve_identifier="VALMER_TIIE_28",
-            curve_builder=curve_update.build_tiie_valmer,
+            curve_identifier="VALMER_TIIE_OVERNIGHT",
+            curve_builder=curve_update.build_tiie_irs_mxn_valmer,
+            key_nodes_validator=validate_tiie_ois_key_nodes,
+        )
+
+    def test_usd_sofr_update_uses_shared_runner(self):
+        with patch(
+            "valmer_connectors.services.curve_update._run_valmer_discount_curve_update"
+        ) as run_curve:
+            curve_update.run_usd_sofr_curve_update()
+
+        run_curve.assert_called_once_with(
+            curve_identifier="VALMER_USD_SOFR_OVERNIGHT",
+            curve_builder=curve_update.build_usd_sofr_valmer,
+            key_nodes_validator=validate_usd_sofr_key_nodes,
+        )
+
+    def test_services_package_exports_all_curve_updates(self):
+        self.assertIs(
+            services.run_tiie_irs_mxn_curve_update,
+            curve_update.run_tiie_irs_mxn_curve_update,
+        )
+        self.assertIs(
+            services.run_usd_sofr_curve_update,
+            curve_update.run_usd_sofr_curve_update,
+        )
+        self.assertIs(
+            services.run_mxn_government_curve_update,
+            curve_update.run_mxn_government_curve_update,
         )
 
     def test_mxn_government_update_uses_shared_runner_with_vector_builder(self):
@@ -84,6 +179,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
             curve_builder=run_curve.call_args.kwargs["curve_builder"],
             logger=curve_update.LOGGER,
             node_class=curve_update.ValmerMxnGovernmentBondDiscountCurvesNode,
+            key_nodes_validator=validate_mxn_government_key_nodes,
         )
 
     def test_mxn_government_curve_node_uses_june_2026_offset_start(self):
@@ -189,6 +285,21 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         self.assertIn("time_index", frame.columns)
         self.assertIn("tipovalor", frame.columns)
 
+    def test_empty_curve_frame_matches_discount_curve_storage_contract(self):
+        frame = curve_update._empty_curve_frame()
+
+        columns = frame.reset_index().columns.tolist()
+        self.assertEqual(
+            columns,
+            [
+                "time_index",
+                "curve_identifier",
+                "curve",
+                "key_nodes",
+                "metadata_json",
+            ],
+        )
+
 
 def _government_source_frame(rows):
     records = []
@@ -219,6 +330,15 @@ def _fake_government_curve_frame(source_df, *, curve_identifier):
                 "time_index": time_index,
                 "curve_identifier": curve_identifier,
                 "curve": {28: 0.1},
+                "key_nodes": [
+                    {
+                        "maturity_date": (
+                            time_index + pd.Timedelta(days=28)
+                        ).date().isoformat(),
+                        "quote": 9.9,
+                        "asset_identifier": str(source_df["unique_identifier"].iloc[0]),
+                    }
+                ],
             }
         ]
     ).set_index(["time_index", "curve_identifier"])

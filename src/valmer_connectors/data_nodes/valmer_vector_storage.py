@@ -8,6 +8,7 @@ from msm.models import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from valmer_connectors.markets import ValmerMarketsTimeIndexMetaTableMixin
 
 

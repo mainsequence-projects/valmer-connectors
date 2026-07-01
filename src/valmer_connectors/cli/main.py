@@ -13,13 +13,16 @@ from typing import Any
 
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
-    VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
+    VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+    VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
 )
-from valmer_connectors.settings import DEFAULT_VECTOR_FIRST_LOOP_COUNT
-from valmer_connectors.settings import VALMER_FORCE_PRICING_DETAILS_PATCH_ENV
-from valmer_connectors.settings import VALMER_VECTOR_BUCKET_NAME_ENV
-from valmer_connectors.settings import VALMER_VECTOR_BYPASS_CURSOR_FILTER_ENV
-from valmer_connectors.settings import VALMER_VECTOR_UPLOAD_DEBUG_PATH_ENV
+from valmer_connectors.settings import (
+    DEFAULT_VECTOR_FIRST_LOOP_COUNT,
+    VALMER_FORCE_PRICING_DETAILS_PATCH_ENV,
+    VALMER_VECTOR_BUCKET_NAME_ENV,
+    VALMER_VECTOR_BYPASS_CURSOR_FILTER_ENV,
+    VALMER_VECTOR_UPLOAD_DEBUG_PATH_ENV,
+)
 
 SOURCE_VALMER_SKILLS_PATH = (".agents", "skills", "valmer-connectors")
 PACKAGE_VALMER_SKILLS_PATH = ("agent_skills", "valmer-connectors")
@@ -83,10 +86,17 @@ def _vector_update_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def _curves_update_tiie_zero_command(args: argparse.Namespace) -> int:
-    from valmer_connectors.services.curve_update import run_tiie_zero_curve_update
+def _curves_update_tiie_irs_mxn_command(args: argparse.Namespace) -> int:
+    from valmer_connectors.services.curve_update import run_tiie_irs_mxn_curve_update
 
-    run_tiie_zero_curve_update(curve_identifier=args.curve_identifier)
+    run_tiie_irs_mxn_curve_update(curve_identifier=args.curve_identifier)
+    return 0
+
+
+def _curves_update_usd_sofr_command(args: argparse.Namespace) -> int:
+    from valmer_connectors.services.curve_update import run_usd_sofr_curve_update
+
+    run_usd_sofr_curve_update(curve_identifier=args.curve_identifier)
     return 0
 
 
@@ -427,15 +437,26 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
     curves_update_parser = curves_subcommands.add_parser(
-        "update-tiie-zero",
-        help="Run the Valmer TIIE 28 discount-curve update.",
+        "update-tiie-irs-mxn",
+        help="Run the Valmer TIIE overnight OIS curve update from IRS_MXN_CURVE.",
     )
     curves_update_parser.add_argument(
         "--curve-identifier",
-        default=VALMER_TIIE_28_CURVE_UNIQUE_IDENTIFIER,
-        help="Curve.unique_identifier to publish with the Valmer TIIE curve builder.",
+        default=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+        help="Curve.unique_identifier to publish with the Valmer TIIE IRS MXN builder.",
     )
-    curves_update_parser.set_defaults(func=_curves_update_tiie_zero_command)
+    curves_update_parser.set_defaults(func=_curves_update_tiie_irs_mxn_command)
+
+    curves_usd_sofr_parser = curves_subcommands.add_parser(
+        "update-usd-sofr",
+        help="Run the Valmer USD SOFR overnight OIS curve update from IRS_USD_CURVE.",
+    )
+    curves_usd_sofr_parser.add_argument(
+        "--curve-identifier",
+        default=VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+        help="Curve.unique_identifier to publish with the Valmer USD SOFR builder.",
+    )
+    curves_usd_sofr_parser.set_defaults(func=_curves_update_usd_sofr_command)
 
     curves_mxn_government_parser = curves_subcommands.add_parser(
         "update-mxn-government",

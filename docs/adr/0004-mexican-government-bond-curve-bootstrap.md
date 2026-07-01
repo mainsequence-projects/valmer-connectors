@@ -59,7 +59,7 @@ different source and shape:
 
 - source: Valmer public MexDer CSV
 - instrument set: none; source is already a curve file
-- output curve: `VALMER_TIIE_28`
+- output curve: `VALMER_TIIE_OVERNIGHT`
 
 The Mexican government bond curve is different:
 
@@ -121,6 +121,7 @@ Storage-to-builder mapping:
 | `interesesacumulados` | `ValmerVectorPricesStorage.accrued_interest` | M Bonos | Accrued interest for clean + accrued = dirty validation |
 | `diastransccpn` | `ValmerVectorPricesStorage.days_since_coupon` | M Bonos when present | Actual/360 accrued-interest validation input |
 | `valornominalactualizado` | `ValmerVectorPricesStorage.adjusted_face_value` | not consumed by helpers | Selected for source parity and future use |
+| `yield_rate` | `ValmerVectorPricesStorage.yield_rate` | all rows when available | Valmer `TASA DE RENDIMIENTO`, normalized from percent to decimal in key nodes |
 | `tipovalor` | `ValmerAssetDetailsTable.security_type` | all rows | Valmer security type |
 | `emisora` | `ValmerAssetDetailsTable.issuer` | all rows | Valmer issuer/family code |
 | `serie` | `ValmerAssetDetailsTable.series` | all rows | Instrument series |
@@ -249,6 +250,9 @@ Recommended static identities:
 The `CurveBuildingDetails` row must encode at least:
 
 ```text
+builder_type = bond_helper_bootstrap
+quote_convention = key_node_quote
+rate_unit = key_node_unit
 currency_code = MXN
 calendar_code = Mexico
 day_counter_code = Actual360
@@ -256,6 +260,7 @@ settlement_days = 0
 coupon_period_days = 182
 date_generation_rule = Backward
 end_of_month = false
+builder_payload.key_node_schema = CurveKeyNode
 ```
 
 `settlement_days = 0` is specific to this Valmer valuation bootstrap. It must
@@ -270,6 +275,35 @@ The `Curve` row uses:
 - `compounding = "compounded_annual"`
 - `quote_side = "mid"`
 - metadata only for stable source descriptors, not per-file observations
+
+The `key_nodes` stored with each curve row use the recommended `CurveKeyNode`
+provenance shape plus Valmer-specific extensions.
+The `quote` field is always the construction input passed into the helper, while
+`quote_type` and `quote_unit` define its meaning. Valmer yield is stored
+separately as optional decimal `yield` provenance:
+
+```json
+{
+  "maturity_date": "2026-06-25",
+  "asset_identifier": "BI_CETES_260625",
+  "instrument_type": "zero_coupon_bond",
+  "helper_type": "zero_coupon_bond_helper",
+  "quote": 9.87342,
+  "quote_type": "clean_price",
+  "quote_unit": "price_per_10",
+  "quote_side": "mid",
+  "quote_source": "preciosucio",
+  "source_quote_type": "dirty_price",
+  "yield": 0.105,
+  "yield_type": "yield_to_maturity",
+  "yield_unit": "decimal"
+}
+```
+
+The Valmer curve DataNode attaches a source-specific key-node validator before
+the core `DiscountCurvesNode` compresses provenance. The validator enforces the
+CETES zero-coupon and M Bonos fixed-rate helper families, quote units, `mid`
+quote side, and Valmer yield provenance.
 
 Do not register CETES, M Bonos, or this curve as `Index` rows individually.
 The instruments remain `Asset` / bond rows. CETE indexes are real benchmark
@@ -291,10 +325,13 @@ Required columns:
 
 ```text
 curve
+key_nodes
 ```
 
 The `curve` value should be the uncompressed curve dictionary expected by
 `DiscountCurvesNode`. The node and core codec own compression.
+The `key_nodes` value should list the construction instruments and quote
+provenance used to build that curve observation.
 
 Example logical output:
 
@@ -479,7 +516,8 @@ Implementation locations:
 valmer-connectors curves update-mxn-government
 ```
 
-`build_tiie_valmer(...)` remains focused on the Valmer MexDer TIIE CSV source.
+`build_tiie_irs_mxn_valmer(...)` remains focused on the Valmer IRS MXN TIIE OIS
+source.
 
 ## Implementation Tasks
 

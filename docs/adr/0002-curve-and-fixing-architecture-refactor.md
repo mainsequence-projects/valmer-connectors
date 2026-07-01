@@ -61,9 +61,10 @@ time-varying observations:
   `rate`.
 - `msm_pricing.data_nodes.DiscountCurvesNode`
   publishes compressed curve observations from builder frames with columns
-  `time_index`, `curve_identifier`, and `curve`.
-- `msm_pricing.data_nodes.curve_codec`
-  owns curve payload compression and decompression.
+  `time_index`, `curve_identifier`, `curve`, and `key_nodes`.
+- `msm_pricing.data_nodes.curve_codec` and
+  `msm_pricing.data_nodes.curves.key_nodes`
+  own curve and key-node payload compression/decompression.
 
 ## Decision
 
@@ -73,7 +74,7 @@ The Valmer curve path uses the current pricing architecture:
 2. Use `Index` for Mexican reference-rate identity.
 3. Use `IndexConventionDetails` for pricing convention payloads.
 4. Use `Curve` for static curve identity and interpolation policy.
-5. Use `DiscountCurvesNode` for Valmer TIIE zero-curve observations.
+5. Use `DiscountCurvesNode` for Valmer TIIE OIS curve observations.
 6. Use `FixingRatesNode` only for real fixing observations.
 
 The Valmer connector does not register TIIE, CETE, or curves as `Asset`
@@ -143,15 +144,16 @@ invent a second format.
 
 The bootstrap upserts a `Curve` row for the Valmer TIIE curve:
 
-- `unique_identifier`: `VALMER_TIIE_28`
-- `display_name`: `Valmer TIIE 28 zero curve`
-- `curve_type`: `discount`
-- `index_uid`: the `Index.uid` for the relevant TIIE index, which must already
-  have a matching `IndexConventionDetails.index_uid`
+- `unique_identifier`: `VALMER_TIIE_OVERNIGHT`
+- `display_name`: `Valmer TIIE overnight OIS curve`
+- `curve_type`: `projection`
 - `interpolation_method`: the chosen core-supported interpolation identifier
 - `compounding`: the chosen core-supported compounding identifier
 - `source`: `valmer`
 - `metadata_json`: Valmer source filename/URL details if useful
+
+Do not put `index_uid` on the curve row. TIIE selector indexes resolve to
+`VALMER_TIIE_OVERNIGHT` through `PricingMarketDataSetCurveBinding`.
 
 The static curve identity and interpolation policy belong in `CurveTable`. The
 daily curve points belong in `DiscountCurvesNode`.
@@ -171,9 +173,12 @@ The output frame should contain:
 - `time_index`
 - `curve_identifier`
 - `curve`
+- `key_nodes`
 
-The builder may return raw `curve` dictionaries. `DiscountCurvesNode` owns
-compression through `msm_pricing.data_nodes.curve_codec`.
+The builder returns raw `curve` dictionaries and uncompressed `key_nodes`
+source-owned JSON. `DiscountCurvesNode` owns compression through the
+`msm_pricing` curve and key-node codecs. Valmer attaches source-specific
+key-node validators before compression.
 
 Because Valmer publishes this curve as a daily dataset, the Valmer runtime must
 set the imported `DiscountCurvesNode` storage cadence to `1d` before pricing
@@ -201,28 +206,32 @@ The output frame should contain:
 - `unique_identifier`, where this is `Index.unique_identifier`
 - `rate`
 
-This connector does not synthesize fixings from the Valmer zero curve. Until a
+This connector does not synthesize fixings from the Valmer OIS curve. Until a
 real Valmer, Banxico, or other fixing source exists, this repository does not
 claim fixing publication.
 
 ## Valmer TIIE Builder
 
-`src/valmer_connectors/instruments/rates_curves.py::build_tiie_valmer(...)` is
-the Valmer provider parser for the MexDer TIIE curve.
+`src/valmer_connectors/instruments/rates_curves.py::build_tiie_irs_mxn_valmer(...)`
+is the Valmer provider parser and OIS bootstrapper for the TIIE curve.
 
 It:
 
-- download `MEXDERSWAP_IRSTIIEPR.csv`
-- parse Valmer source columns
-- normalize `asof_yyMMdd` into `time_index`
-- normalize rates into decimals
-- produce curve point dictionaries keyed by days to maturity
-- return a frame acceptable to `DiscountCurvesNode`
+- downloads `IRS_MXN_CURVE.csv`
+- resolves the Valmer benchmark date from
+  `https://www.valmer.com.mx/en/` by parsing
+  `#tablaMismoDia span.lbFechaIndice`
+- includes only `Swap.<tenor>.MXN.FTIIE.1D/28D.BANXICO` rows
+- builds QuantLib OIS helpers for observed domestic FTIIE swap quotes
+- produces curve point dictionaries keyed by days to maturity
+- produces `CurveKeyNode`-compatible source quote provenance in `key_nodes`
+- returns a frame acceptable to `DiscountCurvesNode`
 
 It does not:
 
 - register curve or index identities
 - compress the curve payload
+- compress the key-node payload
 - query platform assets
 - use constants as durable identity
 - decide interpolation or compounding policy
@@ -257,10 +266,11 @@ read a standalone Valmer TIIE curve table.
 - [x] Upsert required `Index` rows for TIIE and CETE reference indexes with
   `index_type=INDEX_TYPE_INTEREST_RATE`.
 - [x] Upsert `IndexConventionDetails` rows for each supported reference index.
-- [x] Upsert `Curve` row `VALMER_TIIE_28` with interpolation, compounding,
+- [x] Upsert `Curve` row `VALMER_TIIE_OVERNIGHT` with interpolation, compounding,
   source, and metadata.
-- [x] Refactor `build_tiie_valmer(...)` to implement the
-  `DiscountCurveBuilder` contract and return uncompressed curve dictionaries.
+- [x] Refactor `build_tiie_irs_mxn_valmer(...)` to implement the
+  `DiscountCurveBuilder` contract and return uncompressed curve dictionaries
+  plus uncompressed `key_nodes` provenance.
 - [x] Run Valmer TIIE publication through
   `src/valmer_connectors/services/curve_update.py` and
   `msm_pricing.data_nodes.DiscountCurvesNode`.
@@ -280,7 +290,7 @@ read a standalone Valmer TIIE curve table.
 This ADR does not:
 
 - create a fixing builder without a real fixing source
-- derive fixings from the Valmer zero curve
+- derive fixings from the Valmer OIS curve
 - change Valmer bond asset registration
 - change Valmer bond pricing-detail hydration
 - define a Banxico OTR curve adapter
@@ -299,10 +309,11 @@ Do not mark the implementation complete until these checks pass:
 - every supported TIIE and CETE `Index` row has
   `index_type=INDEX_TYPE_INTEREST_RATE`
 - `IndexConventionDetails` rows exist for supported pricing indexes
-- `Curve.get_by_unique_identifier("VALMER_TIIE_28")` returns a curve row
+- `Curve.get_by_unique_identifier("VALMER_TIIE_OVERNIGHT")` returns a curve row
 - the Valmer TIIE builder returns a frame with `time_index`,
-  `curve_identifier`, and `curve`
-- `DiscountCurvesNode` writes compressed curve rows through the core codec
+  `curve_identifier`, `curve`, and `key_nodes`
+- `DiscountCurvesNode` writes compressed curve and key-node rows through the
+  core codecs
 - dashboard curve health reads the canonical discount-curve path
 - no curve or fixing code calls `msc.Asset.get("TIIE_28")`
 - no curve or fixing code publishes TIIE curves as asset-indexed data

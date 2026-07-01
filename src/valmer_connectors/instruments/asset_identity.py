@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-import uuid
 
 import pandas as pd
 from sqlalchemy import select
-from valmer_connectors.settings import resolve_valmer_asset_upsert_batch_size
-from valmer_connectors.settings import resolve_valmer_meta_operation_batch_size
+
+from valmer_connectors.settings import (
+    resolve_valmer_asset_upsert_batch_size,
+    resolve_valmer_meta_operation_batch_size,
+)
 
 if TYPE_CHECKING:
     from msm.api.assets import Asset
@@ -136,8 +139,7 @@ def resolve_valmer_asset_refs(
         ensure_valmer_asset_runtime()
 
     from msm.api.base import operation_result_rows
-    from msm.repositories.base import compile_markets_statement
-    from msm.repositories.base import execute_markets_operation
+    from msm.repositories.base import compile_markets_statement, execute_markets_operation
 
     Asset = _asset_model()
     context = Asset._active_context()
@@ -203,8 +205,7 @@ def resolve_valmer_asset_uids(
         ensure_valmer_asset_runtime()
 
     from msm.api.base import operation_result_rows
-    from msm.repositories.base import compile_markets_statement
-    from msm.repositories.base import execute_markets_operation
+    from msm.repositories.base import compile_markets_statement, execute_markets_operation
 
     Asset = _asset_model()
     context = Asset._active_context()
