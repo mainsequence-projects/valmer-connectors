@@ -3,7 +3,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pandas as pd
-import QuantLib as ql
 from msm_pricing.data_nodes import DiscountCurvesNode
 
 from valmer_connectors.instruments.curve_key_nodes import (
@@ -17,7 +16,6 @@ from valmer_connectors.instruments.rates_curves import (
     VALMER_USD_SOFR_IRS_URL,
     ValmerTiieCurveError,
     ValmerUsdSofrCurveError,
-    build_tiie_discount_curve_from_key_nodes,
     build_tiie_irs_mxn_curve_frame,
     build_tiie_irs_mxn_valmer,
     build_usd_sofr_curve_frame,
@@ -184,6 +182,16 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         self.assertEqual(first_node["source_quote_unit"], "percent")
         self.assertEqual(first_node["tenor"], "28D")
         self.assertEqual(first_node["floating_index"], "TIIE_OVERNIGHT")
+        self.assertEqual(first_node["settlement_days"], 1)
+        self.assertEqual(first_node["payment_convention"], "ModifiedFollowing")
+        self.assertEqual(first_node["payment_frequency"], "EveryFourthWeek")
+        self.assertEqual(first_node["payment_calendar_code"], {"name": "Mexico"})
+        self.assertEqual(first_node["averaging_method"], "Compound")
+        self.assertFalse(first_node["end_of_month"])
+        self.assertEqual(first_node["fixed_payment_frequency"], "EveryFourthWeek")
+        self.assertEqual(first_node["fixed_calendar_code"], {"name": "Mexico"})
+        self.assertEqual(first_node["day_counter"], "Actual360")
+        self.assertEqual(first_node["day_counter_code"], "Actual360")
         self.assertEqual(first_node["earliest_date"], "2026-07-01")
         self.assertEqual(first_node["maturity_date"], "2026-07-29")
         self.assertEqual(first_node["pillar_date"], "2026-07-29")
@@ -207,28 +215,6 @@ class ValmerRatesCurvesTests(unittest.TestCase):
             curve_identifier="VALMER_TIIE_OVERNIGHT",
         )
         self.assertEqual(validated_nodes, row["key_nodes"])
-
-    def test_build_tiie_discount_curve_from_key_nodes_rebuilds_source_curve(self):
-        frame = build_tiie_irs_mxn_curve_frame(
-            IRS_MXN_SAMPLE,
-            curve_identifier="VALMER_TIIE_OVERNIGHT",
-            valuation_date="2026-06-30",
-        )
-        row = frame.reset_index().iloc[0]
-
-        curve = build_tiie_discount_curve_from_key_nodes(
-            row["key_nodes"],
-            valuation_date="2026-06-30",
-        )
-
-        rebuilt_rate = curve.zeroRate(
-            ql.Date(29, 7, 2026),
-            ql.Actual360(),
-            ql.Compounded,
-            ql.Annual,
-            False,
-        ).rate()
-        self.assertAlmostEqual(rebuilt_rate, row["curve"][29], delta=1e-5)
 
     def test_tiie_key_node_validator_rejects_non_ois_source_family(self):
         frame = build_tiie_irs_mxn_curve_frame(
@@ -277,6 +263,8 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         self.assertAlmostEqual(first_node["implied_rate"], 0.03645)
         self.assertEqual(first_node["contract_code"], "SR1")
         self.assertEqual(first_node["reference_frequency"], "Monthly")
+        self.assertEqual(first_node["future_family"], "sofr")
+        self.assertEqual(first_node["convexity_adjustment"], 0.0)
         self.assertEqual(first_node["earliest_date"], "2026-07-01")
         self.assertEqual(first_node["maturity_date"], "2026-08-01")
         self.assertEqual(first_node["pillar_date"], "2026-08-01")
@@ -292,7 +280,22 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         self.assertEqual(swap_node["source_quote"], 4.01375)
         self.assertEqual(swap_node["tenor"], "10Y")
         self.assertEqual(swap_node["floating_index"], "USD_SOFR_OVERNIGHT")
+        self.assertEqual(swap_node["settlement_days"], 2)
+        self.assertEqual(swap_node["payment_convention"], "ModifiedFollowing")
+        self.assertEqual(swap_node["payment_frequency"], "Annual")
+        self.assertEqual(
+            swap_node["payment_calendar_code"],
+            {"name": "UnitedStates", "market": 6},
+        )
+        self.assertEqual(swap_node["averaging_method"], "Compound")
+        self.assertFalse(swap_node["end_of_month"])
         self.assertEqual(swap_node["fixed_payment_frequency"], "Annual")
+        self.assertEqual(
+            swap_node["fixed_calendar_code"],
+            {"name": "UnitedStates", "market": 6},
+        )
+        self.assertEqual(swap_node["day_counter"], "Actual360")
+        self.assertEqual(swap_node["day_counter_code"], "Actual360")
         self.assertEqual(swap_node["earliest_date"], "2026-07-02")
         self.assertEqual(swap_node["maturity_date"], "2036-07-02")
 

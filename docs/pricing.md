@@ -116,9 +116,12 @@ All seeded Valmer curves use:
 
 Their input quote conventions differ:
 
-- `VALMER_TIIE_OVERNIGHT` uses `builder_type = ois_swap_helper_bootstrap`,
-  `quote_convention = key_node_quote`, and OIS par-rate key nodes. The
-  persisted `curve` output remains bootstrapped zero rates.
+- `VALMER_TIIE_OVERNIGHT` uses `builder_type = rate_helper_curve`,
+  `quote_convention = helper_quote`, and `rate_unit = helper_unit`. Its
+  Valmer OIS rows are persisted as generic ms-markets helper-shaped key nodes
+  with settlement days, calendars, payment conventions, fixed-payment
+  frequency, and overnight-index selector. The persisted `curve` output remains
+  bootstrapped zero rates.
 - `VALMER_MXN_GOVERNMENT_BOND` uses
   `builder_type = bond_helper_bootstrap`,
   `quote_convention = key_node_quote`, and `rate_unit = key_node_unit`.
@@ -126,16 +129,19 @@ Their input quote conventions differ:
   quote units, while the persisted `curve` output remains bootstrapped zero
   rates.
 - `VALMER_USD_SOFR_OVERNIGHT` uses
-  `builder_type = sofr_futures_ois_helper_bootstrap`,
-  `quote_convention = key_node_quote`, and `rate_unit = key_node_unit`.
+  `builder_type = rate_helper_curve`, `quote_convention = helper_quote`, and
+  `rate_unit = helper_unit`.
   It reads Valmer
   `https://www.valmer.com.mx/VAL/Web_Benchmarks/IRS_USD_CURVE.csv` only after
   the Valmer English homepage AJAX date feed shows a source date newer than the
   latest stored observation. It includes CME SR1/SR3 SOFR futures and USD SOFR
-  OIS swaps, and excludes Fed Funds OIS and Fed Funds/SOFR basis rows. The
-  persisted `curve` output remains bootstrapped zero rates. The Valmer curve
-  runner validates that `key_nodes` contain only the included SOFR futures/OIS
-  construction families before the core `DiscountCurvesNode` compresses them.
+  OIS swaps, excludes expired futures, and excludes Fed Funds OIS and Fed
+  Funds/SOFR basis rows. SOFR futures carry `future_family = "sofr"` and
+  `convexity_adjustment = 0.0`; OIS rows carry the SOFR fixing calendar and
+  Annual fixed-payment convention. The persisted `curve` output remains
+  bootstrapped zero rates. The Valmer curve runner validates that `key_nodes`
+  contain only the included SOFR futures/OIS construction families before the
+  core `DiscountCurvesNode` compresses them.
 
 Relationship:
 

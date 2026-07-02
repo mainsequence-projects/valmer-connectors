@@ -8,6 +8,13 @@ from typing import Any
 
 import pandas as pd
 import requests
+from msm_pricing.pricing_engine.curves import (
+    CurveObservationExportConfig,
+    build_rate_helpers,
+    export_curve_observation_nodes,
+    helper_specs_from_key_nodes,
+    reconstruct_curve_term_structure_from_helper_specs,
+)
 
 from valmer_connectors.instruments.curve_bootstrap import (
     TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
@@ -15,6 +22,9 @@ from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_CURVE_QUOTE_SIDE,
     VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION,
+)
+from valmer_connectors.instruments.curve_reconstruction import (
+    resolve_valmer_overnight_index,
 )
 
 VALMER_TIIE_IRS_MXN_URL = VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION.metadata_json[
@@ -40,25 +50,20 @@ VALMER_TIIE_IMPLIED_FRONT_DAYS = (1,)
 VALMER_USD_SOFR_IMPLIED_FRONT_DAYS = (1,)
 VALMER_TIIE_PAYMENT_FREQUENCY = "EveryFourthWeek"
 VALMER_USD_SOFR_PAYMENT_FREQUENCY = "Annual"
+VALMER_TIIE_CALENDAR_CODE = {"name": "Mexico"}
+VALMER_USD_SOFR_CALENDAR_CODE = {"name": "UnitedStates", "market": 6}
+VALMER_CURVE_EXPORT_CONFIG = CurveObservationExportConfig(
+    quote_convention="zero_rate",
+    rate_unit="decimal",
+    day_counter_code="Actual360",
+    compounding="compounded",
+    compounding_frequency="annual",
+)
 VALMER_TENOR_PATTERN = re.compile(r"^(?P<value>[1-9]\d*)(?P<unit>[DWMY])$")
 VALMER_USD_SOFR_FUTURE_PATTERN = re.compile(
     r"^Future\.USD\.CME\.CME (?P<contract_code>SR[13]) "
     r"(?P<contract_type>EOM|IMM)\.(?P<month>[A-Z]{3})\.(?P<year>\d{2})$"
 )
-VALMER_MONTH_TOKENS = {
-    "JAN": 1,
-    "FEB": 2,
-    "MAR": 3,
-    "APR": 4,
-    "MAY": 5,
-    "JUN": 6,
-    "JUL": 7,
-    "AUG": 8,
-    "SEP": 9,
-    "OCT": 10,
-    "NOV": 11,
-    "DEC": 12,
-}
 
 
 class ValmerTiieCurveError(ValueError):
@@ -78,12 +83,6 @@ class ValmerIrsMxnQuote:
 
 
 @dataclass(frozen=True)
-class ValmerTiieOisHelper:
-    quote: ValmerIrsMxnQuote
-    helper: Any
-
-
-@dataclass(frozen=True)
 class ValmerUsdSofrFutureQuote:
     instrument_identifier: str
     contract_code: str
@@ -100,13 +99,6 @@ class ValmerUsdSofrOisQuote:
     tenor: str
     quote_decimal: float
     source_quote: float
-
-
-@dataclass(frozen=True)
-class ValmerUsdSofrHelper:
-    quote: ValmerUsdSofrFutureQuote | ValmerUsdSofrOisQuote
-    helper: Any
-    helper_type: str
 
 
 def read_tiie_irs_mxn_csv(content: bytes) -> pd.DataFrame:
@@ -276,17 +268,26 @@ def build_tiie_irs_mxn_curve_frame(
     source_frame = read_tiie_irs_mxn_csv(content)
     domestic_quotes = _select_domestic_tiie_ois_quotes(source_frame)
 
-    ql = _quantlib()
-    previous_evaluation_date = ql.Settings.instance().evaluationDate
-    ql.Settings.instance().evaluationDate = _ql_date(valuation_ts)
-    try:
-        helpers = _build_tiie_ois_helpers(domestic_quotes)
-        ql_helpers = _build_rate_helper_vector(helpers, overnight_rate=overnight_rate)
-        curve = _bootstrap_tiie_discount_curve(valuation_ts, ql_helpers)
-        curve_points = _export_tiie_zero_rate_points(curve, valuation_ts)
-        key_nodes = _build_tiie_key_nodes(helpers)
-    finally:
-        ql.Settings.instance().evaluationDate = previous_evaluation_date
+    key_nodes = _build_tiie_key_nodes(domestic_quotes)
+    _enrich_key_nodes_with_helper_dates(
+        key_nodes,
+        valuation_ts=valuation_ts,
+        error_class=ValmerTiieCurveError,
+    )
+    runtime_key_nodes = list(key_nodes)
+    if overnight_rate is not None:
+        runtime_key_nodes.insert(0, _build_tiie_overnight_deposit_key_node(overnight_rate))
+    curve = _reconstruct_valmer_curve_term_structure(
+        runtime_key_nodes,
+        valuation_ts=valuation_ts,
+        error_class=ValmerTiieCurveError,
+    )
+    curve_points = _export_zero_rate_points(
+        curve,
+        valuation_ts=valuation_ts,
+        node_days=VALMER_TIIE_IMPLIED_FRONT_DAYS,
+        error_class=ValmerTiieCurveError,
+    )
 
     return pd.DataFrame(
         [
@@ -298,28 +299,6 @@ def build_tiie_irs_mxn_curve_frame(
             }
         ]
     ).set_index(["time_index", "curve_identifier"])
-
-
-def build_tiie_discount_curve_from_key_nodes(
-    key_nodes: list[dict[str, Any]],
-    *,
-    valuation_date: Any,
-    overnight_rate: float | None = None,
-):
-    """Rebuild the Valmer TIIE OIS discount curve from stored source key nodes."""
-
-    valuation_ts = _parse_valuation_date(valuation_date)
-    ql = _quantlib()
-    previous_evaluation_date = ql.Settings.instance().evaluationDate
-    ql.Settings.instance().evaluationDate = _ql_date(valuation_ts)
-    try:
-        helpers = _build_tiie_ois_helpers_from_key_nodes(key_nodes)
-        ql_helpers = _build_rate_helper_vector(helpers, overnight_rate=overnight_rate)
-        curve = _bootstrap_tiie_discount_curve(valuation_ts, ql_helpers)
-        curve.enableExtrapolation()
-        return curve
-    finally:
-        ql.Settings.instance().evaluationDate = previous_evaluation_date
 
 
 def build_usd_sofr_curve_frame(
@@ -341,21 +320,27 @@ def build_usd_sofr_curve_frame(
     source_frame = read_usd_sofr_irs_csv(content)
     future_quotes, ois_quotes = _select_usd_sofr_quotes(source_frame)
 
-    ql = _quantlib()
-    previous_evaluation_date = ql.Settings.instance().evaluationDate
-    ql.Settings.instance().evaluationDate = _ql_date(valuation_ts)
-    try:
-        helpers = _build_usd_sofr_helpers(
-            future_quotes,
-            ois_quotes,
-            valuation_ts=valuation_ts,
-        )
-        ql_helpers = _build_usd_sofr_rate_helper_vector(helpers)
-        curve = _bootstrap_usd_sofr_discount_curve(valuation_ts, ql_helpers)
-        curve_points = _export_usd_sofr_zero_rate_points(curve, valuation_ts)
-        key_nodes = _build_usd_sofr_key_nodes(helpers)
-    finally:
-        ql.Settings.instance().evaluationDate = previous_evaluation_date
+    candidate_key_nodes = _build_usd_sofr_key_nodes(future_quotes, ois_quotes)
+    _enrich_key_nodes_with_helper_dates(
+        candidate_key_nodes,
+        valuation_ts=valuation_ts,
+        error_class=ValmerUsdSofrCurveError,
+    )
+    key_nodes = _filter_usable_usd_sofr_key_nodes(
+        candidate_key_nodes,
+        valuation_ts=valuation_ts,
+    )
+    curve = _reconstruct_valmer_curve_term_structure(
+        key_nodes,
+        valuation_ts=valuation_ts,
+        error_class=ValmerUsdSofrCurveError,
+    )
+    curve_points = _export_zero_rate_points(
+        curve,
+        valuation_ts=valuation_ts,
+        node_days=VALMER_USD_SOFR_IMPLIED_FRONT_DAYS,
+        error_class=ValmerUsdSofrCurveError,
+    )
 
     return pd.DataFrame(
         [
@@ -578,311 +563,76 @@ def _parse_tenor_components(
     return int(match.group("value")), match.group("unit")
 
 
-def _build_tiie_ois_helpers(quotes: list[ValmerIrsMxnQuote]) -> list[ValmerTiieOisHelper]:
-    ql = _quantlib()
-    index = _ftiiie_overnight_index()
-    helpers = []
-    for quote in quotes:
-        period = _ql_period_from_tenor(quote.tenor)
-        helper = ql.OISRateHelper(
-            1,
-            period,
-            quote.quote_decimal,
-            index,
-            ql.YieldTermStructureHandle(),
-            False,
-            0,
-            ql.ModifiedFollowing,
-            ql.EveryFourthWeek,
-            _mexico_calendar(),
-            ql.Period(0, ql.Days),
-            0.0,
-            ql.Pillar.LastRelevantDate,
-            ql.Date(),
-            ql.RateAveraging.Compound,
-            False,
-            ql.EveryFourthWeek,
-            _mexico_calendar(),
-        )
-        helpers.append(ValmerTiieOisHelper(quote=quote, helper=helper))
-    return helpers
+def _build_tiie_key_nodes(quotes: list[ValmerIrsMxnQuote]) -> list[dict[str, Any]]:
+    return [_build_tiie_ois_key_node(quote) for quote in quotes]
 
 
-def _build_tiie_ois_helpers_from_key_nodes(
-    key_nodes: list[dict[str, Any]],
-) -> list[ValmerTiieOisHelper]:
-    quotes: list[ValmerIrsMxnQuote] = []
-    for node in key_nodes:
-        helper_type = str(node.get("helper_type") or "").strip().lower()
-        instrument_type = str(node.get("instrument_type") or "").strip().lower()
-        if helper_type not in {"ois_rate_helper", "overnight_indexed_swap_helper"} and (
-            instrument_type != "overnight_indexed_swap"
-        ):
-            continue
-        tenor = str(node.get("tenor") or "").strip().upper()
-        if not tenor:
-            raise ValmerTiieCurveError(f"TIIE key node is missing tenor: {node!r}.")
-        _parse_tenor_components(tenor)
-        quote = _key_node_decimal_rate(node, field_name=f"{tenor} quote")
-        source_quote = node.get("source_quote")
-        if source_quote in (None, ""):
-            source_quote = quote * 100.0
-        quotes.append(
-            ValmerIrsMxnQuote(
-                instrument_identifier=str(node.get("asset_identifier") or f"Swap.{tenor}"),
-                tenor=tenor,
-                quote_decimal=quote,
-                source_quote=float(source_quote),
-            )
-        )
-    if not quotes:
-        raise ValmerTiieCurveError("TIIE key nodes contained no OIS rate helpers.")
-    quotes.sort(key=lambda item: _tenor_sort_key(item.tenor))
-    return _build_tiie_ois_helpers(quotes)
-
-
-def _build_rate_helper_vector(
-    helpers: list[ValmerTiieOisHelper],
-    *,
-    overnight_rate: float | None,
-):
-    ql = _quantlib()
-    ql_helpers = ql.RateHelperVector()
-    if overnight_rate is not None:
-        ql_helpers.push_back(_build_overnight_deposit_helper(overnight_rate))
-    for item in helpers:
-        ql_helpers.push_back(item.helper)
-    return ql_helpers
-
-
-def _build_usd_sofr_helpers(
+def _build_usd_sofr_key_nodes(
     future_quotes: list[ValmerUsdSofrFutureQuote],
     ois_quotes: list[ValmerUsdSofrOisQuote],
-    *,
-    valuation_ts: pd.Timestamp,
-) -> list[ValmerUsdSofrHelper]:
-    ql = _quantlib()
-    valuation_date = _ql_date(valuation_ts)
-    helpers: list[ValmerUsdSofrHelper] = []
-    for quote in future_quotes:
-        helper = _build_sofr_future_helper(quote)
-        if helper.earliestDate() < valuation_date:
-            continue
-        helpers.append(
-            ValmerUsdSofrHelper(
-                quote=quote,
-                helper=helper,
-                helper_type="sofr_future_rate_helper",
-            )
-        )
-    for quote in ois_quotes:
-        helpers.append(
-            ValmerUsdSofrHelper(
-                quote=quote,
-                helper=_build_sofr_ois_helper(quote),
-                helper_type="ois_rate_helper",
-            )
-        )
-    if not any(item.helper_type == "sofr_future_rate_helper" for item in helpers):
-        raise ValmerUsdSofrCurveError(
-            "IRS_USD_CURVE.csv contained no usable SOFR futures for the valuation date."
-        )
-    if not any(item.helper_type == "ois_rate_helper" for item in helpers):
-        raise ValmerUsdSofrCurveError("IRS_USD_CURVE.csv contained no SOFR OIS helpers.")
-    return helpers
-
-
-def _build_sofr_future_helper(quote: ValmerUsdSofrFutureQuote):
-    ql = _quantlib()
-    frequency = ql.Monthly if quote.reference_frequency == "Monthly" else ql.Quarterly
-    return ql.SofrFutureRateHelper(
-        quote.source_price,
-        _ql_month_from_token(quote.reference_month),
-        quote.reference_year,
-        frequency,
-        0.0,
-        ql.Pillar.LastRelevantDate,
-    )
-
-
-def _build_sofr_ois_helper(quote: ValmerUsdSofrOisQuote):
-    ql = _quantlib()
-    sofr = ql.Sofr()
-    return ql.OISRateHelper(
-        2,
-        _ql_period_from_tenor(quote.tenor),
-        quote.quote_decimal,
-        sofr,
-        ql.YieldTermStructureHandle(),
-        False,
-        0,
-        ql.ModifiedFollowing,
-        ql.Annual,
-        sofr.fixingCalendar(),
-        ql.Period(0, ql.Days),
-        0.0,
-        ql.Pillar.LastRelevantDate,
-        ql.Date(),
-        ql.RateAveraging.Compound,
-        False,
-        ql.Annual,
-        sofr.fixingCalendar(),
-    )
-
-
-def _build_usd_sofr_rate_helper_vector(helpers: list[ValmerUsdSofrHelper]):
-    ql = _quantlib()
-    ql_helpers = ql.RateHelperVector()
-    for item in helpers:
-        ql_helpers.push_back(item.helper)
-    return ql_helpers
-
-
-def _build_overnight_deposit_helper(overnight_rate: float):
-    ql = _quantlib()
-    return ql.DepositRateHelper(
-        overnight_rate,
-        ql.Period(1, ql.Days),
-        0,
-        _mexico_calendar(),
-        ql.ModifiedFollowing,
-        False,
-        ql.Actual360(),
-    )
-
-
-def _bootstrap_tiie_discount_curve(valuation_date: pd.Timestamp, helpers):
-    ql = _quantlib()
-    previous_evaluation_date = ql.Settings.instance().evaluationDate
-    ql.Settings.instance().evaluationDate = _ql_date(valuation_date)
-    try:
-        curve = ql.PiecewiseLogLinearDiscount(
-            _ql_date(valuation_date),
-            helpers,
-            ql.Actual360(),
-        )
-        curve.recalculate()
-        return curve
-    finally:
-        ql.Settings.instance().evaluationDate = previous_evaluation_date
-
-
-def _bootstrap_usd_sofr_discount_curve(valuation_date: pd.Timestamp, helpers):
-    ql = _quantlib()
-    curve = ql.PiecewiseLogLinearDiscount(
-        _ql_date(valuation_date),
-        helpers,
-        ql.Actual360(),
-    )
-    curve.enableExtrapolation()
-    curve.recalculate()
-    return curve
-
-
-def _export_tiie_zero_rate_points(curve: Any, valuation_date: pd.Timestamp) -> dict[int, float]:
-    ql = _quantlib()
-    valuation_ql_date = _ql_date(valuation_date)
-    dates_by_days = {
-        days: valuation_ql_date + days for days in VALMER_TIIE_IMPLIED_FRONT_DAYS
-    }
-    for date in curve.dates():
-        days_to_maturity = int(date - valuation_ql_date)
-        if days_to_maturity > 0:
-            dates_by_days[days_to_maturity] = date
-
-    points: dict[int, float] = {}
-    for days_to_maturity, pillar_date in sorted(dates_by_days.items()):
-        if days_to_maturity <= 0:
-            continue
-        zero_rate = curve.zeroRate(
-            pillar_date,
-            ql.Actual360(),
-            ql.Compounded,
-            ql.Annual,
-            False,
-        ).rate()
-        points[days_to_maturity] = float(zero_rate)
-    if not points:
-        raise ValmerTiieCurveError("Bootstrapped TIIE curve produced no pillar points.")
-    return points
-
-
-def _export_usd_sofr_zero_rate_points(
-    curve: Any,
-    valuation_date: pd.Timestamp,
-) -> dict[int, float]:
-    ql = _quantlib()
-    valuation_ql_date = _ql_date(valuation_date)
-    dates_by_days = {
-        days: valuation_ql_date + days for days in VALMER_USD_SOFR_IMPLIED_FRONT_DAYS
-    }
-    for date in curve.dates():
-        days_to_maturity = int(date - valuation_ql_date)
-        if days_to_maturity > 0:
-            dates_by_days[days_to_maturity] = date
-
-    points: dict[int, float] = {}
-    for days_to_maturity, pillar_date in sorted(dates_by_days.items()):
-        if days_to_maturity <= 0:
-            continue
-        zero_rate = curve.zeroRate(
-            pillar_date,
-            ql.Actual360(),
-            ql.Compounded,
-            ql.Annual,
-            False,
-        ).rate()
-        points[days_to_maturity] = float(zero_rate)
-    if not points:
-        raise ValmerUsdSofrCurveError("Bootstrapped USD SOFR curve produced no pillar points.")
-    return points
-
-
-def _build_tiie_key_nodes(helpers: list[ValmerTiieOisHelper]) -> list[dict[str, Any]]:
-    return [_build_tiie_ois_key_node(item) for item in helpers]
-
-
-def _build_usd_sofr_key_nodes(helpers: list[ValmerUsdSofrHelper]) -> list[dict[str, Any]]:
-    nodes = []
-    for item in helpers:
-        if isinstance(item.quote, ValmerUsdSofrFutureQuote):
-            nodes.append(_build_usd_sofr_future_key_node(item))
-        else:
-            nodes.append(_build_usd_sofr_ois_key_node(item))
+) -> list[dict[str, Any]]:
+    nodes = [_build_usd_sofr_future_key_node(quote) for quote in future_quotes]
+    nodes.extend(_build_usd_sofr_ois_key_node(quote) for quote in ois_quotes)
     return nodes
 
 
-def _build_tiie_ois_key_node(item: ValmerTiieOisHelper) -> dict[str, Any]:
+def _build_tiie_ois_key_node(quote: ValmerIrsMxnQuote) -> dict[str, Any]:
     return {
-        "maturity_date": _ql_date_to_iso(item.helper.maturityDate()),
-        "asset_identifier": item.quote.instrument_identifier,
+        "asset_identifier": quote.instrument_identifier,
         "instrument_type": "overnight_indexed_swap",
         "helper_type": "ois_rate_helper",
-        "quote": item.quote.quote_decimal,
+        "quote": quote.quote_decimal,
         "quote_type": "par_swap_rate",
         "quote_unit": "decimal",
         "quote_side": VALMER_CURVE_QUOTE_SIDE,
         "quote_source": VALMER_TIIE_IRS_SOURCE_FILE,
-        "source_quote": item.quote.source_quote,
+        "source_quote": quote.source_quote,
         "source_quote_unit": "percent",
-        "tenor": item.quote.tenor,
+        "tenor": quote.tenor,
+        "settlement_days": 1,
         "floating_index": TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+        "telescopic_value_dates": False,
+        "payment_lag": 0,
+        "payment_convention": "ModifiedFollowing",
+        "payment_frequency": VALMER_TIIE_PAYMENT_FREQUENCY,
+        "payment_calendar_code": dict(VALMER_TIIE_CALENDAR_CODE),
+        "forward_start": "0D",
+        "overnight_spread": 0.0,
+        "pillar": "LastRelevantDate",
+        "averaging_method": "Compound",
+        "end_of_month": False,
         "fixed_payment_frequency": VALMER_TIIE_PAYMENT_FREQUENCY,
+        "fixed_calendar_code": dict(VALMER_TIIE_CALENDAR_CODE),
         "day_counter": "Actual360",
-        "earliest_date": _ql_date_to_iso(item.helper.earliestDate()),
-        "pillar_date": _ql_date_to_iso(item.helper.pillarDate()),
+        "day_counter_code": "Actual360",
+        "date_generation_convention": "ModifiedFollowing",
     }
 
 
-def _build_usd_sofr_future_key_node(item: ValmerUsdSofrHelper) -> dict[str, Any]:
-    quote = item.quote
-    if not isinstance(quote, ValmerUsdSofrFutureQuote):
-        raise TypeError("USD SOFR future key node requires a future quote.")
+def _build_tiie_overnight_deposit_key_node(overnight_rate: float) -> dict[str, Any]:
     return {
-        "maturity_date": _ql_date_to_iso(item.helper.maturityDate()),
+        "asset_identifier": "TIIE_OVERNIGHT_DEPOSIT_1D",
+        "instrument_type": "overnight_deposit",
+        "helper_type": "overnight_deposit_helper",
+        "quote": overnight_rate,
+        "quote_type": "deposit_rate",
+        "quote_unit": "decimal",
+        "quote_side": VALMER_CURVE_QUOTE_SIDE,
+        "quote_source": VALMER_TIIE_IRS_SOURCE_FILE,
+        "tenor": "1D",
+        "fixing_days": 0,
+        "calendar_code": dict(VALMER_TIIE_CALENDAR_CODE),
+        "business_day_convention": "ModifiedFollowing",
+        "end_of_month": False,
+        "day_counter_code": "Actual360",
+    }
+
+
+def _build_usd_sofr_future_key_node(quote: ValmerUsdSofrFutureQuote) -> dict[str, Any]:
+    return {
         "asset_identifier": quote.instrument_identifier,
         "instrument_type": "sofr_future",
-        "helper_type": item.helper_type,
+        "helper_type": "sofr_future_rate_helper",
         "quote": quote.source_price,
         "quote_type": "futures_price",
         "quote_unit": "price",
@@ -894,20 +644,18 @@ def _build_usd_sofr_future_key_node(item: ValmerUsdSofrHelper) -> dict[str, Any]
         "reference_month": quote.reference_month,
         "reference_year": quote.reference_year,
         "reference_frequency": quote.reference_frequency,
-        "earliest_date": _ql_date_to_iso(item.helper.earliestDate()),
-        "pillar_date": _ql_date_to_iso(item.helper.pillarDate()),
+        "future_family": "sofr",
+        "convexity_adjustment": 0.0,
+        "pillar": "LastRelevantDate",
+        "floating_index": USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
     }
 
 
-def _build_usd_sofr_ois_key_node(item: ValmerUsdSofrHelper) -> dict[str, Any]:
-    quote = item.quote
-    if not isinstance(quote, ValmerUsdSofrOisQuote):
-        raise TypeError("USD SOFR OIS key node requires an OIS quote.")
+def _build_usd_sofr_ois_key_node(quote: ValmerUsdSofrOisQuote) -> dict[str, Any]:
     return {
-        "maturity_date": _ql_date_to_iso(item.helper.maturityDate()),
         "asset_identifier": quote.instrument_identifier,
         "instrument_type": "overnight_indexed_swap",
-        "helper_type": item.helper_type,
+        "helper_type": "ois_rate_helper",
         "quote": quote.quote_decimal,
         "quote_type": "par_swap_rate",
         "quote_unit": "decimal",
@@ -916,19 +664,124 @@ def _build_usd_sofr_ois_key_node(item: ValmerUsdSofrHelper) -> dict[str, Any]:
         "source_quote": quote.source_quote,
         "source_quote_unit": "percent",
         "tenor": quote.tenor,
+        "settlement_days": 2,
         "floating_index": USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+        "telescopic_value_dates": False,
+        "payment_lag": 0,
+        "payment_convention": "ModifiedFollowing",
+        "payment_frequency": VALMER_USD_SOFR_PAYMENT_FREQUENCY,
+        "payment_calendar_code": dict(VALMER_USD_SOFR_CALENDAR_CODE),
+        "forward_start": "0D",
+        "overnight_spread": 0.0,
+        "pillar": "LastRelevantDate",
+        "averaging_method": "Compound",
+        "end_of_month": False,
         "fixed_payment_frequency": VALMER_USD_SOFR_PAYMENT_FREQUENCY,
+        "fixed_calendar_code": dict(VALMER_USD_SOFR_CALENDAR_CODE),
         "day_counter": "Actual360",
-        "earliest_date": _ql_date_to_iso(item.helper.earliestDate()),
-        "pillar_date": _ql_date_to_iso(item.helper.pillarDate()),
+        "day_counter_code": "Actual360",
+        "date_generation_convention": "ModifiedFollowing",
     }
 
 
-def _ql_period_from_tenor(tenor: str):
+def _enrich_key_nodes_with_helper_dates(
+    key_nodes: list[dict[str, Any]],
+    *,
+    valuation_ts: pd.Timestamp,
+    error_class: type[ValueError],
+) -> None:
     ql = _quantlib()
-    value, unit = _parse_tenor_components(tenor)
-    units = {"D": ql.Days, "W": ql.Weeks, "M": ql.Months, "Y": ql.Years}
-    return ql.Period(value, units[unit])
+    valuation_date = _ql_date(valuation_ts)
+    previous_evaluation_date = ql.Settings.instance().evaluationDate
+    ql.Settings.instance().evaluationDate = valuation_date
+    try:
+        specs = helper_specs_from_key_nodes(
+            key_nodes,
+            overnight_index_resolver=resolve_valmer_overnight_index,
+        )
+        helpers = build_rate_helpers(specs)
+        for node, helper in zip(key_nodes, helpers, strict=True):
+            node["maturity_date"] = _ql_date_to_iso(helper.maturityDate())
+            node["earliest_date"] = _ql_date_to_iso(helper.earliestDate())
+            node["pillar_date"] = _ql_date_to_iso(helper.pillarDate())
+    except Exception as exc:
+        raise error_class("Unable to build Valmer curve helpers from key nodes.") from exc
+    finally:
+        ql.Settings.instance().evaluationDate = previous_evaluation_date
+
+
+def _filter_usable_usd_sofr_key_nodes(
+    key_nodes: list[dict[str, Any]],
+    *,
+    valuation_ts: pd.Timestamp,
+) -> list[dict[str, Any]]:
+    valuation_date = valuation_ts.date()
+    filtered = []
+    for node in key_nodes:
+        if node.get("instrument_type") == "sofr_future":
+            earliest = pd.Timestamp(str(node["earliest_date"])).date()
+            if earliest < valuation_date:
+                continue
+        filtered.append(node)
+
+    if not any(node.get("instrument_type") == "sofr_future" for node in filtered):
+        raise ValmerUsdSofrCurveError(
+            "IRS_USD_CURVE.csv contained no usable SOFR futures for the valuation date."
+        )
+    if not any(node.get("instrument_type") == "overnight_indexed_swap" for node in filtered):
+        raise ValmerUsdSofrCurveError("IRS_USD_CURVE.csv contained no SOFR OIS helpers.")
+    return filtered
+
+
+def _reconstruct_valmer_curve_term_structure(
+    key_nodes: list[dict[str, Any]],
+    *,
+    valuation_ts: pd.Timestamp,
+    error_class: type[ValueError],
+):
+    ql = _quantlib()
+    try:
+        specs = helper_specs_from_key_nodes(
+            key_nodes,
+            overnight_index_resolver=resolve_valmer_overnight_index,
+        )
+        return reconstruct_curve_term_structure_from_helper_specs(
+            specs,
+            valuation_date=_ql_date(valuation_ts),
+            day_counter=ql.Actual360(),
+            bootstrap_method="piecewise_log_linear_discount",
+            extrapolation=True,
+        )
+    except Exception as exc:
+        raise error_class("Unable to reconstruct Valmer curve from key nodes.") from exc
+
+
+def _export_zero_rate_points(
+    curve: Any,
+    *,
+    valuation_ts: pd.Timestamp,
+    node_days: tuple[int, ...],
+    error_class: type[ValueError],
+) -> dict[int, float]:
+    try:
+        nodes = export_curve_observation_nodes(
+            curve,
+            valuation_date=_ql_date(valuation_ts),
+            node_days=node_days,
+            include_pillar_dates=True,
+            config=VALMER_CURVE_EXPORT_CONFIG,
+        )
+    except Exception as exc:
+        raise error_class("Bootstrapped Valmer curve produced no exportable points.") from exc
+
+    points = {
+        int(node["days_to_maturity"]): float(node["zero"])
+        for node in nodes
+        if int(node["days_to_maturity"]) > 0 and node.get("zero") is not None
+    }
+    if not points:
+        raise error_class("Bootstrapped Valmer curve produced no pillar points.")
+    return points
 
 
 def _parse_valuation_date(
@@ -962,67 +815,6 @@ def _parse_float(
     if parsed <= 0:
         raise error_class(f"{field_name} must be positive.")
     return parsed
-
-
-def _key_node_decimal_rate(node: dict[str, Any], *, field_name: str) -> float:
-    value = node.get("quote")
-    unit = str(node.get("quote_unit") or "").strip().lower()
-    if value in (None, ""):
-        value = node.get("yield")
-        unit = str(node.get("yield_unit") or "").strip().lower()
-    parsed = _parse_float(value, field_name=field_name)
-    if unit in {"decimal", "decimals"}:
-        return parsed
-    if unit in {"percent", "percentage"}:
-        return parsed / 100.0
-    raise ValmerTiieCurveError(
-        f"TIIE key node {field_name} has unsupported rate unit {unit!r}."
-    )
-
-
-def _tenor_sort_key(tenor: str) -> tuple[int, int]:
-    value, unit = _parse_tenor_components(tenor)
-    order = {"D": 1, "W": 7, "M": 30, "Y": 365}
-    return value * order[unit], value
-
-
-def _ql_month_from_token(token: str) -> int:
-    ql = _quantlib()
-    month_number = VALMER_MONTH_TOKENS.get(token)
-    if month_number is None:
-        raise ValmerUsdSofrCurveError(f"Unsupported SOFR futures month token {token!r}.")
-    months = {
-        1: ql.January,
-        2: ql.February,
-        3: ql.March,
-        4: ql.April,
-        5: ql.May,
-        6: ql.June,
-        7: ql.July,
-        8: ql.August,
-        9: ql.September,
-        10: ql.October,
-        11: ql.November,
-        12: ql.December,
-    }
-    return months[month_number]
-
-
-def _ftiiie_overnight_index():
-    ql = _quantlib()
-    return ql.OvernightIndex(
-        "FTIIE",
-        1,
-        ql.MXNCurrency(),
-        _mexico_calendar(),
-        ql.Actual360(),
-        ql.YieldTermStructureHandle(),
-    )
-
-
-def _mexico_calendar():
-    ql = _quantlib()
-    return ql.Mexico()
 
 
 def _ql_date(value: pd.Timestamp):

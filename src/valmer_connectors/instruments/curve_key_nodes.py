@@ -12,8 +12,10 @@ from valmer_connectors.instruments.curve_bootstrap import (
     USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
 )
 from valmer_connectors.instruments.rates_curves import (
+    VALMER_TIIE_CALENDAR_CODE,
     VALMER_TIIE_IRS_SOURCE_FILE,
     VALMER_TIIE_PAYMENT_FREQUENCY,
+    VALMER_USD_SOFR_CALENDAR_CODE,
     VALMER_USD_SOFR_IRS_SOURCE_FILE,
     VALMER_USD_SOFR_PAYMENT_FREQUENCY,
 )
@@ -99,13 +101,61 @@ def validate_tiie_ois_key_nodes(
         _require_equal(
             node,
             curve_identifier=curve_identifier,
+            field="settlement_days",
+            expected=1,
+        )
+        _require_equal(
+            node,
+            curve_identifier=curve_identifier,
+            field="payment_convention",
+            expected="ModifiedFollowing",
+        )
+        _require_equal(
+            node,
+            curve_identifier=curve_identifier,
+            field="payment_frequency",
+            expected=VALMER_TIIE_PAYMENT_FREQUENCY,
+        )
+        _require_equal(
+            node,
+            curve_identifier=curve_identifier,
+            field="payment_calendar_code",
+            expected=VALMER_TIIE_CALENDAR_CODE,
+        )
+        _require_equal(
+            node,
+            curve_identifier=curve_identifier,
+            field="averaging_method",
+            expected="Compound",
+        )
+        _require_equal(
+            node,
+            curve_identifier=curve_identifier,
+            field="end_of_month",
+            expected=False,
+        )
+        _require_equal(
+            node,
+            curve_identifier=curve_identifier,
             field="fixed_payment_frequency",
             expected=VALMER_TIIE_PAYMENT_FREQUENCY,
         )
         _require_equal(
             node,
             curve_identifier=curve_identifier,
+            field="fixed_calendar_code",
+            expected=VALMER_TIIE_CALENDAR_CODE,
+        )
+        _require_equal(
+            node,
+            curve_identifier=curve_identifier,
             field="day_counter",
+            expected="Actual360",
+        )
+        _require_equal(
+            node,
+            curve_identifier=curve_identifier,
+            field="day_counter_code",
             expected="Actual360",
         )
         _require_number(node, curve_identifier=curve_identifier, field="quote")
@@ -308,7 +358,18 @@ def _validate_usd_sofr_future_node(
         field="implied_rate_unit",
         expected="decimal",
     )
+    _require_equal(
+        node,
+        curve_identifier=curve_identifier,
+        field="future_family",
+        expected="sofr",
+    )
     _require_number(node, curve_identifier=curve_identifier, field="implied_rate")
+    _require_number(node, curve_identifier=curve_identifier, field="convexity_adjustment")
+    if float(node["convexity_adjustment"]) != 0.0:
+        raise ValmerCurveKeyNodeError(
+            f"{curve_identifier} SOFR future convexity_adjustment must be 0.0."
+        )
     _require_fields(
         node,
         curve_identifier=curve_identifier,
@@ -367,13 +428,61 @@ def _validate_usd_sofr_ois_node(
     _require_equal(
         node,
         curve_identifier=curve_identifier,
+        field="settlement_days",
+        expected=2,
+    )
+    _require_equal(
+        node,
+        curve_identifier=curve_identifier,
+        field="payment_convention",
+        expected="ModifiedFollowing",
+    )
+    _require_equal(
+        node,
+        curve_identifier=curve_identifier,
+        field="payment_frequency",
+        expected=VALMER_USD_SOFR_PAYMENT_FREQUENCY,
+    )
+    _require_equal(
+        node,
+        curve_identifier=curve_identifier,
+        field="payment_calendar_code",
+        expected=VALMER_USD_SOFR_CALENDAR_CODE,
+    )
+    _require_equal(
+        node,
+        curve_identifier=curve_identifier,
+        field="averaging_method",
+        expected="Compound",
+    )
+    _require_equal(
+        node,
+        curve_identifier=curve_identifier,
+        field="end_of_month",
+        expected=False,
+    )
+    _require_equal(
+        node,
+        curve_identifier=curve_identifier,
         field="fixed_payment_frequency",
         expected=VALMER_USD_SOFR_PAYMENT_FREQUENCY,
     )
     _require_equal(
         node,
         curve_identifier=curve_identifier,
+        field="fixed_calendar_code",
+        expected=VALMER_USD_SOFR_CALENDAR_CODE,
+    )
+    _require_equal(
+        node,
+        curve_identifier=curve_identifier,
         field="day_counter",
+        expected="Actual360",
+    )
+    _require_equal(
+        node,
+        curve_identifier=curve_identifier,
+        field="day_counter_code",
         expected="Actual360",
     )
     _require_number(node, curve_identifier=curve_identifier, field="source_quote")

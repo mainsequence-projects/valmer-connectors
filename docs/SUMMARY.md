@@ -36,6 +36,10 @@
   promoting generic Valmer vector read helpers, asset-detail identifier lookup,
   and spread-analysis helpers from the fund competition project into canonical
   `valmer-connectors` query and analytics surfaces.
+- `docs/implementation/ms-markets-curve-reconstruction-refactor.md`: plan for
+  removing generic QuantLib rate-helper reconstruction from Valmer curve
+  builders and delegating it to `msm_pricing.pricing_engine.curves` and
+  `msm_pricing.scenarios.curves`.
 
 ## ADRs
 

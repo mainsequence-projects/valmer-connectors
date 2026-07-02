@@ -229,13 +229,19 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER
         ].to_building_details_payload(curve_uid="fake-tiie-curve-uid")
         self.assertEqual(tiie_payload["curve_uid"], "fake-tiie-curve-uid")
-        self.assertEqual(tiie_payload["builder_type"], "ois_swap_helper_bootstrap")
-        self.assertEqual(tiie_payload["quote_convention"], "key_node_quote")
-        self.assertEqual(tiie_payload["rate_unit"], "key_node_unit")
+        self.assertEqual(tiie_payload["builder_type"], "rate_helper_curve")
+        self.assertEqual(tiie_payload["quote_convention"], "helper_quote")
+        self.assertEqual(tiie_payload["rate_unit"], "helper_unit")
         self.assertEqual(
             tiie_payload["bootstrap_method"],
-            "quantlib_piecewise_log_linear_discount",
+            "piecewise_log_linear_discount",
         )
+        self.assertEqual(tiie_payload["builder_payload"]["helper_schema"], "rate_helpers@v1")
+        self.assertEqual(
+            tiie_payload["builder_payload"]["output_quote_convention"],
+            "zero_rate",
+        )
+        self.assertEqual(tiie_payload["builder_payload"]["output_rate_unit"], "decimal")
         self.assertEqual(
             tiie_payload["builder_payload"]["source_row_pattern"],
             "Swap.<tenor>.MXN.FTIIE.1D/28D.BANXICO",
@@ -247,22 +253,31 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             ],
             "ois_rate_helper",
         )
+        self.assertEqual(
+            tiie_payload["builder_payload"]["instrument_rules"]["FTIIE_OIS"][
+                "settlement_days"
+            ],
+            1,
+        )
 
         sofr_payload = definitions[
             VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER
         ].to_building_details_payload(curve_uid="fake-sofr-curve-uid")
         self.assertEqual(sofr_payload["curve_uid"], "fake-sofr-curve-uid")
-        self.assertEqual(
-            sofr_payload["builder_type"],
-            "sofr_futures_ois_helper_bootstrap",
-        )
-        self.assertEqual(sofr_payload["quote_convention"], "key_node_quote")
-        self.assertEqual(sofr_payload["rate_unit"], "key_node_unit")
+        self.assertEqual(sofr_payload["builder_type"], "rate_helper_curve")
+        self.assertEqual(sofr_payload["quote_convention"], "helper_quote")
+        self.assertEqual(sofr_payload["rate_unit"], "helper_unit")
         self.assertEqual(sofr_payload["calendar_code"], "UnitedStates")
         self.assertEqual(
             sofr_payload["bootstrap_method"],
-            "quantlib_piecewise_log_linear_discount",
+            "piecewise_log_linear_discount",
         )
+        self.assertEqual(sofr_payload["builder_payload"]["helper_schema"], "rate_helpers@v1")
+        self.assertEqual(
+            sofr_payload["builder_payload"]["output_quote_convention"],
+            "zero_rate",
+        )
+        self.assertEqual(sofr_payload["builder_payload"]["output_rate_unit"], "decimal")
         self.assertIn(
             "Future.USD.CME.CME SR1 EOM.<MMM>.<YY>",
             sofr_payload["builder_payload"]["source_row_patterns"],
@@ -273,7 +288,7 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
         )
         self.assertEqual(
             sofr_payload["builder_payload"]["active_future_policy"],
-            "exclude_without_hydrated_sofr_fixings",
+            "exclude_futures_before_valuation_date",
         )
         self.assertEqual(
             sofr_payload["builder_payload"]["instrument_rules"]["SOFR_FUTURE"][
@@ -282,10 +297,22 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             "sofr_future_rate_helper",
         )
         self.assertEqual(
+            sofr_payload["builder_payload"]["instrument_rules"]["SOFR_FUTURE"][
+                "future_family"
+            ],
+            "sofr",
+        )
+        self.assertEqual(
             sofr_payload["builder_payload"]["instrument_rules"]["SOFR_OIS"][
                 "floating_index"
             ],
             USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+        )
+        self.assertEqual(
+            sofr_payload["builder_payload"]["instrument_rules"]["SOFR_OIS"][
+                "settlement_days"
+            ],
+            2,
         )
 
         payload = definitions[

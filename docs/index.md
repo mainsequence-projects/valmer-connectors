@@ -27,6 +27,8 @@ must follow when registering assets from different vector sources.
 
 - [MetaTable Source Import Plan](implementation/metatable-source-import-plan.md)
 - [Curve Resolution And Asset Patching Plan](implementation/curve-resolution-and-asset-patching-plan.md)
+- [Valmer Query Helper Promotion Plan](implementation/valmer-query-helper-promotion-plan.md)
+- [ms-markets Curve Reconstruction Refactor](implementation/ms-markets-curve-reconstruction-refactor.md)
 
 ## Workflow Boundaries
 
