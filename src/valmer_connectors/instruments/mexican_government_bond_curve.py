@@ -5,6 +5,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
+from msm_pricing.pricing_engine.curves import (
+    CurveObservationExportConfig,
+    export_curve_observation_nodes,
+    reconstruct_curve_handle_from_key_nodes,
+)
 
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_CURVE_QUOTE_SIDE,
@@ -17,6 +22,14 @@ M_BONOS_COUPON_PERIOD_DAYS = 182
 MEXICAN_GOVERNMENT_CURRENCY_CODE = "MPS"
 MEXICAN_GOVERNMENT_SECTOR = "GUBERNAMENTAL"
 PRICE_TOLERANCE = 1e-4
+MEXICAN_GOVERNMENT_CALENDAR_CODE = {"name": "Mexico"}
+MEXICAN_GOVERNMENT_EXPORT_CONFIG = CurveObservationExportConfig(
+    quote_convention="zero_rate",
+    rate_unit="decimal",
+    day_counter_code="Actual360",
+    compounding="compounded",
+    compounding_frequency="annual",
+)
 
 BOOTSTRAP_INSTRUMENT_KEYS = frozenset({("BI", "CETES"), ("M", "BONOS")})
 REQUIRED_BOOTSTRAP_COLUMNS = frozenset(
@@ -44,7 +57,6 @@ class BootstrapInstrument:
     maturity_date: pd.Timestamp
     quote: float
     key_node: dict[str, Any]
-    helper: Any
 
 
 def derive_vector_time_index(value: Any) -> pd.Timestamp:
@@ -92,8 +104,7 @@ def select_mxn_government_bootstrap_instruments(df: pd.DataFrame) -> pd.DataFram
     return selected
 
 
-def build_cetes_zero_coupon_helper(row: pd.Series) -> BootstrapInstrument:
-    ql = _quantlib()
+def build_cetes_zero_coupon_key_node(row: pd.Series) -> BootstrapInstrument:
     valuation_date = _parse_valuation_date(row["fecha"])
     maturity_date = _parse_date(row["fechavcto"], "fechavcto")
     _validate_maturity_after_valuation(valuation_date, maturity_date, row)
@@ -105,20 +116,6 @@ def build_cetes_zero_coupon_helper(row: pd.Series) -> BootstrapInstrument:
         )
 
     face_value = _optional_float(row, "valornominal") or CETES_FACE_VALUE
-    bond = ql.ZeroCouponBond(
-        0,
-        _mexico_calendar(),
-        face_value,
-        _ql_date(maturity_date),
-        ql.Following,
-        face_value,
-        _ql_date(valuation_date),
-    )
-    helper = ql.BondHelper(
-        ql.QuoteHandle(ql.SimpleQuote(price)),
-        bond,
-        ql.BondPrice.Clean,
-    )
     return BootstrapInstrument(
         unique_identifier=str(row["unique_identifier"]),
         family="CETES",
@@ -133,7 +130,7 @@ def build_cetes_zero_coupon_helper(row: pd.Series) -> BootstrapInstrument:
                 "helper_type": "zero_coupon_bond_helper",
                 "quote": price,
                 "quote_type": "clean_price",
-                "quote_unit": "price_per_10",
+                "quote_unit": "price_per_face",
                 "quote_side": VALMER_CURVE_QUOTE_SIDE,
                 "quote_source": "preciosucio",
                 "source_quote_type": "dirty_price",
@@ -143,14 +140,16 @@ def build_cetes_zero_coupon_helper(row: pd.Series) -> BootstrapInstrument:
                 "yield_source": "tasaderendimiento",
                 "face_value": face_value,
                 "day_counter": "Actual360",
+                "issue_date": valuation_date.date().isoformat(),
+                "settlement_days": 0,
+                "calendar_code": MEXICAN_GOVERNMENT_CALENDAR_CODE,
+                "payment_convention": "Following",
             }
         ),
-        helper=helper,
     )
 
 
-def build_m_bono_fixed_rate_helper(row: pd.Series) -> BootstrapInstrument:
-    ql = _quantlib()
+def build_m_bono_fixed_rate_key_node(row: pd.Series) -> BootstrapInstrument:
     valuation_date = _parse_valuation_date(row["fecha"])
     issue_date = _parse_date(row["fechaemision"], "fechaemision")
     maturity_date = _parse_date(row["fechavcto"], "fechavcto")
@@ -172,34 +171,6 @@ def build_m_bono_fixed_rate_helper(row: pd.Series) -> BootstrapInstrument:
     _validate_clean_dirty_prices(row, clean_price, dirty_price, accrued_interest)
     _validate_m_bono_accrual(row, face_value, coupon_rate, accrued_interest)
 
-    calendar = _mexico_calendar()
-    schedule = ql.Schedule(
-        _ql_date(issue_date),
-        _ql_date(maturity_date),
-        ql.Period(M_BONOS_COUPON_PERIOD_DAYS, ql.Days),
-        calendar,
-        ql.Following,
-        ql.Following,
-        ql.DateGeneration.Backward,
-        False,
-    )
-    helper = ql.FixedRateBondHelper(
-        ql.QuoteHandle(ql.SimpleQuote(clean_price)),
-        0,
-        face_value,
-        schedule,
-        [coupon_rate],
-        ql.Actual360(),
-        ql.Following,
-        face_value,
-        _ql_date(issue_date),
-        calendar,
-        ql.Period(),
-        calendar,
-        ql.Unadjusted,
-        False,
-        ql.BondPrice.Clean,
-    )
     return BootstrapInstrument(
         unique_identifier=str(row["unique_identifier"]),
         family="M_BONOS",
@@ -225,17 +196,22 @@ def build_m_bono_fixed_rate_helper(row: pd.Series) -> BootstrapInstrument:
                 "dirty_price": dirty_price,
                 "dirty_price_source": "preciosucio",
                 "accrued_interest": accrued_interest,
+                "issue_date": issue_date.date().isoformat(),
                 "coupon_rate": coupon_rate,
                 "coupon_period_days": M_BONOS_COUPON_PERIOD_DAYS,
                 "face_value": face_value,
                 "day_counter": "Actual360",
+                "calendar_code": MEXICAN_GOVERNMENT_CALENDAR_CODE,
+                "day_counter_code": "Actual360",
+                "settlement_days": 0,
+                "payment_convention": "Following",
+                "business_day_convention": "Following",
             }
         ),
-        helper=helper,
     )
 
 
-def build_quantlib_bootstrap_instruments(df: pd.DataFrame) -> list[BootstrapInstrument]:
+def build_mxn_government_bootstrap_instruments(df: pd.DataFrame) -> list[BootstrapInstrument]:
     instruments: list[BootstrapInstrument] = []
     seen_identifiers: set[str] = set()
     for _, row in df.iterrows():
@@ -249,9 +225,9 @@ def build_quantlib_bootstrap_instruments(df: pd.DataFrame) -> list[BootstrapInst
         security_type = str(row["tipovalor"])
         issuer = str(row["emisora"])
         if (security_type, issuer) == ("BI", "CETES"):
-            instruments.append(build_cetes_zero_coupon_helper(row))
+            instruments.append(build_cetes_zero_coupon_key_node(row))
         elif (security_type, issuer) == ("M", "BONOS"):
-            instruments.append(build_m_bono_fixed_rate_helper(row))
+            instruments.append(build_m_bono_fixed_rate_key_node(row))
         else:
             raise MexicanGovernmentBondCurveError(
                 f"Unsupported bootstrap row {unique_identifier}: {(security_type, issuer)!r}."
@@ -275,7 +251,7 @@ def build_mxn_government_curve_frame(
         )
     valuation_date = next(iter(valuation_dates))
 
-    instruments = build_quantlib_bootstrap_instruments(selected)
+    instruments = build_mxn_government_bootstrap_instruments(selected)
     families = {instrument.family for instrument in instruments}
     if "CETES" not in families or "M_BONOS" not in families:
         raise MexicanGovernmentBondCurveError(
@@ -283,8 +259,13 @@ def build_mxn_government_curve_frame(
             "and one M Bonos helper."
         )
 
-    curve = _bootstrap_discount_curve(valuation_date, instruments)
-    curve_points = _export_zero_rate_points(curve, valuation_date)
+    key_nodes = _build_curve_key_nodes(instruments)
+    curve = _reconstruct_discount_curve(valuation_date, key_nodes)
+    curve_points = _export_zero_rate_points(
+        curve,
+        valuation_date,
+        node_days=_node_days_from_key_nodes(key_nodes, valuation_date=valuation_date),
+    )
     time_index = derive_vector_time_index(valuation_date)
     return pd.DataFrame(
         [
@@ -292,7 +273,7 @@ def build_mxn_government_curve_frame(
                 "time_index": time_index,
                 "curve_identifier": curve_identifier,
                 "curve": curve_points,
-                "key_nodes": _build_curve_key_nodes(instruments),
+                "key_nodes": key_nodes,
             }
         ]
     ).set_index(["time_index", "curve_identifier"])
@@ -312,48 +293,60 @@ def build_mxn_government_curve_from_vector(
     )
 
 
-def _bootstrap_discount_curve(
-    valuation_date: pd.Timestamp,
-    instruments: list[BootstrapInstrument],
-):
-    ql = _quantlib()
-    ql_instruments = ql.RateHelperVector()
-    for instrument in instruments:
-        ql_instruments.push_back(instrument.helper)
-
-    previous_evaluation_date = ql.Settings.instance().evaluationDate
-    ql.Settings.instance().evaluationDate = _ql_date(valuation_date)
+def _reconstruct_discount_curve(valuation_date: pd.Timestamp, key_nodes: list[dict[str, Any]]):
     try:
-        curve = ql.PiecewiseLogLinearDiscount(
-            _ql_date(valuation_date),
-            ql_instruments,
-            ql.Actual360(),
+        return reconstruct_curve_handle_from_key_nodes(
+            key_nodes,
+            valuation_date=valuation_date.date(),
+            day_counter="Actual360",
+            bootstrap_method="piecewise_log_linear_discount",
+            extrapolation=True,
         )
-        curve.recalculate()
-        return curve
-    finally:
-        ql.Settings.instance().evaluationDate = previous_evaluation_date
+    except Exception as exc:
+        raise MexicanGovernmentBondCurveError(
+            "Unable to reconstruct MXN government curve from bond-helper key nodes."
+        ) from exc
 
 
-def _export_zero_rate_points(curve: Any, valuation_date: pd.Timestamp) -> dict[int, float]:
-    ql = _quantlib()
-    points: dict[int, float] = {}
-    valuation_ql_date = _ql_date(valuation_date)
-    for pillar_date in curve.dates():
-        days_to_maturity = int(pillar_date - valuation_ql_date)
-        if days_to_maturity <= 0:
-            continue
-        zero_rate = curve.zeroRate(
-            pillar_date,
-            ql.Actual360(),
-            ql.Compounded,
-            ql.Annual,
-            False,
-        ).rate()
-        points[days_to_maturity] = float(zero_rate)
+def _export_zero_rate_points(
+    curve: Any,
+    valuation_date: pd.Timestamp,
+    *,
+    node_days: tuple[int, ...],
+) -> dict[int, float]:
+    try:
+        nodes = export_curve_observation_nodes(
+            curve,
+            valuation_date=valuation_date.date(),
+            node_days=node_days,
+            include_pillar_dates=True,
+            config=MEXICAN_GOVERNMENT_EXPORT_CONFIG,
+        )
+    except Exception as exc:
+        raise MexicanGovernmentBondCurveError(
+            "Bootstrapped MXN government curve produced no exportable points."
+        ) from exc
+
+    points = {
+        int(node["days_to_maturity"]): float(node["zero"])
+        for node in nodes
+        if int(node["days_to_maturity"]) > 0 and node.get("zero") is not None
+    }
     if not points:
         raise MexicanGovernmentBondCurveError("Bootstrapped curve produced no pillar points.")
     return points
+
+
+def _node_days_from_key_nodes(
+    key_nodes: list[dict[str, Any]],
+    *,
+    valuation_date: pd.Timestamp,
+) -> tuple[int, ...]:
+    node_days = {
+        int((_parse_date(node["maturity_date"], "maturity_date") - valuation_date).days)
+        for node in key_nodes
+    }
+    return tuple(sorted(days for days in node_days if days > 0))
 
 
 def _build_curve_key_nodes(
@@ -517,35 +510,17 @@ def _normalized_string_series(series: pd.Series) -> pd.Series:
     return series.astype("string").str.strip().str.upper()
 
 
-def _ql_date(timestamp: pd.Timestamp):
-    ql = _quantlib()
-    return ql.Date(timestamp.day, timestamp.month, timestamp.year)
-
-
-def _mexico_calendar():
-    ql = _quantlib()
-    return ql.Mexico(ql.Mexico.BMV)
-
-
-def _quantlib():
-    try:
-        import QuantLib as ql
-    except ModuleNotFoundError as exc:
-        raise RuntimeError("QuantLib is required for Mexican government curve bootstrap.") from exc
-    return ql
-
-
 __all__ = [
     "BootstrapInstrument",
     "CETES_FACE_VALUE",
     "M_BONOS_COUPON_PERIOD_DAYS",
     "M_BONOS_FACE_VALUE",
     "MexicanGovernmentBondCurveError",
-    "build_cetes_zero_coupon_helper",
-    "build_m_bono_fixed_rate_helper",
+    "build_cetes_zero_coupon_key_node",
+    "build_m_bono_fixed_rate_key_node",
     "build_mxn_government_curve_frame",
     "build_mxn_government_curve_from_vector",
-    "build_quantlib_bootstrap_instruments",
+    "build_mxn_government_bootstrap_instruments",
     "derive_vector_time_index",
     "select_mxn_government_bootstrap_instruments",
 ]

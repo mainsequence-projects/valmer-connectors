@@ -42,9 +42,10 @@ build_instrument_from_core_bond_pricing_payload(...)
 msm_pricing instrument
 ```
 
-The adapter builds a provider-neutral `CoreBondPricingPayload` before creating
-the `msm_pricing` instrument. That keeps the Valmer row parsing separate from
-the core pricing object construction.
+The adapter builds a provider-neutral `CoreBondPricingPayload`, which is a
+local compatibility alias for `msm_pricing.instruments.BondInstrumentTerms`,
+before creating the `msm_pricing` instrument. That keeps Valmer row parsing
+separate from core pricing object construction.
 
 ## Supported Instrument Classes
 

@@ -319,17 +319,23 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER
         ].to_building_details_payload(curve_uid="fake-curve-uid")
         self.assertEqual(payload["curve_uid"], "fake-curve-uid")
-        self.assertEqual(payload["builder_type"], "bond_helper_bootstrap")
-        self.assertEqual(payload["quote_convention"], "key_node_quote")
-        self.assertEqual(payload["rate_unit"], "key_node_unit")
+        self.assertEqual(payload["builder_type"], "rate_helper_curve")
+        self.assertEqual(payload["quote_convention"], "helper_quote")
+        self.assertEqual(payload["rate_unit"], "helper_unit")
         self.assertEqual(
             payload["bootstrap_method"],
-            "quantlib_piecewise_log_linear_discount",
+            "piecewise_log_linear_discount",
         )
         self.assertEqual(payload["calendar_code"], "Mexico")
         self.assertEqual(payload["interpolation_method"], "log_linear_discount")
         self.assertEqual(payload["compounding"], "compounded_annual")
         self.assertEqual(payload["builder_payload"]["key_node_schema"], "CurveKeyNode")
+        self.assertEqual(payload["builder_payload"]["helper_schema"], "rate_helpers@v1")
+        self.assertEqual(
+            payload["builder_payload"]["output_quote_convention"],
+            "zero_rate",
+        )
+        self.assertEqual(payload["builder_payload"]["output_rate_unit"], "decimal")
         self.assertIn("quote_source", payload["builder_payload"]["valmer_extensions"])
         self.assertIn("dirty_price", payload["builder_payload"]["valmer_extensions"])
         self.assertEqual(
@@ -338,7 +344,7 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
                 "instrument_type": "zero_coupon_bond",
                 "helper_type": "zero_coupon_bond_helper",
                 "quote_type": "clean_price",
-                "quote_unit": "price_per_10",
+                "quote_unit": "price_per_face",
                 "source_quote_type": "dirty_price",
                 "yield_type": "yield_to_maturity",
                 "yield_unit": "decimal",

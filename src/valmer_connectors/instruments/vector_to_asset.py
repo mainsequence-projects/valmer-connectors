@@ -15,6 +15,12 @@ import pandas as pd
 # noinspection PyPackageRequirements
 import pytz
 import QuantLib as ql
+from msm_pricing.instruments import (
+    BondInstrumentTerms,
+)
+from msm_pricing.instruments import (
+    build_bond_instrument_from_terms as build_instrument_from_bond_terms,
+)
 from msm_pricing.pricing_engine.bond_analytics import compare_bond_to_market_quote
 from msm_pricing.pricing_engine.coupon_schedules import (
     compute_coupon_schedule_force_match,
@@ -25,6 +31,8 @@ from tqdm import tqdm
 from mainsequence.client.models_foundry import Artifact
 from valmer_connectors.instruments.asset_identity import resolve_valmer_asset_uids
 from valmer_connectors.settings import SUBYACENTE_TO_INDEX_MAP
+
+CoreBondPricingPayload = BondInstrumentTerms
 
 # =============================================================================
 # Configuration toggles for “coupon count” to match the sheet convention
@@ -43,25 +51,6 @@ class BuiltBond:
     serie: str
     bond: msi.FloatingRateBond  # your model
     eval_date: dt.date
-
-
-@dataclass(frozen=True)
-class CoreBondPricingPayload:
-    instrument_type: str
-    valuation_date: dt.date
-    issue_date: dt.date
-    maturity_date: dt.date
-    face_value: float
-    day_count: ql.DayCounter
-    calendar: ql.Calendar
-    business_day_convention: int
-    settlement_days: int
-    benchmark_rate_index_uid: uuid.UUID
-    coupon_frequency: ql.Period | None = None
-    coupon_rate: float | None = None
-    floating_rate_index_uid: uuid.UUID | None = None
-    spread: float | None = None
-    schedule: ql.Schedule | None = None
 
 
 @dataclass
@@ -653,55 +642,11 @@ def valmer_row_to_core_bond_pricing_payload(
 def build_instrument_from_core_bond_pricing_payload(
     payload: CoreBondPricingPayload,
 ) -> msi.Instrument:
-    ql.Settings.instance().evaluationDate = qld(payload.valuation_date)
-    ql.Settings.instance().includeReferenceDateEvents = INCLUDE_REF_DATE_EVENTS
-    ql.Settings.instance().enforceTodaysHistoricFixings = False
-
-    if payload.instrument_type == "zero_coupon_bond":
-        instrument = msi.ZeroCouponBond(
-            face_value=payload.face_value,
-            benchmark_rate_index_uid=payload.benchmark_rate_index_uid,
-            issue_date=payload.issue_date,
-            maturity_date=payload.maturity_date,
-            day_count=payload.day_count,
-            calendar=payload.calendar,
-            business_day_convention=payload.business_day_convention,
-            settlement_days=payload.settlement_days,
-        )
-    elif payload.instrument_type == "fixed_rate_bond":
-        instrument = msi.FixedRateBond(
-            face_value=payload.face_value,
-            coupon_rate=payload.coupon_rate,
-            benchmark_rate_index_uid=payload.benchmark_rate_index_uid,
-            issue_date=payload.issue_date,
-            maturity_date=payload.maturity_date,
-            coupon_frequency=payload.coupon_frequency,
-            day_count=payload.day_count,
-            calendar=payload.calendar,
-            business_day_convention=payload.business_day_convention,
-            settlement_days=payload.settlement_days,
-            schedule=payload.schedule,
-        )
-    elif payload.instrument_type == "floating_rate_bond":
-        instrument = msi.FloatingRateBond(
-            face_value=payload.face_value,
-            floating_rate_index_uid=payload.floating_rate_index_uid,
-            spread=payload.spread,
-            issue_date=payload.issue_date,
-            maturity_date=payload.maturity_date,
-            coupon_frequency=payload.coupon_frequency,
-            day_count=payload.day_count,
-            calendar=payload.calendar,
-            business_day_convention=payload.business_day_convention,
-            settlement_days=payload.settlement_days,
-            benchmark_rate_index_uid=payload.benchmark_rate_index_uid,
-            schedule=payload.schedule,
-        )
-    else:
-        raise ValueError(f"Unsupported core bond pricing payload type: {payload.instrument_type}")
-
-    instrument.set_valuation_date(payload.valuation_date)
-    return instrument
+    return build_instrument_from_bond_terms(
+        payload,
+        include_reference_date_events=INCLUDE_REF_DATE_EVENTS,
+        enforce_todays_historic_fixings=False,
+    )
 
 
 def build_qll_bond_from_row(

@@ -72,13 +72,9 @@ from msm_pricing.pricing_engine.curves import (
     build_rate_helpers,
     export_curve_observation_nodes,
     helper_specs_from_key_nodes,
-    key_node_decimal_rate,
-    key_node_price,
-    ql_period_from_tenor,
-    reconstruct_curve_handle_from_helper_specs,
     reconstruct_curve_handle_from_key_nodes,
-    reconstruct_curve_term_structure_from_helper_specs,
     reconstruct_curve_term_structure_from_key_nodes,
+    parse_bond_helper_key_node,
 )
 ```
 
@@ -297,10 +293,8 @@ Required changes:
   parsed source quotes;
 - call `helper_specs_from_key_nodes(...)` and `build_rate_helpers(...)` from
   `msm_pricing` when the builder needs helper dates for key-node provenance;
-- call `reconstruct_curve_term_structure_from_helper_specs(...)` to build the
-  QuantLib term structure when pillar-date export is required;
-- call `reconstruct_curve_handle_from_helper_specs(...)` when only a pricing
-  handle is required;
+- call `reconstruct_curve_term_structure_from_key_nodes(...)` to build the
+  QuantLib term structure directly from the generic key-node payloads;
 - call `export_curve_observation_nodes(...)` to produce output zero-rate
   points;
 - convert exported observation nodes into the existing `curve` mapping:
@@ -340,8 +334,12 @@ Required changes for the TIIE and USD SOFR curve build-detail definitions:
 - keep Valmer source metadata such as `source_file`, source row patterns, and
   excluded source row patterns.
 
-Do not change the MXN government bond `bond_helper_bootstrap` definition in
-this refactor.
+MXN government bond helpers were intentionally left out of this earlier
+rate-helper refactor. After ms-markets added generic bond-helper reconstruction,
+the Valmer MXN government curve definition should also use
+`builder_type = "rate_helper_curve"` with
+`builder_payload["helper_schema"] = "rate_helpers@v1"` and source-specific
+CETES/M Bonos adaptation kept local.
 
 Modify:
 
@@ -528,13 +526,13 @@ The TIIE and USD SOFR builders follow the same local flow:
 4. Resolve overnight indexes with
    `resolve_valmer_overnight_index(floating_index, node)`.
 5. Convert key nodes to helper specs with
-   `helper_specs_from_key_nodes(...)`.
+   `helper_specs_from_key_nodes(...)` only when helper dates are needed.
 6. Build QuantLib helpers with `build_rate_helpers(...)` only when helper dates
    are needed for key-node provenance.
 7. Enrich key nodes with `earliest_date`, `maturity_date`, and `pillar_date`
    from the helpers built by `msm_pricing`.
 8. Reconstruct the curve term structure with
-   `reconstruct_curve_term_structure_from_helper_specs(...)`.
+   `reconstruct_curve_term_structure_from_key_nodes(...)`.
 9. Export curve observation nodes with `export_curve_observation_nodes(...)`.
 10. Convert exported nodes to the existing `curve` mapping and return the
     DataFrame indexed by `time_index` and `curve_identifier`.
@@ -624,7 +622,7 @@ Run these local checks in `valmer-connectors`:
 Run this focused import check:
 
 ```bash
-.venv/bin/python -c "from inspect import signature; from msm_pricing.pricing_engine.curves import reconstruct_curve_handle_from_key_nodes, reconstruct_curve_term_structure_from_key_nodes, reconstruct_curve_term_structure_from_helper_specs; from msm_pricing.scenarios.curves import build_scenario_curve_handle, price_curve_scenario; assert 'overnight_index_resolver' in signature(price_curve_scenario).parameters; print('ok')"
+.venv/bin/python -c "from inspect import signature; from msm_pricing.pricing_engine.curves import reconstruct_curve_handle_from_key_nodes, reconstruct_curve_term_structure_from_key_nodes, parse_bond_helper_key_node; from msm_pricing.scenarios.curves import build_scenario_curve_handle, price_curve_scenario; assert 'overnight_index_resolver' in signature(price_curve_scenario).parameters; print('ok')"
 ```
 
 After downstream cleanup, run these checks in `mexicofundcompetition`:

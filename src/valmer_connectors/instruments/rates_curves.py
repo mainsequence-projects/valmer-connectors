@@ -13,7 +13,7 @@ from msm_pricing.pricing_engine.curves import (
     build_rate_helpers,
     export_curve_observation_nodes,
     helper_specs_from_key_nodes,
-    reconstruct_curve_term_structure_from_helper_specs,
+    reconstruct_curve_term_structure_from_key_nodes,
 )
 
 from valmer_connectors.instruments.curve_bootstrap import (
@@ -741,16 +741,13 @@ def _reconstruct_valmer_curve_term_structure(
 ):
     ql = _quantlib()
     try:
-        specs = helper_specs_from_key_nodes(
+        return reconstruct_curve_term_structure_from_key_nodes(
             key_nodes,
-            overnight_index_resolver=resolve_valmer_overnight_index,
-        )
-        return reconstruct_curve_term_structure_from_helper_specs(
-            specs,
             valuation_date=_ql_date(valuation_ts),
             day_counter=ql.Actual360(),
             bootstrap_method="piecewise_log_linear_discount",
             extrapolation=True,
+            overnight_index_resolver=resolve_valmer_overnight_index,
         )
     except Exception as exc:
         raise error_class("Unable to reconstruct Valmer curve from key nodes.") from exc

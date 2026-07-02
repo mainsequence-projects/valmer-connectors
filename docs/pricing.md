@@ -123,11 +123,11 @@ Their input quote conventions differ:
   frequency, and overnight-index selector. The persisted `curve` output remains
   bootstrapped zero rates.
 - `VALMER_MXN_GOVERNMENT_BOND` uses
-  `builder_type = bond_helper_bootstrap`,
-  `quote_convention = key_node_quote`, and `rate_unit = key_node_unit`.
-  Its `CurveBuildingDetails.builder_payload` defines the CETES and M Bonos
-  quote units, while the persisted `curve` output remains bootstrapped zero
-  rates.
+  `builder_type = rate_helper_curve`, `quote_convention = helper_quote`, and
+  `rate_unit = helper_unit`. Its CETES and M Bonos rows are persisted as generic
+  ms-markets `rate_helpers@v1` bond-helper key nodes; Valmer keeps the source
+  row filtering, price normalization, and clean/dirty/accrual validation. The
+  persisted `curve` output remains bootstrapped zero rates.
 - `VALMER_USD_SOFR_OVERNIGHT` uses
   `builder_type = rate_helper_curve`, `quote_convention = helper_quote`, and
   `rate_unit = helper_unit`.
@@ -440,13 +440,14 @@ one curve row per available snapshot. On later runs it queries rows after the
 last stored curve observation for `VALMER_MXN_GOVERNMENT_BOND`.
 
 Government curve rows publish bootstrapped zero rates in `curve` and the
-deduplicated QuantLib bootstrap instruments in `key_nodes`. Each key node
+deduplicated generic ms-markets bond-helper inputs in `key_nodes`. Each key node
 follows the recommended `CurveKeyNode` shape plus Valmer-specific extensions,
 records the construction quote, its type and unit, and Valmer yield provenance
 when `tasaderendimiento` is available. CETES key-node quotes are sourced from
-`preciosucio` with `quote_unit = price_per_10`; because CETES have no accrued
-interest, the helper consumes that value as a clean-price input. M Bonos key-node
-quotes use `preciolimpio` with `quote_unit = price_per_100`.
+`preciosucio` with `quote_unit = price_per_face`; because CETES have no accrued
+interest and a face value of `10`, the helper consumes that value unchanged as a
+clean-price input. M Bonos key-node quotes use `preciolimpio` with
+`quote_unit = price_per_100`.
 The Valmer curve runner validates that the final key-node set contains CETES
 zero-coupon helpers and M Bonos fixed-rate helpers before the core
 `DiscountCurvesNode` compresses the provenance column.
@@ -470,7 +471,7 @@ Storage-to-builder mapping:
 | `time_index` | `ValmerVectorPricesStorage.time_index` | all rows | Snapshot timestamp and curve update boundary |
 | `unique_identifier` | `ValmerVectorPricesStorage.asset_identifier` | all rows | Valmer asset identifier used for diagnostics and duplicate checks |
 | `fecha` | `ValmerVectorPricesStorage.valuation_date` | all rows | Falls back to `time_index` if the valuation date is missing |
-| `preciolimpio` | `ValmerVectorPricesStorage.clean_price` | M Bonos | Clean price used by `FixedRateBondHelper` |
+| `preciolimpio` | `ValmerVectorPricesStorage.clean_price` | M Bonos | Clean price passed through the generic fixed-rate bond helper spec |
 | `preciosucio` | `ValmerVectorPricesStorage.dirty_price` | all rows | CETES quote; M Bonos dirty-price consistency check |
 | `interesesacumulados` | `ValmerVectorPricesStorage.accrued_interest` | M Bonos | Required for clean + accrued = dirty validation |
 | `diastransccpn` | `ValmerVectorPricesStorage.days_since_coupon` | M Bonos when present | Used to validate Actual/360 accrued interest when available |
@@ -494,10 +495,10 @@ Storage-to-key-node mapping:
 | `maturity_date` | `fechavcto` | `fechavcto` | ISO date for the source instrument maturity |
 | `asset_identifier` | `unique_identifier` | `unique_identifier` | Valmer asset identifier from vector storage |
 | `instrument_type` | `zero_coupon_bond` | `fixed_rate_bond` | Source instrument family used by the bootstrap |
-| `helper_type` | `zero_coupon_bond_helper` | `fixed_rate_bond_helper` | QuantLib helper family |
-| `quote` | `preciosucio` | `preciolimpio` | Input price passed to the QuantLib helper, not the bootstrapped zero rate |
+| `helper_type` | `zero_coupon_bond_helper` | `fixed_rate_bond_helper` | Generic ms-markets bond helper family |
+| `quote` | `preciosucio` | `preciolimpio` | Input price passed to the ms-markets helper spec, not the bootstrapped zero rate |
 | `quote_type` | `clean_price` | `clean_price` | Helper quote meaning |
-| `quote_unit` | `price_per_10` | `price_per_100` | Price unit follows the instrument face-value convention |
+| `quote_unit` | `price_per_face` | `price_per_100` | CETES quote is already per face value of `10`; M Bonos quote is per `100` |
 | `quote_side` | `mid` | `mid` | Matches the Valmer curve and binding quote side |
 | `quote_source` | `preciosucio` | `preciolimpio` | Valmer normalized source column |
 | `source_quote_type` | `dirty_price` | `clean_price` | Meaning of the Valmer source quote field |
@@ -510,7 +511,13 @@ Storage-to-key-node mapping:
 | `coupon_rate` | not emitted | `tasacupon` | Decimal coupon rate |
 | `coupon_period_days` | not emitted | `182` | M Bonos fixed coupon period |
 | `face_value` | `10` | `100` | Defaults applied when Valmer details omit face value |
-| `day_counter` | `Actual360` | `Actual360` | Helper day-count convention |
+| `issue_date` | valuation date | `fechaemision` | Required by the generic bond-helper parser |
+| `settlement_days` | `0` | `0` | Valmer government helpers settle on the valuation-date input |
+| `calendar_code` | `{name: Mexico}` | `{name: Mexico}` | Generic ms-markets calendar token |
+| `payment_convention` | `Following` | `Following` | Generic ms-markets business-day convention token |
+| `business_day_convention` | not emitted | `Following` | M Bonos schedule generation convention |
+| `day_counter` | `Actual360` | `Actual360` | Valmer provenance field |
+| `day_counter_code` | not emitted | `Actual360` | Generic fixed-rate bond-helper day-count token |
 
 CETES rows are selected with
 `tipovalor = BI`, `emisora = CETES`, and `monedaemision = MPS`. They are built

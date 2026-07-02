@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from msm_pricing.data_nodes import CurveKeyNode
+from msm_pricing.pricing_engine.curves import parse_bond_helper_key_node
 
 from valmer_connectors.instruments.curve_bootstrap import (
     TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
@@ -252,6 +253,13 @@ def validate_mxn_government_key_nodes(
     has_cetes = False
     has_m_bonos = False
     for node in nodes:
+        try:
+            parse_bond_helper_key_node(node)
+        except Exception as exc:
+            raise ValmerCurveKeyNodeError(
+                f"{curve_identifier} key_nodes must satisfy the generic bond-helper "
+                f"contract: {exc}"
+            ) from exc
         _require_fields(
             node,
             curve_identifier=curve_identifier,
@@ -499,7 +507,7 @@ def _validate_cetes_key_node(node: Mapping[str, Any], *, curve_identifier: str) 
         node,
         curve_identifier=curve_identifier,
         field="quote_unit",
-        expected="price_per_10",
+        expected="price_per_face",
     )
     _require_equal(
         node,

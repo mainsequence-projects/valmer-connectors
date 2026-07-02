@@ -532,12 +532,15 @@ VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS: tuple[
     ),
     ValmerCurveBuildingDetailsDefinition(
         curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
-        builder_type="bond_helper_bootstrap",
-        quote_convention="key_node_quote",
-        rate_unit="key_node_unit",
-        bootstrap_method="quantlib_piecewise_log_linear_discount",
+        builder_type="rate_helper_curve",
+        quote_convention="helper_quote",
+        rate_unit="helper_unit",
+        bootstrap_method="piecewise_log_linear_discount",
         builder_payload={
             "key_node_schema": "CurveKeyNode",
+            "helper_schema": "rate_helpers@v1",
+            "output_quote_convention": "zero_rate",
+            "output_rate_unit": "decimal",
             "output_quote_type": "zero_rate",
             "output_quote_unit": "decimal",
             "valmer_extensions": [
@@ -560,7 +563,7 @@ VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS: tuple[
                     "instrument_type": "zero_coupon_bond",
                     "helper_type": "zero_coupon_bond_helper",
                     "quote_type": "clean_price",
-                    "quote_unit": "price_per_10",
+                    "quote_unit": "price_per_face",
                     "source_quote_type": "dirty_price",
                     "yield_type": "yield_to_maturity",
                     "yield_unit": "decimal",

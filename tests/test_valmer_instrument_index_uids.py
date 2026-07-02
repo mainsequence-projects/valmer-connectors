@@ -1,9 +1,17 @@
 import datetime as dt
+import inspect
 import unittest
 import uuid
 from unittest.mock import patch
 
+import msm_pricing.instruments.bond_terms as bond_terms
 import QuantLib as ql
+from msm_pricing.instruments import (
+    BondInstrumentTerms,
+)
+from msm_pricing.instruments import (
+    build_bond_instrument_from_terms as build_instrument_from_bond_terms,
+)
 
 from valmer_connectors.instruments.vector_to_asset import (
     CoreBondPricingPayload,
@@ -37,7 +45,10 @@ class ValmerInstrumentIndexUidTests(unittest.TestCase):
             "benchmark_rate_index_uid": uuid.uuid4(),
         }
         values.update(overrides)
-        return CoreBondPricingPayload(**values)
+        return BondInstrumentTerms(**values)
+
+    def test_legacy_valmer_payload_name_is_generic_terms_alias(self):
+        self.assertIs(CoreBondPricingPayload, BondInstrumentTerms)
 
     def test_fixed_rate_bond_uses_benchmark_index_uid(self):
         payload = self._payload(
@@ -47,10 +58,10 @@ class ValmerInstrumentIndexUidTests(unittest.TestCase):
         )
 
         with patch(
-            "valmer_connectors.instruments.vector_to_asset.msi.FixedRateBond",
+            "msm_pricing.instruments.bond_terms.FixedRateBond",
             _FakeInstrument,
         ):
-            instrument = build_instrument_from_core_bond_pricing_payload(payload)
+            instrument = build_instrument_from_bond_terms(payload)
 
         self.assertEqual(
             instrument.kwargs["benchmark_rate_index_uid"],
@@ -63,10 +74,10 @@ class ValmerInstrumentIndexUidTests(unittest.TestCase):
         payload = self._payload("zero_coupon_bond")
 
         with patch(
-            "valmer_connectors.instruments.vector_to_asset.msi.ZeroCouponBond",
+            "msm_pricing.instruments.bond_terms.ZeroCouponBond",
             _FakeInstrument,
         ):
-            instrument = build_instrument_from_core_bond_pricing_payload(payload)
+            instrument = build_instrument_from_bond_terms(payload)
 
         self.assertEqual(
             instrument.kwargs["benchmark_rate_index_uid"],
@@ -85,15 +96,71 @@ class ValmerInstrumentIndexUidTests(unittest.TestCase):
         )
 
         with patch(
-            "valmer_connectors.instruments.vector_to_asset.msi.FloatingRateBond",
+            "msm_pricing.instruments.bond_terms.FloatingRateBond",
             _FakeInstrument,
         ):
-            instrument = build_instrument_from_core_bond_pricing_payload(payload)
+            instrument = build_instrument_from_bond_terms(payload)
 
         self.assertEqual(instrument.kwargs["floating_rate_index_uid"], index_uid)
         self.assertEqual(instrument.kwargs["benchmark_rate_index_uid"], index_uid)
         self.assertNotIn("floating_rate_index_name", instrument.kwargs)
         self.assertNotIn("benchmark_rate_index_name", instrument.kwargs)
+
+    def test_valmer_compatibility_wrapper_uses_generic_builder(self):
+        payload = self._payload("zero_coupon_bond")
+
+        with patch(
+            "valmer_connectors.instruments.vector_to_asset.build_instrument_from_bond_terms",
+            return_value="instrument",
+        ) as build:
+            instrument = build_instrument_from_core_bond_pricing_payload(payload)
+
+        self.assertEqual(instrument, "instrument")
+        build.assert_called_once_with(
+            payload,
+            include_reference_date_events=False,
+            enforce_todays_historic_fixings=False,
+        )
+
+    def test_generic_bond_terms_module_has_no_valmer_adapter_dependencies(self):
+        source = inspect.getsource(bond_terms)
+
+        self.assertNotIn("SUBYACENTE_TO_INDEX_MAP", source)
+        self.assertNotIn("resolve_reference_index_uid", source)
+        self.assertNotIn("valmer_connectors.settings", source)
+
+    def test_generic_builder_restores_quantlib_settings(self):
+        settings = ql.Settings.instance()
+        previous_evaluation_date = ql.Date(2, ql.January, 2024)
+        previous_include_reference_date_events = True
+        settings.evaluationDate = previous_evaluation_date
+        settings.includeReferenceDateEvents = previous_include_reference_date_events
+        has_enforce_todays_historic_fixings = hasattr(
+            settings,
+            "enforceTodaysHistoricFixings",
+        )
+        if has_enforce_todays_historic_fixings:
+            previous_enforce_todays_historic_fixings = True
+            settings.enforceTodaysHistoricFixings = previous_enforce_todays_historic_fixings
+
+        payload = self._payload("zero_coupon_bond")
+
+        with patch(
+            "msm_pricing.instruments.bond_terms.ZeroCouponBond",
+            _FakeInstrument,
+        ):
+            build_instrument_from_bond_terms(payload)
+
+        self.assertEqual(settings.evaluationDate, previous_evaluation_date)
+        self.assertEqual(
+            settings.includeReferenceDateEvents,
+            previous_include_reference_date_events,
+        )
+        if has_enforce_todays_historic_fixings:
+            self.assertEqual(
+                settings.enforceTodaysHistoricFixings,
+                previous_enforce_todays_historic_fixings,
+            )
 
     def test_reference_index_uid_resolver_uses_bootstrapped_index_rows(self):
         index_uid = uuid.uuid4()
