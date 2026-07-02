@@ -343,6 +343,70 @@ Relationship:
 `asset_uid` is both the primary key and the foreign key to `AssetTable.uid`.
 There is intentionally no separate `uid` column.
 
+## Public Valmer Detail Query API
+
+Downstream projects should read static Valmer detail fields through:
+
+```python
+from valmer_connectors.queries import (
+    read_valmer_asset_detail_alias_frame,
+    read_valmer_asset_detail_maturity_fields,
+    resolve_valmer_detail_identifier_aliases,
+)
+```
+
+The query API is read-only and uses the active governed `ms-markets` runtime.
+It calls `ensure_valmer_asset_detail_runtime(...)`, compiles a projected SQL
+statement with `compile_markets_statement(...)`, and executes it with
+`execute_markets_operation(...)`.
+
+The lookup accepts either identifier form:
+
+- `ValmerAssetDetailsTable.valmer_unique_identifier`
+- `AssetTable.unique_identifier`
+
+`read_valmer_asset_detail_alias_frame(...)` returns alias-expanded rows. The
+returned `asset_identifier` column is the lookup alias, so the same Valmer
+detail row can be addressed by both its Valmer unique identifier and its
+canonical `AssetTable.unique_identifier`.
+
+`read_valmer_asset_detail_maturity_fields(...)` returns the static maturity and
+coupon fields used by downstream valuation and analytics code:
+
+```text
+asset_uid
+asset_table_identifier
+asset_identifier
+valmer_unique_identifier
+valmer_security_type
+valmer_issuer
+valmer_series
+valmer_full_name
+valmer_issue_date
+valmer_maturity_date
+maturity_date
+valmer_face_value
+valmer_coupon_frequency
+valmer_coupon_rate
+```
+
+`resolve_valmer_detail_identifier_aliases(...)` returns a dictionary mapping
+each accepted lookup alias to its Valmer unique identifier.
+
+Example:
+
+```python
+from valmer_connectors.queries import read_valmer_asset_detail_maturity_fields
+
+
+details = read_valmer_asset_detail_maturity_fields(
+    ["M_BONOS_241205", "M_BONOS_241205_VALMER"],
+)
+```
+
+This helper layer does not change `AssetTable`,
+`ValmerAssetDetailsTable`, asset registration, or pricing hydration.
+
 ## Fields Stored In ValmerAssetDetailsTable
 
 The detail table stores latest static or slowly changing source descriptors:

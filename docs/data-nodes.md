@@ -95,6 +95,109 @@ next:
 - time-varying vendor state: ratings, marketability, liquidity, suspension
   status, market event, and change percentages
 
+## Public Vector Query API
+
+Downstream projects should read published Valmer vector storage through:
+
+```python
+from valmer_connectors.queries import (
+    filter_valmer_vector_columns,
+    latest_dirty_price_by_identifier,
+    normalize_valmer_quote_frame,
+    read_valmer_history,
+    read_valmer_last_observation,
+    read_valmer_yield_history,
+    valmer_vector_node,
+    valmer_vector_node_identifier,
+    valmer_vector_storage_columns,
+)
+```
+
+The query API is read-only. It derives the published node identifier from
+`ValmerVectorPricesStorage.__metatable_identifier__`, so callers do not need a
+project-local vector identifier setting.
+
+Core helpers:
+
+- `valmer_vector_node_identifier()`: returns the canonical published identifier
+  for the Valmer vector storage.
+- `valmer_vector_node()`: builds an `APIDataNode` from that identifier.
+- `valmer_vector_storage_columns()`: returns the registered storage columns from
+  `ValmerVectorPricesStorage.__table__`.
+- `filter_valmer_vector_columns(...)`: keeps `time_index`,
+  `asset_identifier`, and requested columns that exist in the storage schema.
+- `read_valmer_history(...)`: reads historical rows for a set of
+  `asset_identifier` values with `get_df_between_dates(...)`.
+- `read_valmer_last_observation(...)`: returns the latest row per
+  `asset_identifier` at or before an `as_of` timestamp.
+- `latest_dirty_price_by_identifier(...)`: returns latest dirty prices keyed by
+  canonical asset identifier.
+- `read_valmer_yield_history(...)`: returns yield, duration, and monetary
+  duration history without introducing spread-analysis assumptions.
+- `normalize_valmer_quote_frame(...)`: resets Valmer index columns to ordinary
+  columns, normalizes `time_index` to UTC, and coerces numeric vector fields.
+
+Example:
+
+```python
+from datetime import datetime, UTC
+
+from valmer_connectors.queries import read_valmer_last_observation
+
+
+latest = read_valmer_last_observation(
+    ["M_BONOS_241205", "BI_CETES_1"],
+    as_of=datetime(2024, 12, 31, tzinfo=UTC),
+    columns=["dirty_price", "yield_rate", "duration"],
+)
+```
+
+This helper layer does not change the DataNode update process and does not
+modify `ValmerVectorPricesStorage`.
+
+## Public Spread Analytics Helpers
+
+Spread-oriented analytics should use the helper layer in:
+
+```python
+from valmer_connectors.analytics import (
+    SPREAD_SNAPSHOT_COLUMNS,
+    default_start_date,
+    fetch_market_snapshot,
+    fetch_yield_history,
+)
+```
+
+These helpers are convenience wrappers over `valmer_connectors.queries`. They do
+not read the vector DataNode directly, do not define storage identifiers, and do
+not duplicate identifier cleanup.
+
+Core helpers:
+
+- `default_start_date()`: returns a five-year UTC lookback start date for
+  exploratory spread analysis.
+- `fetch_yield_history(...)`: reads Valmer yield history through
+  `read_valmer_yield_history(...)` and returns a wide frame indexed by
+  `time_index`, with one column per asset identifier.
+- `fetch_market_snapshot(...)`: reads latest Valmer market fields through
+  `read_valmer_last_observation(...)` and coerces the spread snapshot fields to
+  numeric values.
+
+Example:
+
+```python
+from valmer_connectors.analytics import fetch_market_snapshot, fetch_yield_history
+
+
+identifiers = ["M_BONOS_241205", "BI_CETES_1"]
+yield_history = fetch_yield_history(identifiers)
+snapshot = fetch_market_snapshot(identifiers)
+```
+
+This analytics layer is intentionally separate from the storage query API. It
+can be used by spread models, notebooks, dashboards, or downstream projects
+without making spread analysis part of the core Valmer vector storage contract.
+
 ## What The DataNode Does Not Own
 
 These concerns are intentionally outside `ImportValmer.update()`:

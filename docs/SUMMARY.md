@@ -6,11 +6,12 @@
 - `docs/introduction.md`: project overview and current operational surface.
 - `docs/source-import.md`: Valmer source hydration paths for Artifact buckets,
   local folders, OneDrive Graph, MetaTable sources, and debug files.
-- `docs/data-nodes.md`: DataNode output boundary and
-  `ValmerVectorPricesStorage` contract.
+- `docs/data-nodes.md`: DataNode output boundary,
+  `ValmerVectorPricesStorage` contract, public vector query helpers, and spread
+  analytics helpers.
 - `docs/markets.md`: AssetTable registration, Valmer asset identity,
-  `ValmerAssetDetailsTable`, and extension-library asset registration
-  boundaries.
+  `ValmerAssetDetailsTable`, public detail lookup helpers, and
+  extension-library asset registration boundaries.
 - `docs/pricing.md`: pricing runtime bootstrap, target-bond hydration, and curve
   publication.
 - `docs/instruments.md`: Valmer row-to-`msm_pricing` instrument mapping.
@@ -31,6 +32,10 @@
 - `docs/implementation/curve-resolution-and-asset-patching-plan.md`: plan for
   migrating Valmer curve/index resolution to market-data-set curve bindings and
   patching existing asset pricing details through the normal vector DataNode.
+- `docs/implementation/valmer-query-helper-promotion-plan.md`: plan for
+  promoting generic Valmer vector read helpers, asset-detail identifier lookup,
+  and spread-analysis helpers from the fund competition project into canonical
+  `valmer-connectors` query and analytics surfaces.
 
 ## ADRs
 
