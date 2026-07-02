@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; implementation pending.
+Implemented locally; live Banxico metadata validation pending.
 
 ## Date
 
@@ -20,13 +20,17 @@ fixings. The future implementation must:
 - store `rate` as a decimal value, not as Banxico's percentage-form payload
 - validate Banxico SIE series metadata before accepting a production series map
 - require a project-readable `BANXICO_TOKEN` secret or equivalent runtime secret
+- implement Banxico source code under `src/banxico`, because the data source is
+  Banxico SIE rather than Valmer
 - schedule fixing refresh before valuation and before curve refresh jobs that
   consume the latest overnight anchor
 - test Banxico parsing, percent-to-decimal conversion, incremental update
   windows, and the exact `index_identifier` storage contract
 
-This ADR is documentation only. It does not implement the DataNode, CLI command,
-schedule, or tests.
+The local implementation adds the Banxico source package, fixing builder,
+DataNode runner, CLI command, schedule entry, documentation, and unit tests.
+Live Banxico metadata validation remains pending until a readable
+`BANXICO_TOKEN` secret is available in this project context.
 
 ## Context
 
@@ -92,9 +96,9 @@ GET /SieAPIRest/service/v1/series/:idSerie/datos/:fechaIni/:fechaFin
   CETES 28 days.
 
 Live metadata verification for all target series was attempted from this
-Valmer checkout after refreshing the project token. The current project does
-not have a readable Main Sequence Secret named `BANXICO_TOKEN`, and `.env` does
-not contain `BANXICO_TOKEN`, so token-backed metadata validation could not be
+checkout after refreshing the project token. The current project does not have
+a readable Main Sequence Secret named `BANXICO_TOKEN`, and `.env` does not
+contain `BANXICO_TOKEN`, so token-backed metadata validation could not be
 completed from this project.
 
 ## Series Validation Targets
@@ -102,7 +106,7 @@ completed from this project.
 The production implementation must treat Banxico SIE metadata as the authority
 for series identity. The following target index coverage is required:
 
-| Valmer Index Identifier | Required Banxico Evidence |
+| Pricing Index Identifier | Required Banxico Evidence |
 | --- | --- |
 | `TIIE_OVERNIGHT` | SIE metadata must confirm the overnight TIIE/funding-rate title, unit, and publication frequency. |
 | `TIIE_28` | SIE metadata must confirm TIIE 28 days. Banxico public docs validate `SF43783` as one TIIE 28-day series example. |
@@ -114,11 +118,11 @@ for series identity. The following target index coverage is required:
 
 Before publication, each accepted SIE series id must be verified by a
 token-backed metadata request that records the `idSerie`, title,
-unit/description when available, and the Valmer index identifier it feeds.
+unit/description when available, and the pricing index identifier it feeds.
 
 ## Decision
 
-Add a Valmer-owned Banxico fixing producer in a later implementation. The
+Add a Banxico-owned fixing producer in a later implementation. The
 target should be:
 
 ```text
@@ -126,6 +130,24 @@ Banxico-backed TIIE/CETE fixing DataNode producing current IndexFixingsStorage
 rows, validated against Banxico SIE, scheduled ahead of valuation/curve refresh
 jobs.
 ```
+
+## Source Ownership Boundary
+
+The fixing source is Banco de Mexico SIE, not Valmer. The implementation must
+therefore place source-specific client, parser, series-map validation, and
+fixing builder code under a Banxico package:
+
+```text
+src/banxico/
+```
+
+Valmer-specific modules may depend on the resulting `IndexFixingsStorage`
+observations and may schedule Banxico refreshes before Valmer curve or
+valuation jobs, but they must not own the Banxico SIE extraction logic.
+
+If the repository packaging still discovers only `valmer_connectors*`, update
+the packaging configuration so the `banxico*` package under `src/banxico` is
+installed and available to jobs/tests.
 
 The producer must use the current `msm_pricing` fixing path:
 
@@ -213,6 +235,33 @@ The current repository has curve update services but no fixing update service,
 CLI command, or scheduled fixing job. That is the operational gap this ADR
 accepts for later implementation.
 
+## Implementation Tasks
+
+- [x] Add a `src/banxico/` package for Banxico-owned source code.
+- [x] Update package discovery so `banxico*` is installed from `src/`.
+- [x] Implement a Banxico SIE client under `src/banxico/` for metadata and
+  date-range requests.
+- [x] Resolve the SIE API token from Main Sequence Secret `BANXICO_TOKEN` at
+  runtime and fail explicitly when it is missing or unreadable.
+- [ ] Verify and record the accepted SIE series id for each target pricing
+  index before enabling publication.
+- [x] Implement the TIIE/CETE fixing builder under `src/banxico/` using
+  Banxico `fecha` and `dato` payloads.
+- [x] Convert Banxico percentage-form rates to decimal rates.
+- [x] Publish rows through the current `FixingRatesNode` /
+  `IndexFixingsStorage` contract with `time_index`, `index_identifier`, and
+  `rate`.
+- [x] Add a project CLI or service entry point that delegates to the
+  `src/banxico/` package.
+- [x] Add a scheduled fixing refresh that runs before Valmer curve refreshes
+  and valuation jobs.
+- [x] Add unit tests for metadata validation, date parsing, numeric parsing,
+  percent-to-decimal conversion, empty responses, and stale-column rejection.
+- [x] Add an integration validation path under an explicit `hash_namespace`
+  before any shared-backend run.
+- [x] Document the Banxico secret requirement and operational verification
+  commands in the project docs.
+
 ## Validation Plan
 
 The implementation is not complete until these checks pass:
@@ -261,10 +310,6 @@ Tradeoffs:
 
 This ADR does not:
 
-- implement the Banxico client
-- implement the fixing DataNode
-- add a CLI command
-- add or change scheduled jobs
 - add platform secrets
 - claim live Banxico metadata validation for all target series
 - synthesize fixings from Valmer OIS or government curves

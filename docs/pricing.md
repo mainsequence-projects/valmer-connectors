@@ -210,6 +210,35 @@ overnight/OIS curve identity `VALMER_TIIE_OVERNIGHT`.
 `UnitedStates` for the USD SOFR curve, matching the calendar tokens accepted by
 the current `msm_pricing` calendar JSON codec.
 
+## Banxico Fixings
+
+TIIE and CETE fixing observations come from Banco de Mexico SIE, not Valmer.
+Banxico source-specific client, metadata validation, parsing, and fixing
+builder logic lives under `src/banxico/`. Valmer curve and valuation workflows
+consume the resulting `IndexFixingsStorage` observations through the normal
+pricing market-data binding.
+
+Run the Banxico fixing update with:
+
+```bash
+valmer-connectors fixings update-banxico
+```
+
+The command resolves the Banxico SIE token from Main Sequence Secret
+`BANXICO_TOKEN` unless the runtime environment already provides a
+`BANXICO_TOKEN` value. It validates Banxico series metadata by default, parses
+Banxico `fecha`/`dato` observations, converts percentage-form rates to decimal
+rates, and publishes rows through `FixingRatesNode` with:
+
+```text
+time_index
+index_identifier
+rate
+```
+
+Use `--index-identifier` to run a subset, and use `--hash-namespace` for an
+isolated validation run before publishing into the shared production namespace.
+
 ## Bond Pricing Hydration
 
 Bond pricing hydration runs during `ImportValmer.prepare_for_update()`, before

@@ -11,6 +11,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
+from banxico.settings import BANXICO_FIXING_INDEX_IDENTIFIERS
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
@@ -107,6 +108,19 @@ def _curves_update_mxn_government_command(args: argparse.Namespace) -> int:
         curve_identifier=args.curve_identifier,
         bucket_name=args.bucket_name,
         debug_artifact_path=args.debug_artifact_path,
+    )
+    return 0
+
+
+def _fixings_update_banxico_command(args: argparse.Namespace) -> int:
+    from banxico.fixings import run_banxico_fixings_update
+
+    run_banxico_fixings_update(
+        index_identifiers=args.index_identifier or None,
+        token_secret_name=args.token_secret_name,
+        validate_metadata=not args.skip_metadata_validation,
+        end_date=args.end_date,
+        hash_namespace=args.hash_namespace,
     )
     return 0
 
@@ -484,6 +498,47 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     curves_mxn_government_parser.set_defaults(func=_curves_update_mxn_government_command)
+
+    fixings_parser = subcommands.add_parser("fixings", help="Reference-rate fixing commands.")
+    fixings_subcommands = fixings_parser.add_subparsers(
+        dest="fixings_command",
+        required=True,
+    )
+    banxico_fixings_parser = fixings_subcommands.add_parser(
+        "update-banxico",
+        help="Run the Banxico TIIE/CETE fixing update.",
+    )
+    banxico_fixings_parser.add_argument(
+        "--index-identifier",
+        choices=BANXICO_FIXING_INDEX_IDENTIFIERS,
+        action="append",
+        default=[],
+        help=(
+            "Pricing index identifier to update. Repeat to select multiple. "
+            "Defaults to all supported Banxico TIIE/CETE fixing indexes."
+        ),
+    )
+    banxico_fixings_parser.add_argument(
+        "--token-secret-name",
+        default="BANXICO_TOKEN",
+        help="Main Sequence Secret name used to resolve the Banxico SIE API token.",
+    )
+    banxico_fixings_parser.add_argument(
+        "--skip-metadata-validation",
+        action="store_true",
+        help="Skip token-backed Banxico series metadata validation for this run.",
+    )
+    banxico_fixings_parser.add_argument(
+        "--end-date",
+        default=None,
+        help="Inclusive Banxico request end date in YYYY-MM-DD form. Defaults to yesterday UTC.",
+    )
+    banxico_fixings_parser.add_argument(
+        "--hash-namespace",
+        default=None,
+        help="Optional DataNode hash namespace for isolated validation runs.",
+    )
+    banxico_fixings_parser.set_defaults(func=_fixings_update_banxico_command)
 
     migrations_parser = subcommands.add_parser(
         "migrations",

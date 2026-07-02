@@ -8,6 +8,14 @@ jobs:
       schedule:
         type: crontab
         expression: "5 13 * * 1-5"
+  - name: banxico-tiie-cete-fixings-refresh
+    execution_path: scripts/update_banxico_fixings.py
+    cpu_request: 0.50
+    memory_request: 1.00
+    task_schedule:
+      schedule:
+        type: crontab
+        expression: "10 13 * * 1-5"
   - name: valmer-tiie-zero-curve-refresh
     execution_path: scripts/update_tiie_zero_curve.py
     cpu_request: 0.50

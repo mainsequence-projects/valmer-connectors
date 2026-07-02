@@ -23,7 +23,7 @@ valmer-connectors = "valmer_connectors.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
-include = ["valmer_connectors*", "migrations*", "agents*"]
+include = ["valmer_connectors*", "banxico*", "migrations*", "agents*"]
 
 [tool.setuptools.package-data]
 migrations = ["script.py.mako"]
@@ -79,7 +79,7 @@ ignore = ["E203", "E501"]
 
 [tool.ruff.lint.isort]
 # Treat these as your own packages so they sort as "first-party".
-known-first-party = ["mainsequence","valmer_connectors","migrations","agents"]
+known-first-party = ["mainsequence","valmer_connectors","banxico","migrations","agents"]
 
 [tool.uv.sources]
 ms-markets = { path = "../mainsequencemarkets-21f6783c-041a-4631-80ef-934e1dfa3d2b" }

@@ -204,6 +204,33 @@
       "justMyCode": false
     },
     {
+      "name": "Banxico Fixings: Update TIIE",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "fixings",
+        "update-banxico",
+        "--index-identifier",
+        "TIIE_OVERNIGHT",
+        "--index-identifier",
+        "TIIE_28",
+        "--index-identifier",
+        "TIIE_91",
+        "--index-identifier",
+        "TIIE_182"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
       "name": "Valmer Curve: Build M Bonos",
       "type": "python",
       "request": "launch",
