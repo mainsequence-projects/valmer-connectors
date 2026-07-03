@@ -166,6 +166,7 @@ valmer-connectors copy-valmer-skills --path .
 valmer-connectors vector update
 valmer-connectors curves update-tiie-irs-mxn
 valmer-connectors curves update-usd-sofr
+valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
 ```
 
@@ -197,6 +198,7 @@ valmer-connectors runtime validate
 valmer-connectors vector update
 valmer-connectors curves update-tiie-irs-mxn
 valmer-connectors curves update-usd-sofr
+valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
 ```
 
@@ -222,6 +224,8 @@ for MkDocs through `mkdocs.yml`.
 - `docs/instruments.md`: row-to-instrument mapping rules
 - `docs/metatable-query-optimization.md`: thin MetaTable projection reads and
   bulk pricing-details persistence behavior
+- `docs/adr/0008-usd-mxn-cross-currency-discount-curve.md`: implementation
+  contract for the local USD/MXN F-TIIE/SOFR cross-currency discount curve
 - `docs/implementation/curve-resolution-and-asset-patching-plan.md`: planned
   fix for Valmer curve/index bindings and forced pricing-details patch runs
 - `docs/agent-skills.md`: importing bundled Valmer Codex skills into host

@@ -173,6 +173,7 @@ valmer-connectors runtime validate
 valmer-connectors vector update
 valmer-connectors curves update-tiie-irs-mxn
 valmer-connectors curves update-usd-sofr
+valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
 ```
 

@@ -253,6 +253,46 @@ The default curve identifier is
 Do not expose `--force` / `--no-force`.
 `force_update=True` is the current script behavior and the intended default.
 
+### `valmer-connectors curves update-usd-mxn-xccy`
+
+Own the Valmer USD/MXN F-TIIE/SOFR cross-currency curve update from
+`IRS_MXN_CURVE.csv`, with `IRS_USD_CURVE.csv` used to rebuild the local USD
+SOFR dependency curve.
+
+Default behavior:
+
+- call `bootstrap_runtime()`;
+- build `DiscountCurvesNode` with the Valmer MXN USD-collateralized discount
+  curve identifier;
+- attach `build_usd_mxn_xccy_valmer`;
+- resolve the Valmer benchmark date before downloading the CSVs;
+- build the local QuantLib FX-swap and constant-notional cross-currency basis
+  swap helper set;
+- run the curve DataNode update with the current script behavior,
+  `run(force_update=True)`.
+
+Options:
+
+```text
+--curve-identifier TEXT
+--hash-namespace TEXT
+--rebuild-current
+```
+
+The default curve identifier is
+`VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER`.
+
+`--hash-namespace` is available for isolated DataNode runs. It should be used
+for shared-backend validation, not to encode curve business meaning.
+
+`--rebuild-current` is a local operational/debug option for launch
+configurations and controlled reruns. It supplies an empty update-statistics
+envelope to the node so the current Valmer source date is rebuilt instead of
+being filtered out as already published.
+
+Do not expose `--force` / `--no-force`.
+`force_update=True` is the current script behavior and the intended default.
+
 ## Script Compatibility
 
 Keep existing operational `scripts/*.py` files as thin compatibility wrappers.
@@ -295,6 +335,7 @@ This ADR does not:
 - [x] Convert `scripts/validate_runtime.py` into a thin wrapper.
 - [x] Add `valmer-connectors curves update-mxn-government`.
 - [x] Add `valmer-connectors curves update-usd-sofr`.
+- [x] Add `valmer-connectors curves update-usd-mxn-xccy`.
 - [x] Document CLI usage in project docs after implementation.
 
 ## Validation
@@ -314,6 +355,7 @@ valmer-connectors runtime validate
 valmer-connectors vector update
 valmer-connectors curves update-tiie-irs-mxn
 valmer-connectors curves update-usd-sofr
+valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
 ```
 

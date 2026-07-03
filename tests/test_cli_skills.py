@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from valmer_connectors.cli.main import (
+    build_parser,
     bundled_valmer_skills_root,
     main,
     package_tree_valmer_skills_root,
@@ -43,6 +44,24 @@ def _bundled_skill_paths() -> list[str]:
 
 
 class ValmerCliSkillsTests(unittest.TestCase):
+    def test_usd_mxn_xccy_curve_launcher_args_parse(self):
+        args = build_parser().parse_args(
+            [
+                "curves",
+                "update-usd-mxn-xccy",
+                "--curve-identifier",
+                "VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+                "--hash-namespace",
+                "pytest-xccy",
+                "--rebuild-current",
+            ]
+        )
+
+        self.assertEqual(args.curves_command, "update-usd-mxn-xccy")
+        self.assertEqual(args.curve_identifier, "VALMER_MXN_USD_COLLATERAL_DISCOUNT")
+        self.assertEqual(args.hash_namespace, "pytest-xccy")
+        self.assertTrue(args.rebuild_current)
+
     def test_packaged_skill_copy_matches_repo_skill(self):
         repo_skill = source_tree_valmer_skills_root().joinpath("registering_assets", "SKILL.md")
         packaged_skill = package_tree_valmer_skills_root().joinpath(

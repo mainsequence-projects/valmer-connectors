@@ -1,23 +1,34 @@
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import pandas as pd
 from msm_pricing.data_nodes import DiscountCurvesNode
+from msm_pricing.pricing_engine.curves import (
+    StaticRateHelperRuntimeResolver,
+    helper_specs_from_key_nodes,
+    parse_cross_currency_key_node,
+)
 
+from valmer_connectors.instruments import rates_curves as rates_curves_module
 from valmer_connectors.instruments.curve_key_nodes import (
     validate_tiie_ois_key_nodes,
+    validate_usd_mxn_xccy_key_nodes,
     validate_usd_sofr_key_nodes,
 )
 from valmer_connectors.instruments.rates_curves import (
     VALMER_BENCHMARK_DATE_URL,
     VALMER_BENCHMARK_PAGE_URL,
     VALMER_TIIE_IRS_MXN_URL,
+    VALMER_USD_MXN_XCCY_IRS_MXN_URL,
     VALMER_USD_SOFR_IRS_URL,
     ValmerTiieCurveError,
+    ValmerUsdMxnXccyCurveError,
     ValmerUsdSofrCurveError,
     build_tiie_irs_mxn_curve_frame,
     build_tiie_irs_mxn_valmer,
+    build_usd_mxn_xccy_curve_frame,
+    build_usd_mxn_xccy_valmer,
     build_usd_sofr_curve_frame,
     build_usd_sofr_valmer,
     classify_tiie_irs_mxn_row,
@@ -337,6 +348,105 @@ class ValmerRatesCurvesTests(unittest.TestCase):
                 curve_identifier="VALMER_USD_SOFR_OVERNIGHT",
             )
 
+    def test_build_usd_mxn_xccy_curve_bootstraps_local_fixture(self):
+        frame = build_usd_mxn_xccy_curve_frame(
+            (DATA_DIR / "IRS_MXN_CURVE.csv").read_bytes(),
+            usd_sofr_curve_content=(DATA_DIR / "IRS_USD_CURVE.csv").read_bytes(),
+            curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+            valuation_date="2026-06-30",
+        )
+        row = frame.reset_index().iloc[0]
+
+        self.assertEqual(frame.index.names, ["time_index", "curve_identifier"])
+        self.assertEqual(row["time_index"], pd.Timestamp("2026-06-30", tz="UTC"))
+        self.assertEqual(
+            row["curve_identifier"],
+            "VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+        )
+        self.assertIn(1, row["curve"])
+        self.assertTrue(all(days > 0 for days in row["curve"]))
+        self.assertEqual(len(row["key_nodes"]), 17)
+
+        spot_node = row["key_nodes"][0]
+        self.assertEqual(spot_node["instrument_type"], "fx_spot")
+        self.assertEqual(spot_node["asset_identifier"], "FX.USD.MXN")
+        self.assertEqual(spot_node["quote"], 17.46855)
+        self.assertEqual(spot_node["fx_pair"], "USD/MXN")
+
+        fx_nodes = [
+            node for node in row["key_nodes"] if node["instrument_type"] == "fx_swap"
+        ]
+        ccs_nodes = [
+            node
+            for node in row["key_nodes"]
+            if node["instrument_type"] == "cross_currency_basis_swap"
+        ]
+        self.assertEqual(len(fx_nodes), 7)
+        self.assertEqual(len(ccs_nodes), 9)
+        self.assertEqual(fx_nodes[0]["source_quote"], 99.0)
+        self.assertEqual(fx_nodes[0]["quote"], 0.0099)
+        self.assertEqual(fx_nodes[0]["point_scale"], 10000)
+        self.assertTrue(fx_nodes[0]["is_fx_base_currency_collateral_currency"])
+        self.assertEqual(ccs_nodes[0]["source_quote"], 0.1555)
+        self.assertEqual(ccs_nodes[0]["quote"], 0.001555)
+        self.assertEqual(ccs_nodes[0]["basis_side"], "USD_SOFR")
+        self.assertEqual(ccs_nodes[0]["notional_style"], "constant_notional")
+        self.assertTrue(ccs_nodes[0]["is_basis_on_fx_base_currency_leg"])
+        self.assertEqual(ccs_nodes[-3]["source_tenor"], "182M")
+        self.assertEqual(ccs_nodes[-3]["tenor"], "15Y")
+        self.assertEqual(ccs_nodes[-1]["source_tenor"], "364M")
+        self.assertEqual(ccs_nodes[-1]["tenor"], "30Y")
+        self.assertLess(max(abs(node["quote_error"]) for node in fx_nodes + ccs_nodes), 1e-8)
+        for node in row["key_nodes"]:
+            self.assertIsNotNone(parse_cross_currency_key_node(node))
+
+        valuation_ts = pd.Timestamp("2026-06-30", tz="UTC")
+        tiie_projection_curve = rates_curves_module._build_tiie_projection_curve_from_source(
+            (DATA_DIR / "IRS_MXN_CURVE.csv").read_bytes(),
+            valuation_ts=valuation_ts,
+        )
+        usd_sofr_curve = rates_curves_module._build_usd_sofr_projection_curve_from_source(
+            (DATA_DIR / "IRS_USD_CURVE.csv").read_bytes(),
+            valuation_ts=valuation_ts,
+        )
+        runtime_resolver = rates_curves_module._build_usd_mxn_xccy_runtime_resolver(
+            tiie_projection_curve=tiie_projection_curve,
+            usd_sofr_curve=usd_sofr_curve,
+        )
+        helper_specs = helper_specs_from_key_nodes(
+            row["key_nodes"],
+            helper_runtime_resolver=runtime_resolver,
+        )
+        self.assertEqual(len(helper_specs), 16)
+
+        validated_nodes = validate_usd_mxn_xccy_key_nodes(
+            row["key_nodes"],
+            row=row.to_dict(),
+            curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+        )
+        self.assertEqual(validated_nodes, row["key_nodes"])
+
+    def test_usd_mxn_xccy_builder_uses_ms_markets_reconstruction(self):
+        with patch.object(
+            rates_curves_module,
+            "reconstruct_curve_result_from_key_nodes",
+            wraps=rates_curves_module.reconstruct_curve_result_from_key_nodes,
+        ) as reconstruction:
+            build_usd_mxn_xccy_curve_frame(
+                (DATA_DIR / "IRS_MXN_CURVE.csv").read_bytes(),
+                usd_sofr_curve_content=(DATA_DIR / "IRS_USD_CURVE.csv").read_bytes(),
+                curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+                valuation_date="2026-06-30",
+            )
+
+        self.assertTrue(reconstruction.called)
+        _, kwargs = reconstruction.call_args
+        self.assertEqual(kwargs["helper_schema"], "rate_helpers@v1")
+        self.assertIsInstance(
+            kwargs["helper_runtime_resolver"],
+            StaticRateHelperRuntimeResolver,
+        )
+
     def test_build_tiie_irs_mxn_curve_requires_explicit_valuation_date(self):
         with self.assertRaisesRegex(ValmerTiieCurveError, "valuation-date"):
             build_tiie_irs_mxn_curve_frame(
@@ -349,6 +459,14 @@ class ValmerRatesCurvesTests(unittest.TestCase):
             build_usd_sofr_curve_frame(
                 (DATA_DIR / "IRS_USD_CURVE.csv").read_bytes(),
                 curve_identifier="VALMER_USD_SOFR_OVERNIGHT",
+            )
+
+    def test_build_usd_mxn_xccy_curve_requires_explicit_valuation_date(self):
+        with self.assertRaisesRegex(ValmerUsdMxnXccyCurveError, "valuation-date"):
+            build_usd_mxn_xccy_curve_frame(
+                (DATA_DIR / "IRS_MXN_CURVE.csv").read_bytes(),
+                usd_sofr_curve_content=(DATA_DIR / "IRS_USD_CURVE.csv").read_bytes(),
+                curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
             )
 
     def test_build_tiie_irs_mxn_curve_rejects_missing_domestic_ois_rows(self):
@@ -424,6 +542,48 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         self.assertEqual(frame.index.names, ["time_index", "curve_identifier"])
         self.assertIn("curve", frame.reset_index().columns)
         self.assertIn("key_nodes", frame.reset_index().columns)
+
+    def test_valmer_usd_mxn_xccy_update_rebuilds_current_source_date(self):
+        update_statistics = Mock()
+        update_statistics.get_last_update_for_identity.return_value = pd.Timestamp(
+            "2026-06-30",
+            tz="UTC",
+        )
+        mxn_response = Mock(content=(DATA_DIR / "IRS_MXN_CURVE.csv").read_bytes())
+        usd_response = Mock(content=(DATA_DIR / "IRS_USD_CURVE.csv").read_bytes())
+
+        with (
+            patch(
+                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
+                return_value=BENCHMARK_DATE_RESPONSE,
+            ) as fetch_date,
+            patch(
+                "valmer_connectors.instruments.rates_curves.requests.get",
+                side_effect=[mxn_response, usd_response],
+            ) as get,
+        ):
+            frame = build_usd_mxn_xccy_valmer(
+                update_statistics=update_statistics,
+                curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+                base_node_curve_points=None,
+            )
+
+        fetch_date.assert_called_once_with()
+        get.assert_has_calls(
+            [
+                call(VALMER_USD_MXN_XCCY_IRS_MXN_URL, timeout=30),
+                call(VALMER_USD_SOFR_IRS_URL, timeout=30),
+            ]
+        )
+        mxn_response.raise_for_status.assert_called_once_with()
+        usd_response.raise_for_status.assert_called_once_with()
+        update_statistics.get_last_update_for_identity.assert_not_called()
+        row = frame.reset_index().iloc[0]
+        self.assertEqual(row["time_index"], pd.Timestamp("2026-06-30", tz="UTC"))
+        self.assertEqual(
+            row["curve_identifier"],
+            "VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+        )
 
     def test_valmer_tiie_update_downloads_csv_when_source_date_is_newer(self):
         update_statistics = Mock()

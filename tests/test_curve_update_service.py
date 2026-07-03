@@ -8,6 +8,7 @@ import valmer_connectors.services as services
 from valmer_connectors.instruments.curve_key_nodes import (
     validate_mxn_government_key_nodes,
     validate_tiie_ois_key_nodes,
+    validate_usd_mxn_xccy_key_nodes,
     validate_usd_sofr_key_nodes,
 )
 from valmer_connectors.services import curve_update
@@ -99,6 +100,50 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         node.set_key_nodes_validator.assert_called_once_with(validator)
         node.run.assert_called_once_with(force_update=True)
 
+    def test_shared_runner_can_rebuild_current_curve_date(self):
+        builder = Mock(
+            return_value=pd.DataFrame(
+                [
+                    {
+                        "time_index": pd.Timestamp("2024-08-30 23:59:59", tz="UTC"),
+                        "curve_identifier": "TEST_CURVE",
+                        "curve": {28: 0.1},
+                        "key_nodes": [{"maturity_date": "2024-09-27", "quote": 0.1}],
+                    }
+                ]
+            ).set_index(["time_index", "curve_identifier"])
+        )
+
+        with (
+            patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
+            patch("valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"),
+            patch("valmer_connectors.services.curve_update.CurveConfig") as curve_config,
+            patch("valmer_connectors.services.curve_update.DiscountCurvesNode") as node_class,
+            patch("valmer_connectors.services.curve_update.UpdateStatistics") as update_stats,
+        ):
+            node = Mock()
+            node.set_curve_builder.return_value = node
+            node_class.return_value = node
+            empty_stats = object()
+            update_stats.return_empty.return_value = empty_stats
+
+            curve_update._run_valmer_discount_curve_update(
+                curve_identifier="TEST_CURVE",
+                curve_builder=builder,
+                hash_namespace="pytest-xccy",
+                rebuild_current=True,
+            )
+
+        node_class.assert_called_once_with(
+            curve_config=curve_config.return_value,
+            hash_namespace="pytest-xccy",
+        )
+        update_stats.return_empty.assert_called_once_with()
+        node.run.assert_called_once_with(
+            force_update=True,
+            override_update_stats=empty_stats,
+        )
+
     def test_shared_runner_rejects_curve_frame_without_key_nodes(self):
         frame = pd.DataFrame(
             [
@@ -148,6 +193,37 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
             key_nodes_validator=validate_usd_sofr_key_nodes,
         )
 
+    def test_usd_mxn_xccy_update_uses_shared_runner(self):
+        with patch(
+            "valmer_connectors.services.curve_update._run_valmer_discount_curve_update"
+        ) as run_curve:
+            curve_update.run_usd_mxn_xccy_curve_update()
+
+        run_curve.assert_called_once_with(
+            curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+            curve_builder=curve_update.build_usd_mxn_xccy_valmer,
+            key_nodes_validator=validate_usd_mxn_xccy_key_nodes,
+            hash_namespace=None,
+            rebuild_current=False,
+        )
+
+    def test_usd_mxn_xccy_update_forwards_rebuild_controls(self):
+        with patch(
+            "valmer_connectors.services.curve_update._run_valmer_discount_curve_update"
+        ) as run_curve:
+            curve_update.run_usd_mxn_xccy_curve_update(
+                hash_namespace="pytest-xccy",
+                rebuild_current=True,
+            )
+
+        run_curve.assert_called_once_with(
+            curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+            curve_builder=curve_update.build_usd_mxn_xccy_valmer,
+            key_nodes_validator=validate_usd_mxn_xccy_key_nodes,
+            hash_namespace="pytest-xccy",
+            rebuild_current=True,
+        )
+
     def test_services_package_exports_all_curve_updates(self):
         self.assertIs(
             services.run_tiie_irs_mxn_curve_update,
@@ -156,6 +232,10 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         self.assertIs(
             services.run_usd_sofr_curve_update,
             curve_update.run_usd_sofr_curve_update,
+        )
+        self.assertIs(
+            services.run_usd_mxn_xccy_curve_update,
+            curve_update.run_usd_mxn_xccy_curve_update,
         )
         self.assertIs(
             services.run_mxn_government_curve_update,

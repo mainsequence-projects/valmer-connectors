@@ -27,6 +27,7 @@ mainsequence markets portfolios list --timeout 60
 valmer-connectors runtime validate
 valmer-connectors curves update-tiie-irs-mxn
 valmer-connectors curves update-usd-sofr
+valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
 ```
 

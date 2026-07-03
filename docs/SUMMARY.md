@@ -40,6 +40,13 @@
   removing generic QuantLib rate-helper reconstruction from Valmer curve
   builders and delegating it to `msm_pricing.pricing_engine.curves` and
   `msm_pricing.scenarios.curves`.
+- `docs/implementation/ms-markets-cross-currency-helper-refactor.md`: plan for
+  moving USD/MXN FX swap and constant-notional cross-currency basis helper
+  reconstruction to ms-markets `rate_helpers@v1` imports while keeping Valmer
+  row selection and provenance local.
+- `docs/implementation/spread-analysis-dashboard-import-plan.md`: plan for
+  importing only the spread-analysis Streamlit dashboard as a dashboard-owned
+  Valmer example without adding new core library services.
 
 ## ADRs
 
@@ -51,4 +58,5 @@
 - `docs/adr/0005-valmer-tiie-irs-mxn-curve-source.md`
 - `docs/adr/0006-valmer-usd-sofr-curve-source.md`
 - `docs/adr/0007-banxico-tiie-cete-fixings.md`
+- `docs/adr/0008-usd-mxn-cross-currency-discount-curve.md`
 - `docs/adr/cli/0004-valmer-connectors-cli-design.md`

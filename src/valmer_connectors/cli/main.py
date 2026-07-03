@@ -14,6 +14,7 @@ from typing import Any
 from banxico.settings import BANXICO_FIXING_INDEX_IDENTIFIERS
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
 )
@@ -98,6 +99,17 @@ def _curves_update_usd_sofr_command(args: argparse.Namespace) -> int:
     from valmer_connectors.services.curve_update import run_usd_sofr_curve_update
 
     run_usd_sofr_curve_update(curve_identifier=args.curve_identifier)
+    return 0
+
+
+def _curves_update_usd_mxn_xccy_command(args: argparse.Namespace) -> int:
+    from valmer_connectors.services.curve_update import run_usd_mxn_xccy_curve_update
+
+    run_usd_mxn_xccy_curve_update(
+        curve_identifier=args.curve_identifier,
+        hash_namespace=args.hash_namespace,
+        rebuild_current=args.rebuild_current,
+    )
     return 0
 
 
@@ -471,6 +483,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Curve.unique_identifier to publish with the Valmer USD SOFR builder.",
     )
     curves_usd_sofr_parser.set_defaults(func=_curves_update_usd_sofr_command)
+
+    curves_usd_mxn_xccy_parser = curves_subcommands.add_parser(
+        "update-usd-mxn-xccy",
+        help="Run the Valmer USD/MXN F-TIIE/SOFR cross-currency curve update.",
+    )
+    curves_usd_mxn_xccy_parser.add_argument(
+        "--curve-identifier",
+        default=VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+        help="Curve.unique_identifier to publish with the Valmer USD/MXN XCCY builder.",
+    )
+    curves_usd_mxn_xccy_parser.add_argument(
+        "--hash-namespace",
+        default=None,
+        help="Optional DataNode hash namespace for isolated USD/MXN XCCY curve runs.",
+    )
+    curves_usd_mxn_xccy_parser.add_argument(
+        "--rebuild-current",
+        action="store_true",
+        help=(
+            "Rebuild the current Valmer source date instead of filtering it out "
+            "when the same curve date is already published."
+        ),
+    )
+    curves_usd_mxn_xccy_parser.set_defaults(func=_curves_update_usd_mxn_xccy_command)
 
     curves_mxn_government_parser = curves_subcommands.add_parser(
         "update-mxn-government",

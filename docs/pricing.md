@@ -106,6 +106,18 @@ Curve identities:
 | `VALMER_TIIE_OVERNIGHT` | `projection` | Valmer IRS MXN CSV | TIIE overnight OIS projection curve |
 | `VALMER_MXN_GOVERNMENT_BOND` | `discount` | Valmer Vector Analitico | CETES + M Bonos MXN government discount and z-spread base curve |
 | `VALMER_USD_SOFR_OVERNIGHT` | `projection` | Valmer IRS USD CSV | USD SOFR overnight OIS projection curve |
+| `VALMER_MXN_USD_COLLATERAL_DISCOUNT` | `discount` | Valmer IRS MXN + IRS USD CSVs | MXN discount curve under USD SOFR collateral from USD/MXN FX swaps and F-TIIE/SOFR CCS rows |
+
+ADR 0008 defines the Valmer source contract for
+`VALMER_MXN_USD_COLLATERAL_DISCOUNT`. Valmer owns row selection, quote scaling,
+tenor normalization, and provenance; ms-markets owns the generic
+`rate_helpers@v1` reconstruction for FX swap and constant-notional
+cross-currency basis helpers.
+
+For repeated local launcher runs of the USD/MXN cross-currency builder, use
+`valmer-connectors curves update-usd-mxn-xccy --rebuild-current`. This rebuilds
+the current Valmer source date instead of letting the DataNode incremental
+filter return no rows for a date that is already published.
 
 All seeded Valmer curves use:
 
@@ -142,6 +154,14 @@ Their input quote conventions differ:
   bootstrapped zero rates. The Valmer curve runner validates that `key_nodes`
   contain only the included SOFR futures/OIS construction families before the
   core `DiscountCurvesNode` compresses them.
+- `VALMER_MXN_USD_COLLATERAL_DISCOUNT` uses
+  `builder_type = rate_helper_curve`, `quote_convention = helper_quote`, and
+  `rate_unit = helper_unit`. Its USD/MXN spot, FX swap, and F-TIIE/SOFR CCS
+  rows are persisted as ms-markets `rate_helpers@v1` cross-currency context and
+  helper key nodes. Valmer keeps source filtering, FX point scaling, CCS basis
+  scaling, tenor normalization, basis side/sign provenance, and dependency
+  curve selection. The persisted `curve` output remains bootstrapped zero
+  rates.
 
 Relationship:
 

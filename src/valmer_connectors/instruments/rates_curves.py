@@ -10,9 +10,11 @@ import pandas as pd
 import requests
 from msm_pricing.pricing_engine.curves import (
     CurveObservationExportConfig,
+    StaticRateHelperRuntimeResolver,
     build_rate_helpers,
     export_curve_observation_nodes,
     helper_specs_from_key_nodes,
+    reconstruct_curve_result_from_key_nodes,
     reconstruct_curve_term_structure_from_key_nodes,
 )
 
@@ -20,6 +22,8 @@ from valmer_connectors.instruments.curve_bootstrap import (
     TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
     USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
     VALMER_CURVE_QUOTE_SIDE,
+    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_DEFINITION,
+    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION,
 )
@@ -30,6 +34,9 @@ from valmer_connectors.instruments.curve_reconstruction import (
 VALMER_TIIE_IRS_MXN_URL = VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION.metadata_json[
     "source_url"
 ]
+VALMER_USD_MXN_XCCY_IRS_MXN_URL = (
+    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_DEFINITION.metadata_json["source_url"]
+)
 VALMER_USD_SOFR_IRS_URL = VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION.metadata_json[
     "source_url"
 ]
@@ -48,10 +55,20 @@ VALMER_USD_SOFR_IRS_SOURCE_FILE = "IRS_USD_CURVE.csv"
 VALMER_BENCHMARK_DATE_NAME = "Indices_Benchmarks"
 VALMER_TIIE_IMPLIED_FRONT_DAYS = (1,)
 VALMER_USD_SOFR_IMPLIED_FRONT_DAYS = (1,)
+VALMER_USD_MXN_XCCY_IMPLIED_FRONT_DAYS = (1,)
 VALMER_TIIE_PAYMENT_FREQUENCY = "EveryFourthWeek"
 VALMER_USD_SOFR_PAYMENT_FREQUENCY = "Annual"
 VALMER_TIIE_CALENDAR_CODE = {"name": "Mexico"}
 VALMER_USD_SOFR_CALENDAR_CODE = {"name": "UnitedStates", "market": 6}
+VALMER_USD_MXN_XCCY_JOINT_CALENDAR_CODE = {
+    "name": "JointCalendar",
+    "calendars": [
+        {"name": "Mexico"},
+        {"name": "UnitedStates", "market": 0},
+    ],
+}
+VALMER_USD_MXN_XCCY_EXCLUDED_FX_TENORS = frozenset({"ON", "TN"})
+VALMER_USD_MXN_XCCY_TENOR_NORMALIZATION = {"182M": "15Y", "364M": "30Y"}
 VALMER_CURVE_EXPORT_CONFIG = CurveObservationExportConfig(
     quote_convention="zero_rate",
     rate_unit="decimal",
@@ -72,6 +89,10 @@ class ValmerTiieCurveError(ValueError):
 
 class ValmerUsdSofrCurveError(ValueError):
     """Raised when Valmer IRS USD rows cannot build the SOFR curve."""
+
+
+class ValmerUsdMxnXccyCurveError(ValueError):
+    """Raised when Valmer USD/MXN cross-currency rows cannot build the curve."""
 
 
 @dataclass(frozen=True)
@@ -99,6 +120,29 @@ class ValmerUsdSofrOisQuote:
     tenor: str
     quote_decimal: float
     source_quote: float
+
+
+@dataclass(frozen=True)
+class ValmerUsdMxnFxSpotQuote:
+    instrument_identifier: str
+    spot: float
+
+
+@dataclass(frozen=True)
+class ValmerUsdMxnFxSwapQuote:
+    instrument_identifier: str
+    tenor: str
+    source_points: float
+    forward_points: float
+
+
+@dataclass(frozen=True)
+class ValmerUsdMxnXccyBasisQuote:
+    instrument_identifier: str
+    source_tenor: str
+    tenor: str
+    source_quote: float
+    basis_decimal: float
 
 
 def read_tiie_irs_mxn_csv(content: bytes) -> pd.DataFrame:
@@ -252,6 +296,24 @@ def build_usd_sofr_curve_frame_from_sources(
     )
 
 
+def build_usd_mxn_xccy_curve_frame_from_sources(
+    *,
+    mxn_curve_content: bytes,
+    usd_sofr_curve_content: bytes,
+    benchmark_date_content: bytes | str,
+    curve_identifier: str,
+) -> pd.DataFrame:
+    return build_usd_mxn_xccy_curve_frame(
+        mxn_curve_content,
+        usd_sofr_curve_content=usd_sofr_curve_content,
+        curve_identifier=curve_identifier,
+        valuation_date=parse_valmer_benchmark_date(
+            benchmark_date_content,
+            error_class=ValmerUsdMxnXccyCurveError,
+        ),
+    )
+
+
 def build_tiie_irs_mxn_curve_frame(
     content: bytes,
     *,
@@ -354,6 +416,60 @@ def build_usd_sofr_curve_frame(
     ).set_index(["time_index", "curve_identifier"])
 
 
+def build_usd_mxn_xccy_curve_frame(
+    mxn_curve_content: bytes,
+    *,
+    usd_sofr_curve_content: bytes,
+    curve_identifier: str = VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+    valuation_date: Any | None = None,
+) -> pd.DataFrame:
+    if valuation_date is None:
+        raise ValmerUsdMxnXccyCurveError(
+            "IRS_MXN_CURVE.csv has no valuation-date column; pass valuation_date explicitly."
+        )
+
+    valuation_ts = _parse_valuation_date(
+        valuation_date,
+        error_class=ValmerUsdMxnXccyCurveError,
+        source_name="Valmer USD/MXN cross-currency",
+    )
+    source_frame = read_tiie_irs_mxn_csv(mxn_curve_content)
+    spot_quote, fx_swap_quotes, basis_quotes = _select_usd_mxn_xccy_quotes(source_frame)
+    tiie_projection_curve = _build_tiie_projection_curve_from_source(
+        mxn_curve_content,
+        valuation_ts=valuation_ts,
+    )
+    usd_sofr_curve = _build_usd_sofr_projection_curve_from_source(
+        usd_sofr_curve_content,
+        valuation_ts=valuation_ts,
+    )
+    curve, key_nodes = _build_usd_mxn_xccy_curve_and_key_nodes(
+        spot_quote=spot_quote,
+        fx_swap_quotes=fx_swap_quotes,
+        basis_quotes=basis_quotes,
+        valuation_ts=valuation_ts,
+        tiie_projection_curve=tiie_projection_curve,
+        usd_sofr_curve=usd_sofr_curve,
+    )
+    curve_points = _export_zero_rate_points(
+        curve,
+        valuation_ts=valuation_ts,
+        node_days=VALMER_USD_MXN_XCCY_IMPLIED_FRONT_DAYS,
+        error_class=ValmerUsdMxnXccyCurveError,
+    )
+
+    return pd.DataFrame(
+        [
+            {
+                "time_index": valuation_ts,
+                "curve_identifier": curve_identifier,
+                "curve": curve_points,
+                "key_nodes": key_nodes,
+            }
+        ]
+    ).set_index(["time_index", "curve_identifier"])
+
+
 def build_tiie_irs_mxn_valmer(
     *,
     update_statistics,
@@ -398,6 +514,31 @@ def build_usd_sofr_valmer(
     curve_response.raise_for_status()
     return build_usd_sofr_curve_frame(
         curve_response.content,
+        curve_identifier=curve_identifier,
+        valuation_date=valuation_date,
+    )
+
+
+def build_usd_mxn_xccy_valmer(
+    *,
+    update_statistics,
+    curve_identifier: str,
+    base_node_curve_points=None,
+) -> pd.DataFrame:
+    _ = base_node_curve_points
+    valuation_date = parse_valmer_benchmark_date(
+        fetch_valmer_benchmark_date_content(),
+        error_class=ValmerUsdMxnXccyCurveError,
+    )
+    _ = update_statistics
+
+    mxn_curve_response = requests.get(VALMER_USD_MXN_XCCY_IRS_MXN_URL, timeout=30)
+    mxn_curve_response.raise_for_status()
+    usd_curve_response = requests.get(VALMER_USD_SOFR_IRS_URL, timeout=30)
+    usd_curve_response.raise_for_status()
+    return build_usd_mxn_xccy_curve_frame(
+        mxn_curve_response.content,
+        usd_sofr_curve_content=usd_curve_response.content,
         curve_identifier=curve_identifier,
         valuation_date=valuation_date,
     )
@@ -460,6 +601,101 @@ def _select_domestic_tiie_ois_quotes(source_frame: pd.DataFrame) -> list[ValmerI
     return quotes
 
 
+def _select_usd_mxn_xccy_quotes(
+    source_frame: pd.DataFrame,
+) -> tuple[
+    ValmerUsdMxnFxSpotQuote,
+    list[ValmerUsdMxnFxSwapQuote],
+    list[ValmerUsdMxnXccyBasisQuote],
+]:
+    working = source_frame.copy()
+    working["source_family"] = working["instrument_identifier"].map(
+        classify_tiie_irs_mxn_row
+    )
+    fx_rows = working.loc[working["source_family"].eq("fx")].copy()
+    basis_rows = working.loc[working["source_family"].eq("cross_currency")].copy()
+    if fx_rows.empty:
+        raise ValmerUsdMxnXccyCurveError("IRS_MXN_CURVE.csv contained no USD/MXN FX rows.")
+    if basis_rows.empty:
+        raise ValmerUsdMxnXccyCurveError(
+            "IRS_MXN_CURVE.csv contained no USD/MXN cross-currency rows."
+        )
+
+    spot_rows = fx_rows.loc[fx_rows["instrument_identifier"].eq("FX.USD.MXN")]
+    if len(spot_rows) != 1:
+        raise ValmerUsdMxnXccyCurveError(
+            "IRS_MXN_CURVE.csv must contain exactly one FX.USD.MXN spot row."
+        )
+    spot_row = spot_rows.iloc[0]
+    spot_quote = ValmerUsdMxnFxSpotQuote(
+        instrument_identifier="FX.USD.MXN",
+        spot=_parse_float(
+            spot_row["quote"],
+            field_name="FX.USD.MXN spot",
+            error_class=ValmerUsdMxnXccyCurveError,
+        ),
+    )
+
+    fx_swaps = []
+    seen_fx_tenors: set[str] = set()
+    for row in fx_rows.itertuples(index=False):
+        identifier = str(row.instrument_identifier)
+        if identifier == "FX.USD.MXN":
+            continue
+        tenor = identifier.removeprefix("FX.USD.MXN.")
+        if tenor in VALMER_USD_MXN_XCCY_EXCLUDED_FX_TENORS:
+            continue
+        _parse_tenor_components(tenor, error_class=ValmerUsdMxnXccyCurveError)
+        if tenor in seen_fx_tenors:
+            raise ValmerUsdMxnXccyCurveError(f"Duplicate USD/MXN FX tenor {tenor}.")
+        seen_fx_tenors.add(tenor)
+        source_points = _parse_signed_float(
+            row.quote,
+            field_name=f"{identifier} points",
+            error_class=ValmerUsdMxnXccyCurveError,
+        )
+        fx_swaps.append(
+            ValmerUsdMxnFxSwapQuote(
+                instrument_identifier=identifier,
+                tenor=tenor,
+                source_points=source_points,
+                forward_points=source_points / 10000,
+            )
+        )
+    if not fx_swaps:
+        raise ValmerUsdMxnXccyCurveError(
+            "IRS_MXN_CURVE.csv contained no standard-tenor USD/MXN FX swap rows."
+        )
+
+    basis_quotes = []
+    seen_basis_tenors: set[str] = set()
+    for row in basis_rows.itertuples(index=False):
+        identifier = str(row.instrument_identifier)
+        source_tenor = _extract_swap_tenor(
+            identifier,
+            error_class=ValmerUsdMxnXccyCurveError,
+        )
+        tenor = _normalize_usd_mxn_xccy_tenor(source_tenor)
+        if tenor in seen_basis_tenors:
+            raise ValmerUsdMxnXccyCurveError(f"Duplicate USD/MXN CCS tenor {tenor}.")
+        seen_basis_tenors.add(tenor)
+        source_quote = _parse_signed_float(
+            row.quote,
+            field_name=f"{identifier} basis quote",
+            error_class=ValmerUsdMxnXccyCurveError,
+        )
+        basis_quotes.append(
+            ValmerUsdMxnXccyBasisQuote(
+                instrument_identifier=identifier,
+                source_tenor=source_tenor,
+                tenor=tenor,
+                source_quote=source_quote,
+                basis_decimal=source_quote / 100,
+            )
+        )
+    return spot_quote, fx_swaps, basis_quotes
+
+
 def _select_usd_sofr_quotes(
     source_frame: pd.DataFrame,
 ) -> tuple[list[ValmerUsdSofrFutureQuote], list[ValmerUsdSofrOisQuote]]:
@@ -510,6 +746,50 @@ def _select_usd_sofr_quotes(
     return future_quotes, ois_quotes
 
 
+def _build_tiie_projection_curve_from_source(
+    content: bytes,
+    *,
+    valuation_ts: pd.Timestamp,
+):
+    source_frame = read_tiie_irs_mxn_csv(content)
+    domestic_quotes = _select_domestic_tiie_ois_quotes(source_frame)
+    key_nodes = _build_tiie_key_nodes(domestic_quotes)
+    _enrich_key_nodes_with_helper_dates(
+        key_nodes,
+        valuation_ts=valuation_ts,
+        error_class=ValmerUsdMxnXccyCurveError,
+    )
+    return _reconstruct_valmer_curve_term_structure(
+        key_nodes,
+        valuation_ts=valuation_ts,
+        error_class=ValmerUsdMxnXccyCurveError,
+    )
+
+
+def _build_usd_sofr_projection_curve_from_source(
+    content: bytes,
+    *,
+    valuation_ts: pd.Timestamp,
+):
+    source_frame = read_usd_sofr_irs_csv(content)
+    future_quotes, ois_quotes = _select_usd_sofr_quotes(source_frame)
+    candidate_key_nodes = _build_usd_sofr_key_nodes(future_quotes, ois_quotes)
+    _enrich_key_nodes_with_helper_dates(
+        candidate_key_nodes,
+        valuation_ts=valuation_ts,
+        error_class=ValmerUsdMxnXccyCurveError,
+    )
+    key_nodes = _filter_usable_usd_sofr_key_nodes(
+        candidate_key_nodes,
+        valuation_ts=valuation_ts,
+    )
+    return _reconstruct_valmer_curve_term_structure(
+        key_nodes,
+        valuation_ts=valuation_ts,
+        error_class=ValmerUsdMxnXccyCurveError,
+    )
+
+
 def _parse_usd_sofr_future_quote(
     instrument_identifier: str,
     quote: Any,
@@ -552,6 +832,12 @@ def _extract_swap_tenor(
     return tenor
 
 
+def _normalize_usd_mxn_xccy_tenor(tenor: str) -> str:
+    normalized = VALMER_USD_MXN_XCCY_TENOR_NORMALIZATION.get(tenor, tenor)
+    _parse_tenor_components(normalized, error_class=ValmerUsdMxnXccyCurveError)
+    return normalized
+
+
 def _parse_tenor_components(
     tenor: str,
     *,
@@ -574,6 +860,174 @@ def _build_usd_sofr_key_nodes(
     nodes = [_build_usd_sofr_future_key_node(quote) for quote in future_quotes]
     nodes.extend(_build_usd_sofr_ois_key_node(quote) for quote in ois_quotes)
     return nodes
+
+
+def _build_usd_mxn_xccy_curve_and_key_nodes(
+    *,
+    spot_quote: ValmerUsdMxnFxSpotQuote,
+    fx_swap_quotes: list[ValmerUsdMxnFxSwapQuote],
+    basis_quotes: list[ValmerUsdMxnXccyBasisQuote],
+    valuation_ts: pd.Timestamp,
+    tiie_projection_curve: Any,
+    usd_sofr_curve: Any,
+):
+    ql = _quantlib()
+    valuation_date = _ql_date(valuation_ts)
+    previous_evaluation_date = ql.Settings.instance().evaluationDate
+    ql.Settings.instance().evaluationDate = valuation_date
+    try:
+        runtime_resolver = _build_usd_mxn_xccy_runtime_resolver(
+            tiie_projection_curve=tiie_projection_curve,
+            usd_sofr_curve=usd_sofr_curve,
+        )
+        helper_key_nodes = [
+            _build_usd_mxn_fx_swap_key_node(quote, spot_quote) for quote in fx_swap_quotes
+        ]
+        helper_key_nodes.extend(_build_usd_mxn_xccy_basis_key_node(quote) for quote in basis_quotes)
+        key_nodes = [_build_usd_mxn_fx_spot_key_node(spot_quote, valuation_ts)]
+        key_nodes.extend(helper_key_nodes)
+        result = reconstruct_curve_result_from_key_nodes(
+            key_nodes,
+            valuation_date=valuation_date,
+            day_counter="Actual360",
+            bootstrap_method="piecewise_log_linear_discount",
+            extrapolation=True,
+            helper_schema="rate_helpers@v1",
+            helper_runtime_resolver=runtime_resolver,
+        )
+
+        for node, helper in zip(helper_key_nodes, result.helpers, strict=True):
+            node["maturity_date"] = _ql_date_to_iso(helper.maturityDate())
+            node["earliest_date"] = _ql_date_to_iso(helper.earliestDate())
+            node["pillar_date"] = _ql_date_to_iso(helper.pillarDate())
+        for node, quote_error in zip(
+            helper_key_nodes,
+            result.helper_quote_errors,
+            strict=True,
+        ):
+            node["quote_error"] = float(quote_error)
+
+        return result.term_structure, key_nodes
+    except Exception as exc:
+        raise ValmerUsdMxnXccyCurveError(
+            "Unable to build Valmer USD/MXN cross-currency curve helpers."
+        ) from exc
+    finally:
+        ql.Settings.instance().evaluationDate = previous_evaluation_date
+
+
+def _build_usd_mxn_xccy_runtime_resolver(
+    *,
+    tiie_projection_curve: Any,
+    usd_sofr_curve: Any,
+) -> StaticRateHelperRuntimeResolver:
+    ql = _quantlib()
+    usd_sofr_handle = ql.YieldTermStructureHandle(usd_sofr_curve)
+    tiie_projection_handle = ql.YieldTermStructureHandle(tiie_projection_curve)
+    sofr_index = ql.Sofr(usd_sofr_handle)
+    tiie_index = ql.OvernightIndex(
+        "FTIIE",
+        0,
+        ql.MXNCurrency(),
+        ql.Mexico(),
+        ql.Actual360(),
+        tiie_projection_handle,
+    )
+    indexes = {
+        USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER: sofr_index,
+        TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER: tiie_index,
+    }
+    return StaticRateHelperRuntimeResolver(
+        yield_curves={
+            VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION.unique_identifier: usd_sofr_handle,
+        },
+        indexes=indexes,
+        overnight_indexes=indexes,
+    )
+
+
+def _build_usd_mxn_fx_spot_key_node(
+    quote: ValmerUsdMxnFxSpotQuote,
+    valuation_ts: pd.Timestamp,
+) -> dict[str, Any]:
+    return {
+        "asset_identifier": quote.instrument_identifier,
+        "maturity_date": valuation_ts.date().isoformat(),
+        "instrument_type": "fx_spot",
+        "helper_type": "fx_spot",
+        "quote": quote.spot,
+        "quote_type": "fx_spot",
+        "quote_unit": "mxn_per_usd",
+        "quote_side": VALMER_CURVE_QUOTE_SIDE,
+        "quote_source": VALMER_TIIE_IRS_SOURCE_FILE,
+        "fx_pair": "USD/MXN",
+        "fx_base_currency": "USD",
+        "fx_quote_currency": "MXN",
+    }
+
+
+def _build_usd_mxn_fx_swap_key_node(
+    quote: ValmerUsdMxnFxSwapQuote,
+    spot_quote: ValmerUsdMxnFxSpotQuote,
+) -> dict[str, Any]:
+    return {
+        "asset_identifier": quote.instrument_identifier,
+        "instrument_type": "fx_swap",
+        "helper_type": "fx_swap_rate_helper",
+        "quote": quote.forward_points,
+        "quote_type": "fx_forward_points",
+        "quote_unit": "mxn_per_usd",
+        "quote_side": VALMER_CURVE_QUOTE_SIDE,
+        "quote_source": VALMER_TIIE_IRS_SOURCE_FILE,
+        "source_quote": quote.source_points,
+        "source_quote_unit": "raw_points",
+        "point_scale": 10000,
+        "spot": spot_quote.spot,
+        "market_forward": spot_quote.spot + quote.forward_points,
+        "tenor": quote.tenor,
+        "fixing_days": 2,
+        "calendar_code": dict(VALMER_USD_MXN_XCCY_JOINT_CALENDAR_CODE),
+        "business_day_convention": "ModifiedFollowing",
+        "end_of_month": False,
+        "fx_pair": "USD/MXN",
+        "fx_base_currency": "USD",
+        "fx_quote_currency": "MXN",
+        "is_fx_base_currency_collateral_currency": True,
+        "collateral_curve": VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION.unique_identifier,
+    }
+
+
+def _build_usd_mxn_xccy_basis_key_node(
+    quote: ValmerUsdMxnXccyBasisQuote,
+) -> dict[str, Any]:
+    return {
+        "asset_identifier": quote.instrument_identifier,
+        "instrument_type": "cross_currency_basis_swap",
+        "helper_type": "const_notional_cross_currency_basis_swap_rate_helper",
+        "quote": quote.basis_decimal,
+        "quote_type": "basis_spread",
+        "quote_unit": "decimal",
+        "quote_side": VALMER_CURVE_QUOTE_SIDE,
+        "quote_source": VALMER_TIIE_IRS_SOURCE_FILE,
+        "source_quote": quote.source_quote,
+        "source_quote_unit": "percent",
+        "source_tenor": quote.source_tenor,
+        "tenor": quote.tenor,
+        "basis_side": "USD_SOFR",
+        "basis_sign": "positive_quote_means_sofr_plus_spread",
+        "notional_style": "constant_notional",
+        "base_currency_index": USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+        "quote_currency_index": TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+        "collateral_curve": VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION.unique_identifier,
+        "fixing_days": 0,
+        "calendar_code": dict(VALMER_USD_MXN_XCCY_JOINT_CALENDAR_CODE),
+        "business_day_convention": "ModifiedFollowing",
+        "end_of_month": False,
+        "is_fx_base_currency_collateral_currency": True,
+        "is_basis_on_fx_base_currency_leg": True,
+        "payment_frequency": VALMER_TIIE_PAYMENT_FREQUENCY,
+        "payment_lag": 0,
+    }
 
 
 def _build_tiie_ois_key_node(quote: ValmerIrsMxnQuote) -> dict[str, Any]:
@@ -812,6 +1266,18 @@ def _parse_float(
     if parsed <= 0:
         raise error_class(f"{field_name} must be positive.")
     return parsed
+
+
+def _parse_signed_float(
+    value: Any,
+    *,
+    field_name: str,
+    error_class: type[ValueError] = ValmerTiieCurveError,
+) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise error_class(f"Invalid numeric {field_name}: {value!r}.") from exc
 
 
 def _ql_date(value: pd.Timestamp):

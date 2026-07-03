@@ -21,12 +21,15 @@ from valmer_connectors.instruments.curve_bootstrap import (
     USD_INDEX_CONVENTION_DEFINITIONS,
     USD_REFERENCE_INDEX_DEFINITIONS,
     USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+    VALMER_CURVE_BINDING_DEFINITIONS,
     VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS,
     VALMER_CURVE_QUOTE_SIDE,
     VALMER_DISCOUNT_CURVES_CADENCE,
     VALMER_INDEX_CURVE_BINDING_DEFINITIONS,
     VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION,
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_DEFINITION,
+    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION,
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION,
@@ -211,6 +214,28 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
         )
         self.assertNotIn("index_uid", payload)
 
+    def test_valmer_usd_mxn_xccy_curve_payload_is_discount_curve_identity(self):
+        payload = VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_DEFINITION.to_curve_payload()
+
+        self.assertEqual(
+            payload["unique_identifier"],
+            VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+        )
+        self.assertEqual(
+            payload["display_name"],
+            "Valmer MXN USD-collateralized discount curve",
+        )
+        self.assertEqual(payload["curve_type"], "discount")
+        self.assertEqual(payload["currency_code"], "MXN")
+        self.assertEqual(payload["quote_side"], VALMER_CURVE_QUOTE_SIDE)
+        self.assertEqual(payload["source"], "valmer")
+        self.assertEqual(payload["metadata_json"]["fx_pair"], "USD/MXN")
+        self.assertIn(
+            "Swap.<tenor>.MXN.FTIIE.1D/USD.SOFR.1D.SOFR",
+            payload["metadata_json"]["included_source_families"],
+        )
+        self.assertNotIn("index_uid", payload)
+
     def test_curve_building_details_cover_all_valmer_curves(self):
         definitions = {
             definition.curve_unique_identifier: definition
@@ -223,6 +248,7 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
                 VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
                 VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
                 VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+                VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
             },
         )
         tiie_payload = definitions[
@@ -355,6 +381,39 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             "clean_price",
         )
 
+        xccy_payload = definitions[
+            VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER
+        ].to_building_details_payload(curve_uid="fake-xccy-curve-uid")
+        self.assertEqual(xccy_payload["curve_uid"], "fake-xccy-curve-uid")
+        self.assertEqual(xccy_payload["builder_type"], "rate_helper_curve")
+        self.assertEqual(xccy_payload["quote_convention"], "helper_quote")
+        self.assertEqual(xccy_payload["rate_unit"], "helper_unit")
+        self.assertEqual(
+            xccy_payload["builder_payload"]["helper_schema"],
+            "rate_helpers@v1",
+        )
+        self.assertEqual(
+            xccy_payload["builder_payload"]["tenor_normalization"],
+            {"182M": "15Y", "364M": "30Y"},
+        )
+        self.assertEqual(
+            xccy_payload["builder_payload"]["instrument_rules"]["FX_SWAP"][
+                "point_scale"
+            ],
+            10000,
+        )
+        self.assertEqual(
+            xccy_payload["builder_payload"]["instrument_rules"]["CONSTANT_NOTIONAL_CCS"][
+                "basis_side"
+            ],
+            "USD_SOFR",
+        )
+        self.assertTrue(
+            xccy_payload["builder_payload"]["instrument_rules"]["CONSTANT_NOTIONAL_CCS"][
+                "is_basis_on_fx_base_currency_leg"
+            ]
+        )
+
     def test_curve_binding_definitions_use_real_index_selectors_and_mid_side(self):
         bindings = {
             (definition.role_key, definition.index_unique_identifier): definition
@@ -440,6 +499,29 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
         self.assertEqual(payload["role_key"], "z_spread_base")
         self.assertEqual(payload["quote_side"], "mid")
         self.assertEqual(payload["index_uid"], "index-uid")
+        self.assertEqual(payload["curve_uid"], "curve-uid")
+
+    def test_usd_mxn_xccy_discount_binding_uses_currency_selector(self):
+        self.assertEqual(len(VALMER_CURVE_BINDING_DEFINITIONS), 1)
+        definition = VALMER_CURVE_BINDING_DEFINITIONS[0]
+
+        self.assertEqual(definition.role_key, "discount")
+        self.assertEqual(definition.selector_type, "currency")
+        self.assertEqual(definition.selector_key, "MXN")
+        self.assertEqual(definition.quote_side, "mid")
+        self.assertEqual(
+            definition.curve_unique_identifier,
+            VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+        )
+
+        payload = definition.to_curve_binding_payload(
+            market_data_set_uid="market-data-set-uid",
+            curve_uid="curve-uid",
+        )
+        self.assertEqual(payload["role_key"], "discount")
+        self.assertEqual(payload["selector_type"], "currency")
+        self.assertEqual(payload["selector_key"], "MXN")
+        self.assertEqual(payload["quote_side"], "mid")
         self.assertEqual(payload["curve_uid"], "curve-uid")
 
     def test_curve_runtime_attach_includes_valmer_details_by_default(self):

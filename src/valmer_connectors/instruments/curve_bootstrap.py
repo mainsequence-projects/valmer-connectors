@@ -23,6 +23,9 @@ USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER = "USD_SOFR_OVERNIGHT"
 VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER = "VALMER_TIIE_OVERNIGHT"
 VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER = "VALMER_MXN_GOVERNMENT_BOND"
 VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER = "VALMER_USD_SOFR_OVERNIGHT"
+VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER = (
+    "VALMER_MXN_USD_COLLATERAL_DISCOUNT"
+)
 VALMER_SOURCE = "valmer"
 VALMER_DISCOUNT_CURVES_CADENCE = "1d"
 VALMER_CURVE_QUOTE_SIDE = "mid"
@@ -395,6 +398,36 @@ class ValmerIndexCurveBindingDefinition:
         }
 
 
+@dataclass(frozen=True)
+class ValmerCurveBindingDefinition:
+    role_key: str
+    selector_type: str
+    selector_key: str
+    curve_unique_identifier: str
+    quote_side: str = VALMER_CURVE_QUOTE_SIDE
+    source: str = VALMER_SOURCE
+    priority: int = 0
+    metadata_json: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_curve_binding_payload(
+        self,
+        *,
+        market_data_set_uid: Any,
+        curve_uid: Any,
+    ) -> dict[str, Any]:
+        return {
+            "market_data_set_uid": market_data_set_uid,
+            "role_key": self.role_key,
+            "selector_type": self.selector_type,
+            "selector_key": self.selector_key,
+            "quote_side": self.quote_side,
+            "curve_uid": curve_uid,
+            "source": self.source,
+            "priority": self.priority,
+            "metadata_json": dict(self.metadata_json) or None,
+        }
+
+
 VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION = ValmerCurveDefinition(
     unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     display_name="Valmer TIIE overnight OIS curve",
@@ -461,10 +494,39 @@ VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION = ValmerCurveDefinition(
     },
 )
 
+VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_DEFINITION = ValmerCurveDefinition(
+    unique_identifier=VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+    display_name="Valmer MXN USD-collateralized discount curve",
+    curve_type="discount",
+    currency_code="MXN",
+    quote_side=VALMER_CURVE_QUOTE_SIDE,
+    interpolation_method="log_linear_discount",
+    compounding="compounded_annual",
+    source=VALMER_SOURCE,
+    metadata_json={
+        "market": MEXICO_MARKET,
+        "source_file": "IRS_MXN_CURVE.csv",
+        "source_url": "https://www.valmer.com.mx/VAL/Web_Benchmarks/IRS_MXN_CURVE.csv",
+        "date_source_url": "https://www.valmer.com.mx/en/",
+        "date_ajax_url": "https://www.valmer.com.mx/public/getInsumoVectorGubernamental.do",
+        "fx_pair": "USD/MXN",
+        "fx_quote_meaning": "MXN per 1 USD",
+        "included_source_families": [
+            "FX.USD.MXN.<tenor>",
+            "Swap.<tenor>.MXN.FTIIE.1D/USD.SOFR.1D.SOFR",
+        ],
+        "dependency_curves": [
+            VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+            VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+        ],
+    },
+)
+
 VALMER_CURVE_DEFINITIONS: tuple[ValmerCurveDefinition, ...] = (
     VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION,
     VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION,
+    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_DEFINITION,
 )
 
 VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS: tuple[
@@ -670,6 +732,81 @@ VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS: tuple[
         },
         metadata_json={"market": UNITED_STATES_MARKET},
     ),
+    ValmerCurveBuildingDetailsDefinition(
+        curve_unique_identifier=VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+        builder_type="rate_helper_curve",
+        quote_convention="helper_quote",
+        rate_unit="helper_unit",
+        day_counter_code="Actual360",
+        calendar_code="Mexico",
+        bootstrap_method="piecewise_log_linear_discount",
+        builder_payload={
+            "key_node_schema": "CurveKeyNode",
+            "helper_schema": "rate_helpers@v1",
+            "source_file": "IRS_MXN_CURVE.csv",
+            "source_row_patterns": [
+                "FX.USD.MXN.<tenor>",
+                "Swap.<tenor>.MXN.FTIIE.1D/USD.SOFR.1D.SOFR",
+            ],
+            "date_source": "https://www.valmer.com.mx/public/getInsumoVectorGubernamental.do:Indices_Benchmarks",
+            "output_quote_convention": "zero_rate",
+            "output_rate_unit": "decimal",
+            "output_quote_type": "zero_rate",
+            "output_quote_unit": "decimal",
+            "dependency_curves": [
+                VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+                VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+            ],
+            "excluded_fx_tenors": ["ON", "TN"],
+            "tenor_normalization": {"182M": "15Y", "364M": "30Y"},
+            "instrument_rules": {
+                "FX_SWAP": {
+                    "instrument_type": "fx_swap",
+                    "helper_type": "fx_swap_rate_helper",
+                    "fx_pair": "USD/MXN",
+                    "fx_base_currency": "USD",
+                    "fx_quote_currency": "MXN",
+                    "quote_type": "fx_forward_points",
+                    "quote_unit": "mxn_per_usd",
+                    "source_quote_unit": "raw_points",
+                    "point_scale": 10000,
+                    "fixing_days": 2,
+                    "calendar_code": {
+                        "name": "JointCalendar",
+                        "calendars": [
+                            {"name": "Mexico"},
+                            {"name": "UnitedStates", "market": 0},
+                        ],
+                    },
+                    "business_day_convention": "ModifiedFollowing",
+                    "end_of_month": False,
+                    "is_fx_base_currency_collateral_currency": True,
+                    "collateral_curve": VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+                },
+                "CONSTANT_NOTIONAL_CCS": {
+                    "instrument_type": "cross_currency_basis_swap",
+                    "helper_type": "const_notional_cross_currency_basis_swap_rate_helper",
+                    "quote_type": "basis_spread",
+                    "quote_unit": "decimal",
+                    "source_quote_unit": "percent",
+                    "basis_side": "USD_SOFR",
+                    "basis_sign": "positive_quote_means_sofr_plus_spread",
+                    "notional_style": "constant_notional",
+                    "base_currency_index": USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+                    "quote_currency_index": TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+                    "collateral_curve": VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+                    "fixing_days": 0,
+                    "business_day_convention": "ModifiedFollowing",
+                    "end_of_month": False,
+                    "is_fx_base_currency_collateral_currency": True,
+                    "is_basis_on_fx_base_currency_leg": True,
+                    "payment_frequency": "EveryFourthWeek",
+                    "payment_lag": 0,
+                },
+            },
+        },
+        metadata_json={"market": MEXICO_MARKET},
+    ),
 )
 
 VALMER_INDEX_CURVE_BINDING_DEFINITIONS: tuple[
@@ -735,6 +872,19 @@ VALMER_INDEX_CURVE_BINDING_DEFINITIONS: tuple[
         role_key="projection",
         index_unique_identifier=USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
         curve_unique_identifier=VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+    ),
+)
+
+VALMER_CURVE_BINDING_DEFINITIONS: tuple[ValmerCurveBindingDefinition, ...] = (
+    ValmerCurveBindingDefinition(
+        role_key="discount",
+        selector_type="currency",
+        selector_key="MXN",
+        curve_unique_identifier=VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+        metadata_json={
+            "collateral_curve": VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+            "collateral_currency": "USD",
+        },
     ),
 )
 
@@ -994,6 +1144,22 @@ def upsert_valmer_mxn_government_bond_curve(
     return Curve.upsert(definition.to_curve_payload())
 
 
+def upsert_valmer_usd_mxn_xccy_curve(
+    definition: ValmerCurveDefinition = VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_DEFINITION,
+    *,
+    attach_runtime: bool = True,
+    create_schemas: bool | None = None,
+    **runtime_kwargs: Any,
+) -> Any:
+    from msm_pricing.api import Curve
+
+    if create_schemas is not None:
+        attach_runtime = create_schemas
+    if attach_runtime:
+        attach_valmer_curve_pricing_runtime(**runtime_kwargs)
+    return Curve.upsert(definition.to_curve_payload())
+
+
 def upsert_valmer_curve_building_details(
     definitions: Sequence[ValmerCurveBuildingDetailsDefinition] = (
         VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS
@@ -1088,6 +1254,36 @@ def upsert_valmer_curve_bindings(
     return upserted
 
 
+def upsert_valmer_generic_curve_bindings(
+    definitions: Sequence[ValmerCurveBindingDefinition] = (
+        VALMER_CURVE_BINDING_DEFINITIONS
+    ),
+    *,
+    curves: Mapping[str, Any],
+    market_data_set: Any,
+) -> dict[tuple[str, str, str, str], Any]:
+    from msm_pricing.api import PricingMarketDataSetCurveBinding
+
+    upserted = {}
+    for definition in definitions:
+        curve = curves[definition.curve_unique_identifier]
+        binding = PricingMarketDataSetCurveBinding.upsert(
+            definition.to_curve_binding_payload(
+                market_data_set_uid=market_data_set.uid,
+                curve_uid=curve.uid,
+            )
+        )
+        upserted[
+            (
+                definition.role_key,
+                definition.selector_type,
+                definition.selector_key,
+                definition.quote_side,
+            )
+        ] = binding
+    return upserted
+
+
 def bootstrap_valmer_curve_pricing(
     *,
     attach_runtime: bool = True,
@@ -1124,6 +1320,7 @@ def bootstrap_valmer_curve_pricing(
             upsert_valmer_tiie_curve(attach_runtime=False),
             upsert_valmer_mxn_government_bond_curve(attach_runtime=False),
             upsert_valmer_usd_sofr_curve(attach_runtime=False),
+            upsert_valmer_usd_mxn_xccy_curve(attach_runtime=False),
         )
     }
     curve_building_details = upsert_valmer_curve_building_details(curves=curves)
@@ -1133,6 +1330,11 @@ def bootstrap_valmer_curve_pricing(
         curves=curves,
         market_data_set=market_data_bindings["market_data_set"],
     )
+    generic_curve_bindings = upsert_valmer_generic_curve_bindings(
+        curves=curves,
+        market_data_set=market_data_bindings["market_data_set"],
+    )
+    curve_bindings.update(generic_curve_bindings)
     return {
         "index_type": index_type,
         "indexes": indexes,
@@ -1165,12 +1367,15 @@ __all__ = [
     "USD_REFERENCE_INDEX_DEFINITIONS",
     "USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER",
     "VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS",
+    "VALMER_CURVE_BINDING_DEFINITIONS",
     "VALMER_CURVE_QUOTE_SIDE",
     "VALMER_DISCOUNT_CURVES_CADENCE",
     "VALMER_CURVE_DEFINITIONS",
     "VALMER_INDEX_CURVE_BINDING_DEFINITIONS",
     "VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION",
     "VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER",
+    "VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_DEFINITION",
+    "VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER",
     "VALMER_SOURCE",
     "VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION",
     "VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER",
@@ -1186,6 +1391,7 @@ __all__ = [
     "TIIE_91_INDEX_UNIQUE_IDENTIFIER",
     "TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER",
     "ValmerCurveBuildingDetailsDefinition",
+    "ValmerCurveBindingDefinition",
     "ValmerCurveDefinition",
     "ValmerIndexCurveBindingDefinition",
     "UsdReferenceIndexDefinition",
@@ -1204,8 +1410,10 @@ __all__ = [
     "upsert_usd_reference_indexes",
     "upsert_valmer_curve_bindings",
     "upsert_valmer_curve_building_details",
+    "upsert_valmer_generic_curve_bindings",
     "upsert_valmer_market_data_source_bindings",
     "upsert_valmer_mxn_government_bond_curve",
     "upsert_valmer_tiie_curve",
+    "upsert_valmer_usd_mxn_xccy_curve",
     "upsert_valmer_usd_sofr_curve",
 ]

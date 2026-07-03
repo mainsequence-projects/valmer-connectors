@@ -8,9 +8,11 @@ import pandas as pd
 import structlog
 from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
 
+from mainsequence.client import UpdateStatistics
 from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     configure_valmer_discount_curves_cadence,
@@ -18,6 +20,7 @@ from valmer_connectors.instruments.curve_bootstrap import (
 from valmer_connectors.instruments.curve_key_nodes import (
     validate_mxn_government_key_nodes,
     validate_tiie_ois_key_nodes,
+    validate_usd_mxn_xccy_key_nodes,
     validate_usd_sofr_key_nodes,
 )
 from valmer_connectors.instruments.mexican_government_bond_curve import (
@@ -27,6 +30,7 @@ from valmer_connectors.instruments.mexican_government_bond_curve import (
 )
 from valmer_connectors.instruments.rates_curves import (
     build_tiie_irs_mxn_valmer,
+    build_usd_mxn_xccy_valmer,
     build_usd_sofr_valmer,
 )
 
@@ -71,14 +75,20 @@ def _run_valmer_discount_curve_update(
     logger=None,
     node_class: type[DiscountCurvesNode] | None = None,
     key_nodes_validator: KeyNodesValidator | None = None,
+    hash_namespace: str | None = None,
+    rebuild_current: bool = False,
 ) -> None:
     """Run a Valmer discount curve builder through the canonical pricing node."""
 
     bootstrap_runtime()
     configure_valmer_discount_curves_cadence()
     resolved_node_class = node_class or DiscountCurvesNode
+    node_kwargs = {}
+    if hash_namespace:
+        node_kwargs["hash_namespace"] = hash_namespace
     node = resolved_node_class(
-        curve_config=CurveConfig(curve_unique_identifier=curve_identifier)
+        curve_config=CurveConfig(curve_unique_identifier=curve_identifier),
+        **node_kwargs,
     ).set_curve_builder(
         _with_curve_summary_logging(
             curve_builder,
@@ -87,7 +97,10 @@ def _run_valmer_discount_curve_update(
     )
     if key_nodes_validator is not None:
         node = node.set_key_nodes_validator(key_nodes_validator)
-    node.run(force_update=True)
+    run_kwargs = {"force_update": True}
+    if rebuild_current:
+        run_kwargs["override_update_stats"] = UpdateStatistics.return_empty()
+    node.run(**run_kwargs)
 
 
 def _with_curve_summary_logging(
@@ -155,6 +168,23 @@ def run_usd_sofr_curve_update(
         curve_identifier=curve_identifier,
         curve_builder=build_usd_sofr_valmer,
         key_nodes_validator=validate_usd_sofr_key_nodes,
+    )
+
+
+def run_usd_mxn_xccy_curve_update(
+    *,
+    curve_identifier: str = VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+    hash_namespace: str | None = None,
+    rebuild_current: bool = False,
+) -> None:
+    """Publish the Valmer USD/MXN F-TIIE/SOFR cross-currency curve."""
+
+    _run_valmer_discount_curve_update(
+        curve_identifier=curve_identifier,
+        curve_builder=build_usd_mxn_xccy_valmer,
+        key_nodes_validator=validate_usd_mxn_xccy_key_nodes,
+        hash_namespace=hash_namespace,
+        rebuild_current=rebuild_current,
     )
 
 
