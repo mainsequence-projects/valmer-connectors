@@ -36,8 +36,7 @@ render_title(
     "Target-bond coverage from the latest vector snapshot versus current platform asset pricing details.",
 )
 
-lookback_days = st.slider("Lookback days", min_value=1, max_value=60, value=14)
-payload = load_pricing_health(lookback_days=lookback_days)
+payload = load_pricing_health()
 
 if payload.get("error"):
     st.error(f"Pricing health query failed: {payload['error']}")

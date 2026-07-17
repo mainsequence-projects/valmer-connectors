@@ -33,11 +33,10 @@ run_page(
 
 render_title(
     "Curve Health",
-    "Monitor the canonical discount-curves DataNode for the Valmer TIIE curve.",
+    "Monitor the backend latest observation for the canonical Valmer TIIE discount curve.",
 )
 
-lookback_days = st.slider("Lookback days", min_value=1, max_value=90, value=30)
-curve_payload = load_curve_health(lookback_days=lookback_days)
+curve_payload = load_curve_health()
 render_sidebar_context(None, allow_asset_lookup=False)
 
 for label, result in curve_payload.items():

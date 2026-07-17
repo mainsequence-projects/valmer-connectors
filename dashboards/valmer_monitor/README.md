@@ -17,6 +17,9 @@ The dashboard now exposes:
 The app reuses MainSequence Streamlit scaffolding and sidebar components for
 logged-user context and asset search.
 
+Current-state widgets read backend latest observations. Bounded history reads
+are only used for activity and focused-asset charts.
+
 ## Local Run
 
 ```bash

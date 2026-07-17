@@ -8,14 +8,11 @@ import pandas as pd
 import streamlit as st
 from msm.api.base import operation_result_rows
 from msm.repositories.crud import search_model
+from msm.settings import ASSET_IDENTIFIER_DIMENSION, markets_data_node_identifier
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from msm_pricing.data_interface.data_interface import dimension_range_for_identity
 from msm_pricing.data_nodes.curve_codec import decompress_string_to_curve
-from msm_pricing.data_nodes.curves import CURVE_UNIQUE_IDENTIFIER_DIMENSION
-from msm_pricing.settings import (
-    PRICING_CONCEPT_DISCOUNT_CURVES,
-    default_pricing_market_data_identifier,
-)
+from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER_DIMENSION
 
 from mainsequence.meta_tables import APIDataNode
 from valmer_connectors.data_nodes.nodes import ImportValmer
@@ -26,9 +23,7 @@ from valmer_connectors.instruments.curve_bootstrap import (
 from valmer_connectors.meta_tables.valmer_asset_details import resolve_valmer_asset_details
 
 VECTOR_NODE_IDENTIFIER = "vector_de_precios_valmer"
-DISCOUNT_CURVE_NODE_IDENTIFIER = default_pricing_market_data_identifier(
-    PRICING_CONCEPT_DISCOUNT_CURVES
-)
+DISCOUNT_CURVE_NODE_IDENTIFIER = markets_data_node_identifier("DiscountCurvesTS")
 
 NUMERIC_VECTOR_COLUMNS = (
     "open",
@@ -212,6 +207,8 @@ def _ensure_flat_frame(frame: pd.DataFrame) -> pd.DataFrame:
 
 def _prepare_vector_frame(frame: pd.DataFrame) -> pd.DataFrame:
     frame = _ensure_flat_frame(frame)
+    if ASSET_IDENTIFIER_DIMENSION in frame.columns and "unique_identifier" not in frame.columns:
+        frame["unique_identifier"] = frame[ASSET_IDENTIFIER_DIMENSION]
     for col in DATETIME_VECTOR_COLUMNS:
         if col in frame.columns:
             frame[col] = pd.to_datetime(frame[col], utc=True, errors="coerce")
@@ -235,7 +232,7 @@ def _query_node_by_identifier(
         node = APIDataNode.build_from_identifier(identifier=node_identifier)
         dimension_filters = None
         if unique_identifier_list:
-            dimension_filters = {"unique_identifier": unique_identifier_list}
+            dimension_filters = {ASSET_IDENTIFIER_DIMENSION: unique_identifier_list}
         frame = node.get_df_between_dates(
             start_date=start_date,
             end_date=utc_now(),
@@ -244,6 +241,25 @@ def _query_node_by_identifier(
             dimension_filters=dimension_filters,
             columns=columns,
         )
+        return QueryResult(
+            data=_prepare_vector_frame(frame),
+            source_label=f"DataNode: {node_identifier}",
+        )
+    except Exception as exc:
+        return QueryResult(data=pd.DataFrame(), error=str(exc))
+
+
+def _query_latest_node_observations(
+    node_identifier: str,
+    *,
+    unique_identifier_list: list[str] | None = None,
+) -> QueryResult:
+    try:
+        node = APIDataNode.build_from_identifier(identifier=node_identifier)
+        dimension_filters = None
+        if unique_identifier_list:
+            dimension_filters = {ASSET_IDENTIFIER_DIMENSION: unique_identifier_list}
+        frame = node.get_last_observation(dimension_filters=dimension_filters)
         return QueryResult(
             data=_prepare_vector_frame(frame),
             source_label=f"DataNode: {node_identifier}",
@@ -264,11 +280,16 @@ def load_vector_history(lookback_days: int = 14) -> QueryResult:
     )
 
 
-def latest_vector_snapshot(frame: pd.DataFrame) -> pd.DataFrame:
-    if frame.empty or "unique_identifier" not in frame.columns or "time_index" not in frame.columns:
-        return frame.copy()
-    latest_idx = frame.groupby("unique_identifier")["time_index"].idxmax()
-    return frame.loc[latest_idx].sort_values("time_index", ascending=False).reset_index(drop=True)
+@st.cache_data(ttl=300, show_spinner=False)
+def load_vector_snapshot() -> QueryResult:
+    result = _query_latest_node_observations(VECTOR_NODE_IDENTIFIER)
+    if result.error or result.data.empty:
+        return result
+    return QueryResult(
+        data=enrich_valmer_vector_with_details(result.data),
+        error=result.error,
+        source_label=result.source_label,
+    )
 
 
 def enrich_valmer_vector_with_details(frame: pd.DataFrame) -> pd.DataFrame:
@@ -414,12 +435,12 @@ def _merge_valmer_asset_details(
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_pricing_health(lookback_days: int = 14) -> dict[str, object]:
-    history = load_vector_history(lookback_days=lookback_days)
-    if history.error:
-        return {"error": history.error}
+def load_pricing_health() -> dict[str, object]:
+    snapshot = load_vector_snapshot()
+    if snapshot.error:
+        return {"error": snapshot.error}
 
-    latest = latest_vector_snapshot(history.data)
+    latest = snapshot.data
     if latest.empty:
         return {"latest": latest, "target": latest, "missing_pricing": []}
 
@@ -454,16 +475,14 @@ def load_pricing_health(lookback_days: int = 14) -> dict[str, object]:
     }
 
 
-def _load_discount_curve_history(lookback_days: int = 30) -> QueryResult:
+def _load_latest_discount_curve() -> QueryResult:
     try:
         node = APIDataNode.build_from_identifier(identifier=DISCOUNT_CURVE_NODE_IDENTIFIER)
-        frame = node.get_df_between_dates(
+        frame = node.get_last_observation(
             dimension_range_map=dimension_range_for_identity(
-                identity_dimension=CURVE_UNIQUE_IDENTIFIER_DIMENSION,
+                identity_dimension=CURVE_IDENTIFIER_DIMENSION,
                 identity=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
                 date_info={
-                    "start_date": utc_now() - timedelta(days=lookback_days),
-                    "start_date_operand": ">=",
                     "end_date": utc_now(),
                     "end_date_operand": "<=",
                 },
@@ -477,9 +496,9 @@ def _load_discount_curve_history(lookback_days: int = 30) -> QueryResult:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_curve_health(lookback_days: int = 30) -> dict[str, QueryResult]:
+def load_curve_health() -> dict[str, QueryResult]:
     return {
-        "discount_curves": _load_discount_curve_history(lookback_days=lookback_days),
+        "discount_curves": _load_latest_discount_curve(),
     }
 
 
@@ -487,8 +506,8 @@ def latest_curve_points(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty or "curve" not in frame.columns:
         return pd.DataFrame()
 
-    latest = frame.sort_values("time_index").iloc[-1]
-    payload = latest["curve"]
+    observation = frame.iloc[0]
+    payload = observation["curve"]
     if isinstance(payload, dict):
         points = payload
     else:
@@ -563,10 +582,12 @@ def selected_asset_history(frame: pd.DataFrame, unique_identifier: str | None) -
 
 
 def selected_asset_snapshot(frame: pd.DataFrame, unique_identifier: str | None) -> pd.Series | None:
-    history = selected_asset_history(frame, unique_identifier)
-    if history.empty:
+    if not unique_identifier or frame.empty or "unique_identifier" not in frame.columns:
         return None
-    return history.iloc[-1]
+    rows = frame[frame["unique_identifier"].astype("string") == unique_identifier]
+    if rows.empty:
+        return None
+    return rows.iloc[0]
 
 
 def runtime_notes() -> list[str]:

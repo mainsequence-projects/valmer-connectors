@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 APP_DIR = Path(__file__).resolve().parents[1]
@@ -15,8 +16,8 @@ for path in (APP_DIR, REPO_ROOT):
 from page_bootstrap import PageConfig, run_page
 from valmer_dashboard import (
     category_breakdown,
-    latest_vector_snapshot,
     load_vector_history,
+    load_vector_snapshot,
     render_empty_header,
     render_sidebar_context,
     render_title,
@@ -37,22 +38,27 @@ run_page(
 
 render_title(
     "Source Data",
-    "Recent rows from `vector_de_precios_valmer`, grouped to the latest snapshot per instrument.",
+    "Current backend snapshot from `vector_de_precios_valmer` with bounded history for activity charts.",
 )
 
 lookback_days = st.slider("Lookback days", min_value=1, max_value=60, value=14)
-result = load_vector_history(lookback_days=lookback_days)
+history = load_vector_history(lookback_days=lookback_days)
+snapshot = load_vector_snapshot()
 
-if result.error:
-    st.error(f"Vector query failed: {result.error}")
+if snapshot.error:
+    st.error(f"Vector snapshot query failed: {snapshot.error}")
 else:
-    latest = latest_vector_snapshot(result.data)
+    latest = snapshot.data
     selected_uid = render_sidebar_context(latest)
-    st.metric("Raw rows", len(result.data.index))
+    st.metric("Raw history rows", 0 if history.error else len(history.data.index))
     st.metric("Latest unique identifiers", latest["unique_identifier"].nunique() if not latest.empty else 0)
 
-    counts = source_activity_counts(result.data)
-    if not counts.empty:
+    if history.error:
+        st.error(f"Vector history query failed: {history.error}")
+        counts = None
+    else:
+        counts = source_activity_counts(history.data)
+    if counts is not None and not counts.empty:
         st.line_chart(counts.set_index("day")["asset_count"], use_container_width=True)
 
     if latest.empty:
@@ -100,10 +106,14 @@ else:
 
         if selected_uid:
             st.subheader(f"Focused Asset: {selected_uid}")
-            asset_history = selected_asset_history(result.data, selected_uid)
+            asset_history = (
+                pd.DataFrame()
+                if history.error
+                else selected_asset_history(history.data, selected_uid)
+            )
             latest_asset = selected_asset_snapshot(latest, selected_uid)
             if latest_asset is None:
-                st.warning(f"{selected_uid} is not present in the queried Valmer window.")
+                st.warning(f"{selected_uid} is not present in the current Valmer snapshot.")
             else:
                 detail_cols = [
                     col

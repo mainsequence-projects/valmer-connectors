@@ -17,10 +17,10 @@ from page_bootstrap import PageConfig, run_page
 from valmer_dashboard import (
     category_breakdown,
     latest_curve_points,
-    latest_vector_snapshot,
     load_curve_health,
     load_pricing_health,
     load_vector_history,
+    load_vector_snapshot,
     render_empty_header,
     render_kpi_cards,
     render_sidebar_context,
@@ -47,12 +47,11 @@ render_title(
 )
 
 vector_history = load_vector_history()
+vector_snapshot = load_vector_snapshot()
 pricing_health = load_pricing_health()
 curve_health = load_curve_health()
 
-latest_vector = (
-    latest_vector_snapshot(vector_history.data) if vector_history.data is not None else pd.DataFrame()
-)
+latest_vector = vector_snapshot.data if vector_snapshot.data is not None else pd.DataFrame()
 discount_curve_result = curve_health["discount_curves"]
 standard_curve_points = latest_curve_points(discount_curve_result.data)
 selected_uid = render_sidebar_context(latest_vector)
@@ -68,7 +67,9 @@ render_kpi_cards(
         (
             "Latest Assets",
             str(latest_vector["unique_identifier"].nunique()) if not latest_vector.empty else "0",
-            "Latest unique identifiers visible in the source node.",
+            vector_snapshot.source_label
+            or vector_snapshot.error
+            or "Backend latest source snapshot unavailable.",
         ),
         (
             "Target Bonds",
@@ -96,15 +97,19 @@ left, right = st.columns((1.2, 0.8))
 
 with left:
     st.subheader("Source Overview")
-    if vector_history.error:
-        st.error(f"Vector query failed: {vector_history.error}")
+    if vector_snapshot.error:
+        st.error(f"Vector snapshot query failed: {vector_snapshot.error}")
     elif latest_vector.empty:
-        st.warning("No recent Valmer vector rows were returned.")
+        st.warning("No current Valmer vector snapshot rows were returned.")
     elif selected_uid:
-        asset_history = selected_asset_history(vector_history.data, selected_uid)
+        asset_history = (
+            pd.DataFrame()
+            if vector_history.error
+            else selected_asset_history(vector_history.data, selected_uid)
+        )
         latest_asset = selected_asset_snapshot(latest_vector, selected_uid)
         if latest_asset is None:
-            st.warning(f"{selected_uid} is not present in the queried Valmer window.")
+            st.warning(f"{selected_uid} is not present in the current Valmer snapshot.")
         else:
             profile_cols = [
                 col
@@ -157,11 +162,16 @@ with left:
 
 with right:
     st.subheader("Source Activity")
-    activity = source_activity_counts(vector_history.data)
-    if activity.empty:
+    if vector_history.error:
+        st.error(f"Vector history query failed: {vector_history.error}")
+        activity = pd.DataFrame()
+    else:
+        activity = source_activity_counts(vector_history.data)
+    if not vector_history.error and activity.empty:
         st.info("No activity history is available yet.")
     else:
-        st.line_chart(activity.set_index("day")["asset_count"], use_container_width=True)
+        if not activity.empty:
+            st.line_chart(activity.set_index("day")["asset_count"], use_container_width=True)
 
     st.subheader("Sector Mix")
     sector_mix = category_breakdown(latest_vector, "sector", top_n=10)
@@ -178,7 +188,7 @@ with right:
         if result.data.empty:
             st.warning(f"{label.title()} path returned no rows.")
             continue
-        latest_row = result.data.sort_values("time_index").iloc[-1]
+        latest_row = result.data.iloc[0]
         st.success(
             f"{label.title()} path updated at {latest_row['time_index']} via {result.source_label}."
         )
