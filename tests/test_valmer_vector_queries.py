@@ -32,19 +32,38 @@ class ValmerVectorQueriesTest(unittest.TestCase):
     def test_vector_queries_do_not_depend_on_fundcompetition_settings(self):
         self.assertNotIn("fundcompetition", inspect.getsource(vector_quotes))
 
-    def test_valmer_vector_node_builds_api_node_from_storage_identifier(self):
+    def test_valmer_vector_node_builds_api_node_from_bound_storage_metatable(self):
         api_node = object()
+        meta_table = object()
 
         with patch(
-            "mainsequence.meta_tables.APIDataNode.build_from_identifier",
+            "valmer_connectors.queries.vector_quotes.ValmerVectorPricesStorage.get_meta_table",
+            return_value=meta_table,
+        ) as get_meta_table, patch(
+            "mainsequence.meta_tables.APIDataNode.build_from_meta_table",
             return_value=api_node,
-        ) as build_from_identifier:
+        ) as build_from_meta_table:
             result = valmer_vector_node()
 
         self.assertIs(result, api_node)
-        build_from_identifier.assert_called_once_with(
-            identifier=valmer_vector_node_identifier(),
+        get_meta_table.assert_called_once_with()
+        build_from_meta_table.assert_called_once_with(
+            meta_table,
         )
+
+    def test_valmer_vector_node_requires_runtime_bound_storage_metatable(self):
+        with patch(
+            "valmer_connectors.queries.vector_quotes.ValmerVectorPricesStorage.get_meta_table",
+            return_value=None,
+        ), patch(
+            "mainsequence.meta_tables.APIDataNode.build_from_identifier",
+            side_effect=AssertionError("must not look up the vector by string identifier"),
+        ), patch(
+            "mainsequence.meta_tables.APIDataNode.build_from_meta_table",
+            side_effect=AssertionError("must not build without a bound MetaTable"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "Valmer vector storage is not bound"):
+                valmer_vector_node()
 
     def test_storage_columns_are_read_from_registered_storage_schema(self):
         self.assertIn("time_index", valmer_vector_storage_columns())
@@ -131,34 +150,65 @@ class ValmerVectorQueriesTest(unittest.TestCase):
         self.assertEqual(result["dirty_price"].iloc[0], 101.5)
         self.assertEqual(result["yield_rate"].iloc[0], 9.75)
 
-    def test_last_observation_returns_latest_row_per_asset(self):
+    def test_last_observation_uses_backend_latest_per_asset_as_of(self):
+        node = Mock()
         frame = pd.DataFrame(
             [
-                {
-                    "time_index": pd.Timestamp("2024-01-01T00:00:00Z"),
-                    ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205",
-                    "dirty_price": 99.0,
-                },
                 {
                     "time_index": pd.Timestamp("2024-01-03T00:00:00Z"),
                     ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205",
                     "dirty_price": 101.0,
+                    "yield_rate": 9.5,
                 },
                 {
                     "time_index": pd.Timestamp("2024-01-02T00:00:00Z"),
                     ASSET_IDENTIFIER_DIMENSION: "BI_CETES_1",
                     "dirty_price": 10.0,
+                    "yield_rate": 8.25,
                 },
             ]
+        ).set_index(["time_index", ASSET_IDENTIFIER_DIMENSION])
+        node.get_last_observation.return_value = frame
+
+        as_of = dt.datetime(2024, 1, 3, tzinfo=dt.UTC)
+        latest_search_start = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+        with (
+            patch(
+                "valmer_connectors.queries.vector_quotes.valmer_vector_node",
+                return_value=node,
+            ),
+            patch(
+                "valmer_connectors.queries.vector_quotes.read_valmer_history",
+                side_effect=AssertionError("latest reads must not fetch history"),
+            ),
+        ):
+            result = read_valmer_last_observation(
+                ["M_BONOS_241205", "M_BONOS_241205", "BI_CETES_1"],
+                as_of=as_of,
+                columns=["dirty_price"],
+                latest_search_start=latest_search_start,
+            )
+
+        node.get_last_observation.assert_called_once_with(
+            dimension_range_map=[
+                {
+                    "coordinate": {ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205"},
+                    "end_date": as_of,
+                    "start_date": latest_search_start,
+                },
+                {
+                    "coordinate": {ASSET_IDENTIFIER_DIMENSION: "BI_CETES_1"},
+                    "end_date": as_of,
+                    "start_date": latest_search_start,
+                },
+            ],
         )
 
-        with patch(
-            "valmer_connectors.queries.vector_quotes.read_valmer_history",
-            return_value=frame,
-        ):
-            result = read_valmer_last_observation(["M_BONOS_241205", "BI_CETES_1"])
-
         self.assertEqual(len(result), 2)
+        self.assertEqual(
+            result.columns.tolist(),
+            ["time_index", ASSET_IDENTIFIER_DIMENSION, "dirty_price"],
+        )
         prices = dict(zip(result[ASSET_IDENTIFIER_DIMENSION], result["dirty_price"]))
         self.assertEqual(prices, {"M_BONOS_241205": 101.0, "BI_CETES_1": 10.0})
 

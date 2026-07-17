@@ -8,7 +8,7 @@ version = "0.1.21"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "mainsequence>=4.3.18",
+    "mainsequence>=4.4.27",
     "ms-markets>=0.0.65",
     "pandas-market-calendars>=5.4.0",
     "pymssql>=2.3.13",

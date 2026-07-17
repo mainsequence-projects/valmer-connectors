@@ -16,7 +16,6 @@ from valmer_connectors.queries._normalization import (
     to_utc_datetime,
 )
 
-DEFAULT_LATEST_SEARCH_START = dt.datetime(1900, 1, 1, tzinfo=dt.UTC)
 DEFAULT_VALMER_VECTOR_COLUMNS = (
     "dirty_price",
     "clean_price",
@@ -41,8 +40,15 @@ def valmer_vector_node() -> Any:
 
     from mainsequence.meta_tables import APIDataNode
 
-    return APIDataNode.build_from_identifier(
-        identifier=valmer_vector_node_identifier(),
+    meta_table = ValmerVectorPricesStorage.get_meta_table()
+    if meta_table is None:
+        raise RuntimeError(
+            "Valmer vector storage is not bound in the active runtime. "
+            "Bootstrap the runtime with ValmerVectorPricesStorage before reading "
+            "Valmer vector observations."
+        )
+    return APIDataNode.build_from_meta_table(
+        meta_table,
     )
 
 
@@ -59,6 +65,18 @@ def filter_valmer_vector_columns(columns: Sequence[str] | None) -> list[str]:
     candidates = list(dict.fromkeys([*VALMER_VECTOR_INDEX_COLUMNS, *requested]))
     available = valmer_vector_storage_columns()
     return [column for column in candidates if column in available]
+
+
+def _select_valmer_vector_columns(
+    frame: pd.DataFrame,
+    columns: Sequence[str] | None,
+) -> pd.DataFrame:
+    selected = [
+        column
+        for column in filter_valmer_vector_columns(columns)
+        if column in frame.columns
+    ]
+    return frame.loc[:, selected]
 
 
 def read_valmer_history(
@@ -96,20 +114,25 @@ def read_valmer_last_observation(
     if not identifiers:
         return pd.DataFrame()
     end = to_utc_datetime(as_of) or dt.datetime.now(dt.UTC)
-    start = to_utc_datetime(latest_search_start) or DEFAULT_LATEST_SEARCH_START
-    frame = read_valmer_history(
-        identifiers,
-        start_date=start,
-        end_date=end,
-        columns=columns,
+    start = to_utc_datetime(latest_search_start)
+    dimension_range_map = []
+    for identifier in identifiers:
+        descriptor = {
+            "coordinate": {ASSET_IDENTIFIER_DIMENSION: identifier},
+            "end_date": end,
+        }
+        if start is not None:
+            descriptor["start_date"] = start
+        dimension_range_map.append(descriptor)
+
+    frame = valmer_vector_node().get_last_observation(
+        dimension_range_map=dimension_range_map,
     )
     if frame.empty:
         return frame
-    return (
-        frame.sort_values("time_index")
-        .groupby(ASSET_IDENTIFIER_DIMENSION, as_index=False, sort=False)
-        .tail(1)
-        .reset_index(drop=True)
+    return _select_valmer_vector_columns(
+        normalize_valmer_quote_frame(frame),
+        columns=columns,
     )
 
 

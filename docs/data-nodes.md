@@ -121,15 +121,17 @@ Core helpers:
 
 - `valmer_vector_node_identifier()`: returns the canonical published identifier
   for the Valmer vector storage.
-- `valmer_vector_node()`: builds an `APIDataNode` from that identifier.
+- `valmer_vector_node()`: builds an `APIDataNode` from the runtime-bound
+  Valmer vector storage MetaTable.
 - `valmer_vector_storage_columns()`: returns the registered storage columns from
   `ValmerVectorPricesStorage.__table__`.
 - `filter_valmer_vector_columns(...)`: keeps `time_index`,
   `asset_identifier`, and requested columns that exist in the storage schema.
 - `read_valmer_history(...)`: reads historical rows for a set of
   `asset_identifier` values with `get_df_between_dates(...)`.
-- `read_valmer_last_observation(...)`: returns the latest row per
-  `asset_identifier` at or before an `as_of` timestamp.
+- `read_valmer_last_observation(...)`: uses the backend latest-observation
+  endpoint to return the latest row per `asset_identifier` at or before an
+  `as_of` timestamp.
 - `latest_dirty_price_by_identifier(...)`: returns latest dirty prices keyed by
   canonical asset identifier.
 - `read_valmer_yield_history(...)`: returns yield, duration, and monetary

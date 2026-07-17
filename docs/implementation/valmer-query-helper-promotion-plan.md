@@ -207,7 +207,8 @@ Implementation rules:
 - The code does not read `fundcompetition.config.settings.VECTOR_IDENTIFIER`.
 - The code does not define a new setting for the vector identifier.
 - `valmer_vector_node()` imports `APIDataNode` inside the function and calls
-  `APIDataNode.build_from_identifier(identifier=valmer_vector_node_identifier())`.
+  `APIDataNode.build_from_meta_table(...)` using the runtime-bound
+  `ValmerVectorPricesStorage` MetaTable.
 - `filter_valmer_vector_columns(...)` inspects
   `ValmerVectorPricesStorage.__table__.columns`.
 - `filter_valmer_vector_columns(...)` always includes `time_index` and
@@ -216,10 +217,12 @@ Implementation rules:
   `dimension_filters={"asset_identifier": cleaned_identifiers}`.
 - `read_valmer_history(...)` returns an empty `DataFrame` without calling the
   platform when identifier cleanup removes every input value.
-- `read_valmer_last_observation(...)` returns one row per `asset_identifier`
-  after sorting by `time_index` and keeping the last observation.
-- `read_valmer_last_observation(...)` exposes `latest_search_start` so the
-  historical window used for latest-row fallback is explicit.
+- `read_valmer_last_observation(...)` calls `APIDataNode.get_last_observation(...)`
+  with one `dimension_range_map` entry per `asset_identifier` and returns one
+  backend-selected row per asset.
+- `read_valmer_last_observation(...)` exposes `latest_search_start` as an
+  optional backend query lower bound; it must not default to a full-history
+  pandas fallback.
 - `latest_dirty_price_by_identifier(...)` returns a dictionary keyed by
   canonical asset identifier and omits rows where `dirty_price` is missing.
 - `read_valmer_yield_history(...)` replaces the donor's
@@ -305,7 +308,7 @@ Mapping:
 | `valmer_node()` | `valmer_vector_node()` | Keep, derive identifier from `ValmerVectorPricesStorage`. |
 | `valmer_storage_columns()` | `valmer_vector_storage_columns()` | Keep, return `frozenset[str]`. |
 | `read_valmer_history(...)` | `read_valmer_history(...)` | Keep, remove project setting dependency. |
-| `read_valmer_last_observation(...)` | `read_valmer_last_observation(...)` | Keep, add explicit `latest_search_start`. |
+| `read_valmer_last_observation(...)` | `read_valmer_last_observation(...)` | Keep, use backend latest-observation lookup with optional `latest_search_start`. |
 | `latest_dirty_price_by_identifier(...)` | `latest_dirty_price_by_identifier(...)` | Keep. |
 | `yield_history_for_spread(...)` | `read_valmer_yield_history(...)` | Keep behavior, remove spread-specific name. |
 | `selected_columns(...)` | `filter_valmer_vector_columns(...)` | Keep behavior, clearer name. |
@@ -381,7 +384,8 @@ not the core Valmer storage read API.
   the correct `dimension_filters` and column list;
 - normalization resets index columns, coerces `time_index` to UTC, and coerces
   numeric quote columns;
-- latest observation returns one row per asset;
+- latest observation calls the backend latest-observation endpoint and returns
+  one row per asset;
 - dirty-price map omits missing dirty prices;
 - yield history requests only yield-related vector columns.
 
