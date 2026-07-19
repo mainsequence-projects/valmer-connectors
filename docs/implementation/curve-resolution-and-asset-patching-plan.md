@@ -268,7 +268,7 @@ That helper writes the generic selector fields as `selector_type="index"` and
 `selector_key=str(index.uid)`. Do not hand-author those fields for TIIE/CETE
 index selections.
 
-Required TIIE projection bindings:
+Required Valmer index-role bindings:
 
 | Role | Selector | Curve |
 | --- | --- | --- |
@@ -276,40 +276,30 @@ Required TIIE projection bindings:
 | `projection` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `projection` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `projection` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
-
-If floating-rate instruments keep `benchmark_rate_index_uid` equal to their
-floating index UID for z-spread analytics, also create:
-
-| Role | Selector | Curve |
-| --- | --- | --- |
+| `discount` | `index:<TIIE_OVERNIGHT.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `index:<TIIE_OVERNIGHT.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
-
-Required CETE/M Bono benchmark bindings:
-
-| Role | Selector | Curve |
-| --- | --- | --- |
+| `projection` | `index:<CETE_28.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `projection` | `index:<CETE_91.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `projection` | `index:<CETE_182.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `discount` | `index:<CETE_28.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `discount` | `index:<CETE_91.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `discount` | `index:<CETE_182.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
 | `z_spread_base` | `index:<CETE_28.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `z_spread_base` | `index:<CETE_91.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
 | `z_spread_base` | `index:<CETE_182.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
 
-Recommended because the source map already has CETE 91 aliases:
-
-| Role | Selector | Curve |
-| --- | --- | --- |
-| `z_spread_base` | `index:<CETE_91.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
-
-Useful currency-level binding:
-
-| Role | Selector | Curve |
-| --- | --- | --- |
-| `discount` | `currency:MXN:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
-
-Only add `discount:index:<CETE_*.uid>` bindings if a concrete Valmer or
-application pricing call resolves discount curves through benchmark index
-selectors. Current `msm_pricing` fixed-rate and zero-coupon `price()` does not
-automatically convert `benchmark_rate_index_uid` into a discount curve.
+Do not add `discount:currency:MXN:mid`. MXN currency is descriptive metadata,
+not a discounting policy. Current floating-rate resolution in `msm_pricing`
+requires both projection and discount roles for instruments carrying floating
+index UIDs, so Valmer seeds the explicit TIIE and CETE index-role bindings
+above. Fixed-rate and zero-coupon discount policy must also be explicit; it must
+not be hidden behind a currency fallback.
 
 Runtime calls must request the same side:
 
@@ -713,8 +703,16 @@ Market-data bindings:
 Curve bindings:
   projection:index:<TIIE_28.uid>:mid -> VALMER_TIIE_OVERNIGHT
   projection:index:<TIIE_182.uid>:mid -> VALMER_TIIE_OVERNIGHT
+  discount:index:<TIIE_28.uid>:mid -> VALMER_TIIE_OVERNIGHT
+  discount:index:<TIIE_182.uid>:mid -> VALMER_TIIE_OVERNIGHT
+  projection:index:<CETE_28.uid>:mid -> VALMER_MXN_GOVERNMENT_BOND
+  projection:index:<CETE_182.uid>:mid -> VALMER_MXN_GOVERNMENT_BOND
+  discount:index:<CETE_28.uid>:mid -> VALMER_MXN_GOVERNMENT_BOND
+  discount:index:<CETE_182.uid>:mid -> VALMER_MXN_GOVERNMENT_BOND
   z_spread_base:index:<CETE_28.uid>:mid -> VALMER_MXN_GOVERNMENT_BOND
   z_spread_base:index:<CETE_182.uid>:mid -> VALMER_MXN_GOVERNMENT_BOND
+  no discount:currency:MXN:mid binding
+  no discount:index:<USD_SOFR_OVERNIGHT.uid>:mid binding
 ```
 
 Then run curve updates and asset patch:
@@ -740,6 +738,10 @@ Success requires:
   `VALMER_MXN_GOVERNMENT_BOND` when `benchmark_curve_quote_side="mid"`
 - sample TIIE floater projection resolution selects `VALMER_TIIE_OVERNIGHT` when
   `curve_quote_side="mid"`
+- no market-data-set curve binding exists for `discount:currency:MXN:mid`
+- no market-data-set curve binding exists for
+  `discount:index:<USD_SOFR_OVERNIGHT.uid>:mid` unless a later policy explicitly
+  adds USD SOFR discounting
 
 ## Non-Goals
 

@@ -15,7 +15,7 @@ You are working on this project and must always follow these instructions as per
 - Verify all relevant resources using the CLI: `DataNodes`, updates, stored data, jobs, dashboards, assets, portfolios, and related platform objects.
 - For `DataNodes` that may contain a large amount of data, always test first in a test namespace and with a smaller time range before running a full update or backfill.
 - Any new implementation must be compared against the documentation and verified to ensure nothing breaks.
-- When an error appears, first check the journal to see whether the same issue already happened and whether a solution was already documented.
+- When an error appears, check the current tasks, code, documentation, git history, and available validation evidence before deciding whether it is a repeated issue.
 
 ## Required Project Structure
 
@@ -24,20 +24,6 @@ Use a project root called:
 `astro/`
 
 Be strict about creating and maintaining the following paths and about preserving their purpose.
-
-### `astro/journal.md`
-Create this file as the historical record of the project.
-
-Its purpose is to preserve:
-
-- what was implemented
-- what failed
-- what may have failed because of the MainSequence SDK or library
-- what improvements should be suggested to MainSequence
-- what tasks existed at a given moment
-- whether a known error had already been solved before
-
-This file is historical. Do not overwrite history. Append to it and keep it organized.
 
 ### `astro/tasks.md`
 Create this file as the active task list for the current implementation state.
@@ -52,7 +38,7 @@ Its purpose is to contain only:
 
 This file is not historical. Remove completed, obsolete, or superseded tasks.
 
-Do not use `tasks.md` as a journal.
+Do not store completed work or historical task snapshots in `tasks.md`.
 
 ### `docs/`
 Create this folder as the documentation root for the project.
@@ -83,40 +69,6 @@ Its purpose is to contain the formal project documentation in a structure compat
 - Prefer reusable components whenever possible.
 - If you build a component that is not currently in the MainSequence platform and you believe it would be generally useful, open a pull request in the public `mainsequence-sdk` repository.
 
-## Journal Requirements
-
-Keep an ongoing journal in:
-
-`astro/journal.md`
-
-Organize it with these sections:
-
-### Implemented
-Record what was successfully implemented.
-
-### Failed
-Record what failed, including the exact step, command, or workflow.
-
-### Failed Due to Possible MainSequence Issue
-Record failures that may be caused by the MainSequence library or SDK.
-
-For each such issue, include:
-
-- what failed
-- why it may be an SDK or library issue
-- what should be improved in the MainSequence SDK to avoid the error in the future
-
-### Current Tasks Snapshot
-Record the current task list in the journal for historical tracking.
-
-### Error Resolution Check
-When a new error appears, record whether:
-
-- the same error was already documented
-- a solution was already present in the journal
-- the previous solution worked
-- a new solution or SDK improvement is needed
-
 ## Tasks File Requirements
 
 Keep the active task list in:
@@ -129,7 +81,6 @@ Rules for `tasks.md`:
 - It must not be historical.
 - Remove completed or obsolete tasks.
 - Keep it synchronized with the current implementation state.
-- The same tasks should also be recorded in the journal as a historical snapshot.
 - Any inconsistencies, missing documentation, SDK usability issues, or project improvements discovered during review must be converted into actionable tasks in `astro/tasks.md`.
 
 ## Project Path Conventions
@@ -199,7 +150,7 @@ Then identify any inconsistencies, missing explanations, unclear behavior, or po
 Do not create a separate improvement file. Instead:
 
 - convert findings into actionable open tasks in `astro/tasks.md`
-- record the review results and historical context in `astro/journal.md`
+- capture durable, verified guidance in the relevant formal documentation
 
 This review should include:
 
@@ -211,10 +162,8 @@ This review should include:
 
 If you find any error, bug, inefficiency, or anything important to highlight in `mainsequence-sdk`, open an issue ticket on the public repository.
 
-If you open an issue or a pull request related to a project finding, record it in:
-
-- `astro/journal.md`
-- `astro/tasks.md` if further work is still required
+If you open an issue or a pull request related to a project finding, add it to `astro/tasks.md`
+only when further work is still required.
 
 ## CLI Verification Requirements
 

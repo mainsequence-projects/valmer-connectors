@@ -14,6 +14,8 @@
   extension-library asset registration boundaries.
 - `docs/pricing.md`: pricing runtime bootstrap, target-bond hydration, and curve
   publication.
+- `docs/reference-rate-observations.md`: external FRED and Banxico analytical
+  rate storage, smoke, backfill, repair, scheduling, and verification workflow.
 - `docs/instruments.md`: Valmer row-to-`msm_pricing` instrument mapping.
 - `docs/metatable-query-optimization.md`: current thin-projection MetaTable
   read contract for hot Valmer validation paths.
@@ -59,4 +61,5 @@
 - `docs/adr/0006-valmer-usd-sofr-curve-source.md`
 - `docs/adr/0007-banxico-tiie-cete-fixings.md`
 - `docs/adr/0008-usd-mxn-cross-currency-discount-curve.md`
+- `docs/adr/0009-external-reference-rate-observations.md`
 - `docs/adr/cli/0004-valmer-connectors-cli-design.md`

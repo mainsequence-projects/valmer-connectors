@@ -168,6 +168,9 @@ valmer-connectors curves update-tiie-irs-mxn
 valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
+valmer-connectors fixings update-banxico
+valmer-connectors reference-rates update-fred
+valmer-connectors reference-rates update-banxico-policy
 ```
 
 The current `scripts/*.py` files are compatibility wrappers around package
@@ -221,6 +224,8 @@ for MkDocs through `mkdocs.yml`.
 - `docs/markets.md`: AssetTable, ValmerAssetDetailsTable, and
   extension-library asset registration boundaries
 - `docs/pricing.md`: pricing hydration, reference indexes, and curve publication
+- `docs/reference-rate-observations.md`: FRED and Banxico analytical-rate
+  storage, smoke, backfill, scheduling, and verification workflow
 - `docs/instruments.md`: row-to-instrument mapping rules
 - `docs/metatable-query-optimization.md`: thin MetaTable projection reads and
   bulk pricing-details persistence behavior
@@ -234,8 +239,8 @@ for MkDocs through `mkdocs.yml`.
 - `docs/dashboards.md`: dashboards currently shipped by the project
 - `docs/SUMMARY.md`: documentation map required by the project instructions
 - `.agents/tasks.md`: current open tasks, when that file exists in the checkout
-- `.agents/journal.md`: historical implementation and failure log, when that
-  file exists in the checkout
+- `.agents/record.md`: durable verified project references and decisions, when
+  that file exists in the checkout
 
 ## Current Scope
 
@@ -243,11 +248,11 @@ This repository currently does not create:
 
 - MainSequence portfolios
 - asset translation tables
-- fixing-rate ETL builders owned by this repo
 
 The repository now includes:
 
 - `scheduled_jobs.yaml` for repo-managed ETL scheduling
+- independent FRED and Banxico analytical reference-rate producers
 - `valmer-connectors runtime validate` for runtime validation
 - a project-specific dashboard overview plus source, pricing, and curve pages
 

@@ -11,7 +11,11 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
-from banxico.settings import BANXICO_FIXING_INDEX_IDENTIFIERS
+from banxico.settings import (
+    BANXICO_FIXING_INDEX_IDENTIFIERS,
+    BANXICO_POLICY_TARGET_INDEX_IDENTIFIER,
+)
+from fred.settings import FRED_REFERENCE_RATE_INDEX_IDENTIFIERS
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
     VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
@@ -133,6 +137,40 @@ def _fixings_update_banxico_command(args: argparse.Namespace) -> int:
         validate_metadata=not args.skip_metadata_validation,
         end_date=args.end_date,
         hash_namespace=args.hash_namespace,
+    )
+    return 0
+
+
+def _reference_rates_update_fred_command(args: argparse.Namespace) -> int:
+    from fred.reference_rates import run_fred_reference_rates_update
+
+    run_fred_reference_rates_update(
+        index_identifiers=args.index_identifier or None,
+        api_key_secret_name=args.api_key_secret_name,
+        validate_metadata=not args.skip_metadata_validation,
+        bootstrap_lookback_days=args.bootstrap_lookback_days,
+        backfill_start=args.backfill_start,
+        backfill_end=args.backfill_end,
+        runtime_end=args.end_date,
+        hash_namespace=args.hash_namespace,
+        require_hash_namespace=args.smoke,
+    )
+    return 0
+
+
+def _reference_rates_update_banxico_command(args: argparse.Namespace) -> int:
+    from banxico.policy_rates import run_banxico_policy_rates_update
+
+    run_banxico_policy_rates_update(
+        index_identifiers=args.index_identifier or None,
+        token_secret_name=args.token_secret_name,
+        validate_metadata=not args.skip_metadata_validation,
+        bootstrap_lookback_days=args.bootstrap_lookback_days,
+        backfill_start=args.backfill_start,
+        backfill_end=args.backfill_end,
+        runtime_end=args.end_date,
+        hash_namespace=args.hash_namespace,
+        require_hash_namespace=args.smoke,
     )
     return 0
 
@@ -576,6 +614,53 @@ def build_parser() -> argparse.ArgumentParser:
     )
     banxico_fixings_parser.set_defaults(func=_fixings_update_banxico_command)
 
+    reference_rates_parser = subcommands.add_parser(
+        "reference-rates",
+        help="External analytical reference-rate observation commands.",
+    )
+    reference_rates_subcommands = reference_rates_parser.add_subparsers(
+        dest="reference_rates_command",
+        required=True,
+    )
+
+    fred_reference_rates_parser = reference_rates_subcommands.add_parser(
+        "update-fred",
+        help="Publish FRED Treasury yields and the Fed target upper limit.",
+    )
+    fred_reference_rates_parser.add_argument(
+        "--index-identifier",
+        choices=FRED_REFERENCE_RATE_INDEX_IDENTIFIERS,
+        action="append",
+        default=[],
+        help="Reference-rate Index identifier to update. Repeat to select multiple.",
+    )
+    fred_reference_rates_parser.add_argument(
+        "--api-key-secret-name",
+        default="FRED_API_KEY",
+        help="Environment variable or Main Sequence Secret name for the FRED API key.",
+    )
+    _add_reference_rate_window_arguments(fred_reference_rates_parser)
+    fred_reference_rates_parser.set_defaults(func=_reference_rates_update_fred_command)
+
+    banxico_policy_parser = reference_rates_subcommands.add_parser(
+        "update-banxico-policy",
+        help="Publish the Banco de Mexico policy target from Banxico SIE.",
+    )
+    banxico_policy_parser.add_argument(
+        "--index-identifier",
+        choices=(BANXICO_POLICY_TARGET_INDEX_IDENTIFIER,),
+        action="append",
+        default=[],
+        help="Policy-rate Index identifier to update.",
+    )
+    banxico_policy_parser.add_argument(
+        "--token-secret-name",
+        default="BANXICO_TOKEN",
+        help="Environment variable or Main Sequence Secret name for the Banxico token.",
+    )
+    _add_reference_rate_window_arguments(banxico_policy_parser)
+    banxico_policy_parser.set_defaults(func=_reference_rates_update_banxico_command)
+
     migrations_parser = subcommands.add_parser(
         "migrations",
         help="Migration helper commands.",
@@ -591,6 +676,45 @@ def build_parser() -> argparse.ArgumentParser:
     migrations_commands_parser.set_defaults(func=_migrations_commands_command)
 
     return parser
+
+
+def _add_reference_rate_window_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--bootstrap-lookback-days",
+        type=_positive_int,
+        default=90,
+        help="First-run calendar-day lookback. Defaults to 90 days.",
+    )
+    parser.add_argument(
+        "--backfill-start",
+        default=None,
+        help="Inclusive timezone-aware bounded-backfill start timestamp.",
+    )
+    parser.add_argument(
+        "--backfill-end",
+        default=None,
+        help="Inclusive timezone-aware bounded-backfill end timestamp.",
+    )
+    parser.add_argument(
+        "--end-date",
+        default=None,
+        help="Optional runtime request end date. Normal jobs default to yesterday UTC.",
+    )
+    parser.add_argument(
+        "--hash-namespace",
+        default=None,
+        help="DataNode hash namespace for an isolated shared-backend validation run.",
+    )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Require an explicit hash namespace for the initial 90-day smoke run.",
+    )
+    parser.add_argument(
+        "--skip-metadata-validation",
+        action="store_true",
+        help="Skip authenticated provider metadata validation for this run.",
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

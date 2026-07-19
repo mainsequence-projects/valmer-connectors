@@ -245,7 +245,7 @@ Recommended static identities:
 | --- | --- | --- |
 | `Curve` | `VALMER_MXN_GOVERNMENT_BOND` | Valmer-sourced MXN government bond discount curve |
 | `CurveBuildingDetails` | keyed by `VALMER_MXN_GOVERNMENT_BOND.uid` | QuantLib calendar, day count, settlement, compounding, and interpolation build policy |
-| `PricingMarketDataSetCurveBinding` | `z_spread_base:index:<CETE_28.uid>:mid` and `z_spread_base:index:<CETE_182.uid>:mid` | Runtime benchmark selector to government curve resolution |
+| `PricingMarketDataSetCurveBinding` | `projection`, `discount`, and `z_spread_base` for CETE index selectors | Runtime CETE policy resolution to the government curve |
 
 The `CurveBuildingDetails` row must encode at least:
 
@@ -519,6 +519,10 @@ valmer-connectors curves update-mxn-government
 `build_tiie_irs_mxn_valmer(...)` remains focused on the Valmer IRS MXN TIIE OIS
 source.
 
+Valmer does not seed `discount:currency:MXN:mid`. Government discounting is
+selected through explicit CETE index-role bindings or an explicit valuation
+request, not through an MXN currency fallback.
+
 ## Implementation Tasks
 
 - [x] Add the static curve identifier
@@ -612,8 +616,10 @@ Do not mark the implementation complete until these checks pass:
 - `CurveBuildingDetails` for `VALMER_MXN_GOVERNMENT_BOND` stores `Mexico`,
   `Actual360`, 182-day coupon periods, and Valmer-specific `settlement_days = 0`
 - `PricingMarketDataSetCurveBinding` resolves CETE benchmark selectors to
-  `VALMER_MXN_GOVERNMENT_BOND` with `role_key="z_spread_base"` and
-  `quote_side="mid"`
+  `VALMER_MXN_GOVERNMENT_BOND` with `role_key` values `projection`,
+  `discount`, and `z_spread_base`, and `quote_side="mid"`
+- no `PricingMarketDataSetCurveBinding` row exists for
+  `discount:currency:MXN:mid`
 - no `Index` row is created for `MXN_GOVERNMENT_BOND`
 - the builder emits a frame accepted by `DiscountCurvesNode`
 - persisted curve rows decode through the core curve codec

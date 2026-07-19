@@ -428,6 +428,35 @@ class ValmerCurveBindingDefinition:
         }
 
 
+@dataclass(frozen=True)
+class ValmerDeprecatedIndexCurveBindingDefinition:
+    role_key: str
+    index_unique_identifier: str
+    curve_unique_identifier: str
+    quote_side: str = VALMER_CURVE_QUOTE_SIDE
+    source: str = VALMER_SOURCE
+
+    def binding_key(self, *, index_uid: Any) -> str:
+        return f"{self.role_key}:index:{index_uid}:{self.quote_side}"
+
+
+@dataclass(frozen=True)
+class ValmerDeprecatedCurveBindingDefinition:
+    role_key: str
+    selector_type: str
+    selector_key: str
+    curve_unique_identifier: str
+    quote_side: str = VALMER_CURVE_QUOTE_SIDE
+    source: str = VALMER_SOURCE
+
+    @property
+    def binding_key(self) -> str:
+        return (
+            f"{self.role_key}:{self.selector_type}:{self.selector_key}:"
+            f"{self.quote_side}"
+        )
+
+
 VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION = ValmerCurveDefinition(
     unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     display_name="Valmer TIIE overnight OIS curve",
@@ -834,6 +863,26 @@ VALMER_INDEX_CURVE_BINDING_DEFINITIONS: tuple[
         curve_unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     ),
     ValmerIndexCurveBindingDefinition(
+        role_key="discount",
+        index_unique_identifier=TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="discount",
+        index_unique_identifier=TIIE_28_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="discount",
+        index_unique_identifier=TIIE_91_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="discount",
+        index_unique_identifier=TIIE_182_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
         role_key="z_spread_base",
         index_unique_identifier=TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
         curve_unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
@@ -852,6 +901,36 @@ VALMER_INDEX_CURVE_BINDING_DEFINITIONS: tuple[
         role_key="z_spread_base",
         index_unique_identifier=TIIE_182_INDEX_UNIQUE_IDENTIFIER,
         curve_unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="projection",
+        index_unique_identifier=CETE_28_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="projection",
+        index_unique_identifier=CETE_91_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="projection",
+        index_unique_identifier=CETE_182_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="discount",
+        index_unique_identifier=CETE_28_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="discount",
+        index_unique_identifier=CETE_91_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
+    ),
+    ValmerIndexCurveBindingDefinition(
+        role_key="discount",
+        index_unique_identifier=CETE_182_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
     ),
     ValmerIndexCurveBindingDefinition(
         role_key="z_spread_base",
@@ -875,16 +954,28 @@ VALMER_INDEX_CURVE_BINDING_DEFINITIONS: tuple[
     ),
 )
 
-VALMER_CURVE_BINDING_DEFINITIONS: tuple[ValmerCurveBindingDefinition, ...] = (
-    ValmerCurveBindingDefinition(
+VALMER_CURVE_BINDING_DEFINITIONS: tuple[ValmerCurveBindingDefinition, ...] = ()
+
+VALMER_DEPRECATED_INDEX_CURVE_BINDING_DEFINITIONS: tuple[
+    ValmerDeprecatedIndexCurveBindingDefinition,
+    ...,
+] = (
+    ValmerDeprecatedIndexCurveBindingDefinition(
+        role_key="discount",
+        index_unique_identifier=USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+        curve_unique_identifier=VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+    ),
+)
+
+VALMER_DEPRECATED_CURVE_BINDING_DEFINITIONS: tuple[
+    ValmerDeprecatedCurveBindingDefinition,
+    ...,
+] = (
+    ValmerDeprecatedCurveBindingDefinition(
         role_key="discount",
         selector_type="currency",
         selector_key="MXN",
         curve_unique_identifier=VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
-        metadata_json={
-            "collateral_curve": VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-            "collateral_currency": "USD",
-        },
     ),
 )
 
@@ -1284,6 +1375,67 @@ def upsert_valmer_generic_curve_bindings(
     return upserted
 
 
+def delete_valmer_deprecated_curve_bindings(
+    *,
+    indexes: Mapping[str, Any],
+    curves: Mapping[str, Any],
+    market_data_set: Any,
+    index_definitions: Sequence[ValmerDeprecatedIndexCurveBindingDefinition] = (
+        VALMER_DEPRECATED_INDEX_CURVE_BINDING_DEFINITIONS
+    ),
+    generic_definitions: Sequence[ValmerDeprecatedCurveBindingDefinition] = (
+        VALMER_DEPRECATED_CURVE_BINDING_DEFINITIONS
+    ),
+) -> dict[tuple[str, str, str, str], Any]:
+    """Remove Valmer-owned curve bindings from superseded seed policy."""
+
+    from msm_pricing.api import PricingMarketDataSetCurveBinding
+
+    deleted = {}
+    for definition in index_definitions:
+        index = indexes[definition.index_unique_identifier]
+        curve = curves[definition.curve_unique_identifier]
+        binding = PricingMarketDataSetCurveBinding.get_by_set_and_binding_key(
+            market_data_set_uid=market_data_set.uid,
+            binding_key=definition.binding_key(index_uid=index.uid),
+        )
+        if (
+            binding is not None
+            and str(binding.curve_uid) == str(curve.uid)
+            and binding.source == definition.source
+        ):
+            deleted[
+                (
+                    definition.role_key,
+                    "index",
+                    definition.index_unique_identifier,
+                    definition.quote_side,
+                )
+            ] = PricingMarketDataSetCurveBinding.delete(binding.uid)
+
+    for definition in generic_definitions:
+        curve = curves[definition.curve_unique_identifier]
+        binding = PricingMarketDataSetCurveBinding.get_by_set_and_binding_key(
+            market_data_set_uid=market_data_set.uid,
+            binding_key=definition.binding_key,
+        )
+        if (
+            binding is not None
+            and str(binding.curve_uid) == str(curve.uid)
+            and binding.source == definition.source
+        ):
+            deleted[
+                (
+                    definition.role_key,
+                    definition.selector_type,
+                    definition.selector_key,
+                    definition.quote_side,
+                )
+            ] = PricingMarketDataSetCurveBinding.delete(binding.uid)
+
+    return deleted
+
+
 def bootstrap_valmer_curve_pricing(
     *,
     attach_runtime: bool = True,
@@ -1335,6 +1487,11 @@ def bootstrap_valmer_curve_pricing(
         market_data_set=market_data_bindings["market_data_set"],
     )
     curve_bindings.update(generic_curve_bindings)
+    deprecated_curve_bindings = delete_valmer_deprecated_curve_bindings(
+        indexes=indexes,
+        curves=curves,
+        market_data_set=market_data_bindings["market_data_set"],
+    )
     return {
         "index_type": index_type,
         "indexes": indexes,
@@ -1343,6 +1500,7 @@ def bootstrap_valmer_curve_pricing(
         "curve_building_details": curve_building_details,
         "market_data_bindings": market_data_bindings,
         "curve_bindings": curve_bindings,
+        "deprecated_curve_bindings": deprecated_curve_bindings,
     }
 
 
@@ -1369,6 +1527,8 @@ __all__ = [
     "VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS",
     "VALMER_CURVE_BINDING_DEFINITIONS",
     "VALMER_CURVE_QUOTE_SIDE",
+    "VALMER_DEPRECATED_CURVE_BINDING_DEFINITIONS",
+    "VALMER_DEPRECATED_INDEX_CURVE_BINDING_DEFINITIONS",
     "VALMER_DISCOUNT_CURVES_CADENCE",
     "VALMER_CURVE_DEFINITIONS",
     "VALMER_INDEX_CURVE_BINDING_DEFINITIONS",
@@ -1393,6 +1553,8 @@ __all__ = [
     "ValmerCurveBuildingDetailsDefinition",
     "ValmerCurveBindingDefinition",
     "ValmerCurveDefinition",
+    "ValmerDeprecatedCurveBindingDefinition",
+    "ValmerDeprecatedIndexCurveBindingDefinition",
     "ValmerIndexCurveBindingDefinition",
     "UsdReferenceIndexDefinition",
     "UsdIndexConventionDefinition",
@@ -1401,6 +1563,7 @@ __all__ = [
     "bootstrap_valmer_curve_indexes",
     "configure_valmer_discount_curves_cadence",
     "create_valmer_curve_pricing_schemas",
+    "delete_valmer_deprecated_curve_bindings",
     "mexican_reference_index_payloads",
     "usd_reference_index_payloads",
     "upsert_interest_rate_index_type",

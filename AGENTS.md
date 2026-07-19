@@ -6,8 +6,10 @@ operate within the Main Sequence platform and must follow Main Sequence platform
 
 ## Project-Specific Instructions
 
-[ HERE SHOULD BE THE PROJECT-SPECIFIC ACTIONS, RULES, CONTEXT, AND LOCAL NOTES. DO NOT REMOVE
-THIS LINE UNLESS YOU REPLACE IT WITH REAL PROJECT-SPECIFIC CONTENT. ]
+Project state is limited to `.agents/brief.md`, `.agents/status.md`, `.agents/tasks.md`, and
+`.agents/record.md` when those files are needed. Keep only actionable work in `tasks.md`, keep
+durable verified context in the other state files, and rely on git history for completed work.
+Do not introduce additional historical agent-state logs.
 
 Do not remove the `<!-- mainsequence-agent-scaffold:start schema=1 source=agent_scaffold -->`
 or `<!-- mainsequence-agent-scaffold:end -->` markers. `mainsequence project update AGENTS.md`
@@ -53,7 +55,8 @@ Core responsibilities:
   - for data publishing and data pipelines, use `DataNode`s and `MetaTable`s
   - for serving application or widget-facing surfaces, use `FastAPI`
   - for visualization, confirm the delivery target with the user:
-    - if they want something quick for testing or iteration, use Streamlit
+    - if they want a Streamlit app, treat app design and implementation as project-owned code and
+      use Main Sequence skills only for platform deployment and release verification
     - if they want reusable components and a more structured product surface, use Command Center
   - for scheduled execution, releases, and backend operations, use jobs, images, resources, and
     other platform objects through the proper platform skills
@@ -63,8 +66,8 @@ Core responsibilities:
 - translate user business logic into reusable code under `src/` so it can be reused by APIs,
   dashboards, jobs, and other project components instead of duplicating logic in integration
   layers
-- maintain the repository through the maintenance skills, including project-state reconciliation,
-  journaling, blocker tracking, and bug auditing
+- maintain the repository through explicit `.agents/` project-state files and the bug auditor skill
+  for blocker and SDK/platform issue assessment
 
 Typical outcomes include:
 
@@ -72,11 +75,11 @@ Typical outcomes include:
 - build a `MetaTable` to record operational or application data
 - build a `FastAPI` API that reads project data and returns widget-ready or
   application-ready responses
-- confirm whether a visualization should be a quick Streamlit surface or a reusable Command Center
-  surface before building it
+- confirm whether a visualization should be a project-owned Streamlit app or a reusable Command
+  Center surface before building or deploying it
 - build reusable business logic in `src/` and keep thin integration layers in APIs, jobs, and
   dashboards
-- keep the repository auditable through maintenance, journaling, and bug reporting
+- keep the repository auditable through project-state records, blocker tracking, and bug reporting
 
 Working rules for this role:
 
@@ -204,8 +207,12 @@ Typical routing:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
 - RBAC, sharing, constants, secrets, and access verification:
   `.agents/skills/mainsequence/platform_operations/access_control_and_sharing/SKILL.md`
-- dashboards:
-  `.agents/skills/mainsequence/dashboards/streamlit/SKILL.md`
+- Streamlit dashboard deployment and release verification:
+  `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
+
+Streamlit dashboard design and implementation are app-owned project work, not a separate Main
+Sequence scaffold skill. Route only deployment of an already-authored Streamlit dashboard to
+orchestration and releases.
 
 ## Mandatory Startup Sequence
 
@@ -246,8 +253,8 @@ Default pattern:
 
 Before the final response:
 
-- consult the maintenance skill whenever project understanding, verified state, or historical
-  record changed during the turn
+- update the relevant `.agents/` project-state files whenever project understanding, verified
+  state, open tasks, blockers, or historical record changed during the turn
 
 Always use `.agents/skills/mainsequence/project_builder/SKILL.md` as the source of truth for project
 scaffolding, folder structure, and standard repository layout.
@@ -340,6 +347,6 @@ If something may be a Main Sequence SDK, documentation, or platform issue:
 ## Project-State Files Under `.agents/`
 
 
-Do not improvise their meaning in domain skills. Use the maintenance skill to reconcile them after
-material work.
+Do not improvise their meaning in domain skills. Use the project bootstrap skill rules to reconcile
+them after material work.
 <!-- mainsequence-agent-scaffold:end -->

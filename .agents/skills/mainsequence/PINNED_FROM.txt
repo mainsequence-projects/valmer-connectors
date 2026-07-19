@@ -1,7 +1,7 @@
 schema=1
 library_name=mainsequence
 namespace=mainsequence
-pinned_version=4.4.27
+pinned_version=4.4.32
 skills_path=/Users/jose/mainsequence-dev/main-sequence-workbench/projects/valmer-connectors-64338319-bd19-48db-bf14-945d8debb9be/.venv/lib/python3.11/site-packages/agent_scaffold/skills
-copied_at_utc=2026-07-17T17:49:36Z
+copied_at_utc=2026-07-19T00:35:38Z
 command=mainsequence project update_agent_skills

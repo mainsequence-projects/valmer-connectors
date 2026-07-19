@@ -277,6 +277,14 @@ Rules:
 
 - Use `IndexTable.uid` for pricing relationships stored in instruments,
   convention details, and market-data curve binding selectors.
+- Persist fixed-income instruments through `instrument.serialize_for_backend()`,
+  `instrument.attach_to_asset(...)`, `msm_pricing.api.add_pricing_details(...)`,
+  or `msm_pricing.api.add_many_pricing_details(...)`. Do not hand-build
+  `instrument_dump` calendar JSON. Instrument calendar fields use
+  `ql_fields.QuantLibCalendar` and must store QuantLib display-name JSON from
+  `calendar.name()`: for Mexico BMV, store
+  `{"name": "Mexican stock exchange"}`, not `{"name": "Mexico"}` and not
+  `{"name": "Mexico-BMV"}`.
 - Use `index_identifier` for index-stamped DataNode rows. It stores
   `IndexTable.unique_identifier`.
 - Use `curve_identifier` for curve DataNode rows. It stores
@@ -492,6 +500,12 @@ Resolver expectations:
 - There is no implicit `mid` fallback. If a binding is written with
   `quote_side="mid"`, runtime calls must request that quote side; omitted quote
   side means the default binding key.
+- Apply observed z-spread results with
+  `msm_pricing.pricing_engine.apply_z_spread_to_curve(...)`. This helper
+  accepts the decimal continuous spread returned by `Bond.z_spread(...)` and
+  returns a derived QuantLib handle. It must not be treated as curve
+  construction, node bumping, or a mutation of `DiscountCurvesNode`,
+  `key_nodes`, `CurveTable`, or `CurveBuildingDetails`.
 
 For instrument payloads:
 

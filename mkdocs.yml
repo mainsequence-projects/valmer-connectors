@@ -7,6 +7,7 @@ nav:
   - DataNodes: data-nodes.md
   - Markets And Asset Details: markets.md
   - Pricing: pricing.md
+  - External Reference-Rate Observations: reference-rate-observations.md
   - Instrument Mapping: instruments.md
   - MetaTable Query Optimization: metatable-query-optimization.md
   - Agent Skills: agent-skills.md
@@ -28,5 +29,6 @@ nav:
       - Valmer USD SOFR Curve Source: adr/0006-valmer-usd-sofr-curve-source.md
       - Banxico TIIE And CETE Fixings: adr/0007-banxico-tiie-cete-fixings.md
       - USD/MXN Cross-Currency Discount Curve: adr/0008-usd-mxn-cross-currency-discount-curve.md
+      - External Reference-Rate Observations: adr/0009-external-reference-rate-observations.md
       - CLI:
           - Valmer Connectors CLI Design: adr/cli/0004-valmer-connectors-cli-design.md

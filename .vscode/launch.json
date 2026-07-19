@@ -5,13 +5,16 @@
       "name": "Valmer Dashboard",
       "type": "python",
       "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
       "module": "streamlit",
       "args": [
         "run",
         "${workspaceFolder}/dashboards/valmer_monitor/app.py"
       ],
+      "cwd": "${workspaceFolder}",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}"
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
       },
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.env",
@@ -231,6 +234,28 @@
       "justMyCode": false
     },
     {
+      "name": "FRED Reference Rates: Namespaced Smoke Update",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "reference-rates",
+        "update-fred",
+        "--smoke",
+        "--hash-namespace",
+        "adr-0009-fred-smoke"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
       "name": "Valmer Curve: Build M Bonos",
       "type": "python",
       "request": "launch",
@@ -262,6 +287,28 @@
         "update-usd-sofr",
         "--curve-identifier",
         "VALMER_USD_SOFR_OVERNIGHT"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "Valmer Curve: Build USD/MXN XCCY",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "curves",
+        "update-usd-mxn-xccy",
+        "--curve-identifier",
+        "VALMER_MXN_USD_COLLATERAL_DISCOUNT",
+        "--rebuild-current"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",

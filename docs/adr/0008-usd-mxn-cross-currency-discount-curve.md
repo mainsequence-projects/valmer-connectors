@@ -166,15 +166,16 @@ VALMER_MXN_USD_COLLATERAL_DISCOUNT
     -> MXN discount curve under USD SOFR collateral
 ```
 
-For market-data-set selection, add a normal curve binding for MXN discounting:
+Do not add a generic MXN currency-level discount binding for this curve. A
+binding like `discount:currency:MXN:mid` is a hidden mono-curve default: it
+would cause unrelated MXN instruments to pick the USD-collateralized curve
+solely because their currency is MXN.
 
-| Field | Value |
-| --- | --- |
-| `role_key` | `discount` |
-| `selector_type` | `currency` |
-| `selector_key` | `MXN` |
-| `quote_side` | `mid` |
-| `curve` | `VALMER_MXN_USD_COLLATERAL_DISCOUNT` |
+The USD-collateralized MXN discount curve is still a canonical published
+Valmer curve. Runtime selection must be explicit, either by direct curve
+identifier in the valuation request or by a future policy selector that names
+the collateralization policy, for example `MXN_USD_COLLATERAL`. Currency alone
+is not enough information to choose a discount curve.
 
 The existing index-scoped projection bindings remain unchanged. TIIE selectors
 continue to resolve to `VALMER_TIIE_OVERNIGHT`; USD SOFR continues to resolve
@@ -341,9 +342,9 @@ QuantLib helper flags.
    `VALMER_MXN_USD_COLLATERAL_DISCOUNT`.
 2. Seed `CurveBuildingDetails` as a `rate_helper_curve`, with
    `builder_payload["helper_schema"] = "rate_helpers@v1"`.
-3. Add a `PricingMarketDataSetCurveBinding` for `discount`,
-   `selector_type = "currency"`, `selector_key = "MXN"`, and `quote_side =
-   "mid"`.
+3. Do not seed `discount:currency:MXN:mid`. If a valuation workflow needs the
+   USD-collateralized MXN discount curve, wire it through an explicit direct
+   curve request or a future collateral-policy selector.
 4. Extend the Valmer MXN IRS parser into explicit quote models for FX spot, FX
    swap points, and CCS basis rows.
 5. Normalize FX points, CCS basis quotes, and odd tenors exactly as specified
@@ -375,12 +376,12 @@ The implementation must prove these checks:
 | CCS repricing | QuantLib helper quote errors are within tolerance |
 | Curve output | one `DiscountCurvesStorage` row is emitted for the Valmer benchmark date |
 | Key-node provenance | key nodes parse as ms-markets `rate_helpers@v1` cross-currency helper/context nodes and retain Valmer source extensions |
-| Runtime binding | `discount/currency/MXN/mid` resolves to `VALMER_MXN_USD_COLLATERAL_DISCOUNT` |
+| Runtime binding policy | no `discount/currency/MXN/mid` row exists; runtime use is explicit by curve identifier or a future collateral-policy selector |
 
 The implementation is not complete if it only constructs QuantLib helpers in
-memory. It is complete when the curve is published, the market-data binding
-resolves, and pricing code can consume the stored curve as a normal discount
-curve.
+memory. It is complete when the curve is published, no generic MXN discount
+binding is seeded, and pricing code can consume the stored curve through an
+explicit discount-curve policy.
 
 ## Upstream Promotion Result
 

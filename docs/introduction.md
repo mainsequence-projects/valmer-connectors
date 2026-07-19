@@ -25,6 +25,9 @@ with Valmer market data for Mexican fixed income.
   `DiscountCurvesNode` path.
 - Publishes the Valmer MXN government curve through the same
   `DiscountCurvesNode` path from CETES and M Bonos Vector Analitico rows.
+- Publishes FRED Treasury yields, the Federal Funds target upper limit, and the
+  Banco de Mexico policy target through the separate
+  `reference_rate_observations` analytical storage contract.
 - Ships a multipage Streamlit dashboard for source coverage, pricing hydration,
   and curve-health monitoring.
 
@@ -59,6 +62,9 @@ ValmerVectorPricesStorage
 - `valmer-connectors curves update-usd-sofr`
 - `valmer-connectors curves update-usd-mxn-xccy`
 - `valmer-connectors curves update-mxn-government`
+- `valmer-connectors fixings update-banxico`
+- `valmer-connectors reference-rates update-fred`
+- `valmer-connectors reference-rates update-banxico-policy`
 - `valmer-connectors runtime validate`
 - `src/valmer_connectors/data_nodes/nodes.py`
 - `src/valmer_connectors/instruments/bootstrap.py`
@@ -72,6 +78,5 @@ This repository does not currently create:
 
 - Main Sequence portfolios
 - asset translation tables
-- fixing-rate ETL builders owned by this repo
 
 Those gaps remain explicit project boundaries.

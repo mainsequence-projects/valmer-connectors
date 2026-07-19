@@ -258,14 +258,19 @@ Existing market-data-set curve bindings remain conceptually correct:
 | `projection` | `TIIE_28` | `VALMER_TIIE_OVERNIGHT` |
 | `projection` | `TIIE_91` | `VALMER_TIIE_OVERNIGHT` |
 | `projection` | `TIIE_182` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `TIIE_OVERNIGHT` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `TIIE_28` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `TIIE_91` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `TIIE_182` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `TIIE_OVERNIGHT` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `TIIE_28` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `TIIE_91` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `TIIE_182` | `VALMER_TIIE_OVERNIGHT` |
 
-If the product later needs a separate discount role, add a
-`PricingMarketDataSetCurveBinding` role decision. Do not model that as another
-index.
+TIIE discount and projection currently resolve to the same published OIS curve.
+That is a market-data binding decision, not a reason to create role-suffixed
+curve identities such as `VALMER_TIIE_OVERNIGHT__PROJECTION` or
+`VALMER_TIIE_OVERNIGHT__DISCOUNT`.
 
 ## Curve Building Details
 

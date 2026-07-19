@@ -29,6 +29,8 @@ valmer-connectors curves update-tiie-irs-mxn
 valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
+valmer-connectors reference-rates update-fred --smoke --hash-namespace adr-0009-fred-smoke
+valmer-connectors reference-rates update-banxico-policy --smoke --hash-namespace adr-0009-banxico-smoke
 ```
 
 Use the dashboard after deployment to confirm:
@@ -36,6 +38,7 @@ Use the dashboard after deployment to confirm:
 - source node coverage
 - pricing hydration
 - curve publication health
+- external reference-rate coverage and freshness
 
 ## Current Local Limitation
 

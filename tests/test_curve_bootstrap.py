@@ -4,6 +4,9 @@ from unittest.mock import Mock, patch
 from msm.constants import INDEX_TYPE_INTEREST_RATE
 from msm_pricing.instruments.json_codec import calendar_from_json
 
+from valmer_connectors.data_nodes.reference_rate_observations import (
+    ReferenceRateObservationsStorage,
+)
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.bootstrap import seed_static_defaults
 from valmer_connectors.instruments.curve_bootstrap import (
@@ -23,7 +26,10 @@ from valmer_connectors.instruments.curve_bootstrap import (
     USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
     VALMER_CURVE_BINDING_DEFINITIONS,
     VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS,
+    VALMER_CURVE_DEFINITIONS,
     VALMER_CURVE_QUOTE_SIDE,
+    VALMER_DEPRECATED_CURVE_BINDING_DEFINITIONS,
+    VALMER_DEPRECATED_INDEX_CURVE_BINDING_DEFINITIONS,
     VALMER_DISCOUNT_CURVES_CADENCE,
     VALMER_INDEX_CURVE_BINDING_DEFINITIONS,
     VALMER_MXN_GOVERNMENT_BOND_CURVE_DEFINITION,
@@ -37,6 +43,7 @@ from valmer_connectors.instruments.curve_bootstrap import (
     attach_valmer_curve_pricing_runtime,
     configure_valmer_discount_curves_cadence,
     create_valmer_curve_pricing_schemas,
+    delete_valmer_deprecated_curve_bindings,
     mexican_reference_index_payloads,
     usd_reference_index_payloads,
     valmer_pricing_runtime_models,
@@ -419,110 +426,248 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             (definition.role_key, definition.index_unique_identifier): definition
             for definition in VALMER_INDEX_CURVE_BINDING_DEFINITIONS
         }
+        tiie_indexes = (
+            TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+            TIIE_28_INDEX_UNIQUE_IDENTIFIER,
+            TIIE_91_INDEX_UNIQUE_IDENTIFIER,
+            TIIE_182_INDEX_UNIQUE_IDENTIFIER,
+        )
+        cete_indexes = (
+            CETE_28_INDEX_UNIQUE_IDENTIFIER,
+            CETE_91_INDEX_UNIQUE_IDENTIFIER,
+            CETE_182_INDEX_UNIQUE_IDENTIFIER,
+        )
+        expected_bindings = {
+            ("projection", USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER): (
+                VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER
+            )
+        }
+        for index_identifier in tiie_indexes:
+            expected_bindings[("projection", index_identifier)] = (
+                VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER
+            )
+            expected_bindings[("discount", index_identifier)] = (
+                VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER
+            )
+            expected_bindings[("z_spread_base", index_identifier)] = (
+                VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER
+            )
+        for index_identifier in cete_indexes:
+            expected_bindings[("projection", index_identifier)] = (
+                VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER
+            )
+            expected_bindings[("discount", index_identifier)] = (
+                VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER
+            )
+            expected_bindings[("z_spread_base", index_identifier)] = (
+                VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER
+            )
 
-        self.assertEqual(
-            bindings[
-                ("projection", TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER)
-            ].curve_unique_identifier,
-            VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[("projection", TIIE_28_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
-            VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[("projection", TIIE_182_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
-            VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[
-                ("z_spread_base", TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER)
-            ].curve_unique_identifier,
-            VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[("z_spread_base", TIIE_28_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
-            VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[("z_spread_base", TIIE_91_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
-            VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[("z_spread_base", TIIE_182_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
-            VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[("z_spread_base", CETE_28_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
-            VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[("z_spread_base", CETE_182_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
-            VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[("z_spread_base", CETE_91_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
-            VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[("projection", TIIE_91_INDEX_UNIQUE_IDENTIFIER)].curve_unique_identifier,
-            VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        )
-        self.assertEqual(
-            bindings[
-                ("projection", USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER)
-            ].curve_unique_identifier,
-            VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        )
+        self.assertEqual(set(bindings), set(expected_bindings))
+        for key, expected_curve_identifier in expected_bindings.items():
+            self.assertEqual(
+                bindings[key].curve_unique_identifier,
+                expected_curve_identifier,
+            )
         self.assertNotIn(
             ("discount", USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER),
             bindings,
-        )
-        self.assertNotIn(
-            "VALMER_TIIE_28",
-            {definition.curve_unique_identifier for definition in VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS},
-        )
-        self.assertNotIn(
-            "VALMER_TIIE_28",
-            {definition.curve_unique_identifier for definition in VALMER_INDEX_CURVE_BINDING_DEFINITIONS},
         )
         for definition in VALMER_INDEX_CURVE_BINDING_DEFINITIONS:
             self.assertEqual(definition.quote_side, "mid")
 
         payload = bindings[
-            ("z_spread_base", CETE_28_INDEX_UNIQUE_IDENTIFIER)
+            ("discount", CETE_28_INDEX_UNIQUE_IDENTIFIER)
         ].to_index_curve_selection_payload(
             market_data_set_uid="market-data-set-uid",
             index_uid="index-uid",
             curve_uid="curve-uid",
         )
-        self.assertEqual(payload["role_key"], "z_spread_base")
+        self.assertEqual(payload["role_key"], "discount")
         self.assertEqual(payload["quote_side"], "mid")
         self.assertEqual(payload["index_uid"], "index-uid")
         self.assertEqual(payload["curve_uid"], "curve-uid")
 
-    def test_usd_mxn_xccy_discount_binding_uses_currency_selector(self):
-        self.assertEqual(len(VALMER_CURVE_BINDING_DEFINITIONS), 1)
-        definition = VALMER_CURVE_BINDING_DEFINITIONS[0]
+    def test_generic_curve_bindings_do_not_seed_currency_level_discount(self):
+        self.assertEqual(VALMER_CURVE_BINDING_DEFINITIONS, ())
 
-        self.assertEqual(definition.role_key, "discount")
-        self.assertEqual(definition.selector_type, "currency")
-        self.assertEqual(definition.selector_key, "MXN")
-        self.assertEqual(definition.quote_side, "mid")
+    def test_deprecated_curve_bindings_capture_removed_seed_policy(self):
         self.assertEqual(
-            definition.curve_unique_identifier,
-            VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+            {
+                (
+                    definition.role_key,
+                    definition.selector_type,
+                    definition.selector_key,
+                    definition.quote_side,
+                    definition.curve_unique_identifier,
+                )
+                for definition in VALMER_DEPRECATED_CURVE_BINDING_DEFINITIONS
+            },
+            {
+                (
+                    "discount",
+                    "currency",
+                    "MXN",
+                    "mid",
+                    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+                )
+            },
+        )
+        self.assertEqual(
+            {
+                (
+                    definition.role_key,
+                    definition.index_unique_identifier,
+                    definition.quote_side,
+                    definition.curve_unique_identifier,
+                )
+                for definition in VALMER_DEPRECATED_INDEX_CURVE_BINDING_DEFINITIONS
+            },
+            {
+                (
+                    "discount",
+                    USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+                    "mid",
+                    VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+                )
+            },
         )
 
-        payload = definition.to_curve_binding_payload(
-            market_data_set_uid="market-data-set-uid",
-            curve_uid="curve-uid",
+    def test_delete_valmer_deprecated_curve_bindings_only_deletes_matching_valmer_rows(
+        self,
+    ):
+        market_data_set = Mock(uid="market-data-set-uid")
+        indexes = {
+            USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER: Mock(uid="sofr-index-uid"),
+        }
+        curves = {
+            VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER: Mock(
+                uid="sofr-curve-uid"
+            ),
+            VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER: Mock(
+                uid="mxn-usd-curve-uid"
+            ),
+        }
+        sofr_discount = Mock(
+            uid="sofr-discount-binding-uid",
+            curve_uid="sofr-curve-uid",
+            source="valmer",
         )
-        self.assertEqual(payload["role_key"], "discount")
-        self.assertEqual(payload["selector_type"], "currency")
-        self.assertEqual(payload["selector_key"], "MXN")
-        self.assertEqual(payload["quote_side"], "mid")
-        self.assertEqual(payload["curve_uid"], "curve-uid")
+        mxn_discount = Mock(
+            uid="mxn-discount-binding-uid",
+            curve_uid="mxn-usd-curve-uid",
+            source="valmer",
+        )
+
+        def get_binding(*, market_data_set_uid, binding_key, status="ACTIVE"):
+            self.assertEqual(market_data_set_uid, "market-data-set-uid")
+            self.assertEqual(status, "ACTIVE")
+            return {
+                "discount:index:sofr-index-uid:mid": sofr_discount,
+                "discount:currency:MXN:mid": mxn_discount,
+            }.get(binding_key)
+
+        with patch(
+            "msm_pricing.api.PricingMarketDataSetCurveBinding"
+        ) as curve_binding_api:
+            curve_binding_api.get_by_set_and_binding_key.side_effect = get_binding
+            curve_binding_api.delete.side_effect = lambda uid: {"deleted": uid}
+
+            deleted = delete_valmer_deprecated_curve_bindings(
+                indexes=indexes,
+                curves=curves,
+                market_data_set=market_data_set,
+            )
+
+        self.assertEqual(
+            deleted,
+            {
+                (
+                    "discount",
+                    "index",
+                    USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+                    "mid",
+                ): {"deleted": "sofr-discount-binding-uid"},
+                ("discount", "currency", "MXN", "mid"): {
+                    "deleted": "mxn-discount-binding-uid"
+                },
+            },
+        )
+        curve_binding_api.delete.assert_any_call("sofr-discount-binding-uid")
+        curve_binding_api.delete.assert_any_call("mxn-discount-binding-uid")
+
+    def test_delete_valmer_deprecated_curve_bindings_preserves_non_matching_rows(
+        self,
+    ):
+        market_data_set = Mock(uid="market-data-set-uid")
+        indexes = {
+            USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER: Mock(uid="sofr-index-uid"),
+        }
+        curves = {
+            VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER: Mock(
+                uid="sofr-curve-uid"
+            ),
+            VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER: Mock(
+                uid="mxn-usd-curve-uid"
+            ),
+        }
+        user_owned_discount = Mock(
+            uid="sofr-discount-binding-uid",
+            curve_uid="sofr-curve-uid",
+            source="user",
+        )
+        different_curve_discount = Mock(
+            uid="mxn-discount-binding-uid",
+            curve_uid="other-curve-uid",
+            source="valmer",
+        )
+
+        def get_binding(*, market_data_set_uid, binding_key, status="ACTIVE"):
+            return {
+                "discount:index:sofr-index-uid:mid": user_owned_discount,
+                "discount:currency:MXN:mid": different_curve_discount,
+            }.get(binding_key)
+
+        with patch(
+            "msm_pricing.api.PricingMarketDataSetCurveBinding"
+        ) as curve_binding_api:
+            curve_binding_api.get_by_set_and_binding_key.side_effect = get_binding
+
+            deleted = delete_valmer_deprecated_curve_bindings(
+                indexes=indexes,
+                curves=curves,
+                market_data_set=market_data_set,
+            )
+
+        self.assertEqual(deleted, {})
+        curve_binding_api.delete.assert_not_called()
+
+    def test_curve_definitions_do_not_create_role_suffixed_or_tenor_curve_identities(self):
+        curve_identifiers = {
+            definition.unique_identifier for definition in VALMER_CURVE_DEFINITIONS
+        }
+
+        self.assertNotIn("VALMER_TIIE_28", curve_identifiers)
+        self.assertFalse(
+            any(
+                identifier.endswith(("__PROJECTION", "__DISCOUNT"))
+                for identifier in curve_identifiers
+            )
+        )
+        self.assertNotIn(
+            "VALMER_TIIE_28",
+            {
+                definition.curve_unique_identifier
+                for definition in VALMER_CURVE_BUILDING_DETAILS_DEFINITIONS
+            },
+        )
+        self.assertNotIn(
+            "VALMER_TIIE_28",
+            {
+                definition.curve_unique_identifier
+                for definition in VALMER_INDEX_CURVE_BINDING_DEFINITIONS
+            },
+        )
 
     def test_curve_runtime_attach_includes_valmer_details_by_default(self):
         from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
@@ -596,7 +741,11 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             result = seed_static_defaults(timeout=15, attach_runtime=True)
 
         core_bootstrap.assert_called_once_with(
-            markets_models=[ValmerAssetDetailsTable, ValmerVectorPricesStorage],
+            markets_models=[
+                ValmerAssetDetailsTable,
+                ValmerVectorPricesStorage,
+                ReferenceRateObservationsStorage,
+            ],
             timeout=15,
             attach_runtime=True,
         )

@@ -215,7 +215,14 @@ Seeded curve-selection bindings:
 
 `TIIE_28`, `TIIE_91`, and `TIIE_182` are index tenor/frequency selectors. They
 are not curve identities. Valmer TIIE valuation resolves those selectors to the
-overnight/OIS curve identity `VALMER_TIIE_OVERNIGHT`.
+overnight/OIS curve identity `VALMER_TIIE_OVERNIGHT`. The same curve can be
+selected for multiple roles when the market policy is intentionally the same;
+that is expressed by multiple binding rows, not by role-suffixed curve names.
+
+CETE projection, discount, and benchmark z-spread roles resolve to the MXN
+government curve. Valmer does not seed a generic `discount:currency:MXN:mid`
+binding. `Curve.currency_code = "MXN"` is descriptive metadata and is not a
+discount selector.
 
 | Role | Selector | Curve |
 | --- | --- | --- |
@@ -223,14 +230,29 @@ overnight/OIS curve identity `VALMER_TIIE_OVERNIGHT`.
 | `projection` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `projection` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `projection` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `index:<TIIE_OVERNIGHT.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `discount` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `index:<TIIE_OVERNIGHT.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `index:<TIIE_28.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `index:<TIIE_91.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
 | `z_spread_base` | `index:<TIIE_182.uid>:mid` | `VALMER_TIIE_OVERNIGHT` |
+| `projection` | `index:<CETE_28.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `projection` | `index:<CETE_91.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `projection` | `index:<CETE_182.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `discount` | `index:<CETE_28.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `discount` | `index:<CETE_91.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
+| `discount` | `index:<CETE_182.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
 | `z_spread_base` | `index:<CETE_28.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
 | `z_spread_base` | `index:<CETE_91.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
 | `z_spread_base` | `index:<CETE_182.uid>:mid` | `VALMER_MXN_GOVERNMENT_BOND` |
 | `projection` | `index:<USD_SOFR_OVERNIGHT.uid>:mid` | `VALMER_USD_SOFR_OVERNIGHT` |
+
+Bootstrap also removes Valmer-owned rows from superseded policy:
+`discount:currency:MXN:mid` and
+`discount:index:<USD_SOFR_OVERNIGHT.uid>:mid`. The USD SOFR discount role must
+not be present unless a later policy explicitly adds it.
 
 `CurveBuildingDetails.calendar_code` is `Mexico` for the Mexican curves and
 `UnitedStates` for the USD SOFR curve, matching the calendar tokens accepted by

@@ -234,6 +234,11 @@ This follows the existing TIIE OIS pattern: the helper-bootstrapped overnight
 curve is modeled as the projection curve for the reference index, while the
 stored observations still use `DiscountCurvesStorage`.
 
+The bootstrap cleanup removes any Valmer-owned legacy
+`discount:index:<USD_SOFR_OVERNIGHT.uid>:mid` binding. Keeping that row would
+turn USD SOFR discounting into an unreviewed seed default instead of an explicit
+pricing policy decision.
+
 If a product later needs SOFR as an explicit discount or z-spread benchmark
 role, add a separate `PricingMarketDataSetCurveBinding` decision. Do not create
 another curve identity unless the market-data policy actually requires a
