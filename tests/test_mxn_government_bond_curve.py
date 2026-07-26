@@ -139,7 +139,10 @@ class MxnGovernmentBondCurveTests(unittest.TestCase):
             [
                 {
                     "maturity_date": "2024-09-26",
-                    "asset_identifier": "BI_CETES_240926",
+                    "source_reference": {
+                        "type": "asset",
+                        "identifier": "BI_CETES_240926",
+                    },
                     "instrument_type": "zero_coupon_bond",
                     "helper_type": "zero_coupon_bond_helper",
                     "quote": 9.929507,
@@ -161,7 +164,10 @@ class MxnGovernmentBondCurveTests(unittest.TestCase):
                 },
                 {
                     "maturity_date": "2026-03-05",
-                    "asset_identifier": "M_BONOS_260305",
+                    "source_reference": {
+                        "type": "asset",
+                        "identifier": "M_BONOS_260305",
+                    },
                     "instrument_type": "fixed_rate_bond",
                     "helper_type": "fixed_rate_bond_helper",
                     "quote": 93.978153,

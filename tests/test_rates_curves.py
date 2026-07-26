@@ -1,6 +1,6 @@
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 from msm_pricing.data_nodes import DiscountCurvesNode
@@ -19,18 +19,12 @@ from valmer_connectors.instruments.curve_key_nodes import (
 from valmer_connectors.instruments.rates_curves import (
     VALMER_BENCHMARK_DATE_URL,
     VALMER_BENCHMARK_PAGE_URL,
-    VALMER_TIIE_IRS_MXN_URL,
-    VALMER_USD_MXN_XCCY_IRS_MXN_URL,
-    VALMER_USD_SOFR_IRS_URL,
     ValmerTiieCurveError,
     ValmerUsdMxnXccyCurveError,
     ValmerUsdSofrCurveError,
     build_tiie_irs_mxn_curve_frame,
-    build_tiie_irs_mxn_valmer,
     build_usd_mxn_xccy_curve_frame,
-    build_usd_mxn_xccy_valmer,
     build_usd_sofr_curve_frame,
-    build_usd_sofr_valmer,
     classify_tiie_irs_mxn_row,
     classify_usd_sofr_irs_row,
     fetch_valmer_benchmark_date_content,
@@ -181,8 +175,19 @@ class ValmerRatesCurvesTests(unittest.TestCase):
 
         first_node = row["key_nodes"][0]
         self.assertEqual(
-            first_node["asset_identifier"],
+            first_node["source_instrument_identifier"],
             "Swap.28D.MXN.FTIIE.1D/28D.BANXICO",
+        )
+        self.assertEqual(
+            first_node["source_reference"],
+            {
+                "type": "index",
+                "identifier": "VALMER_CURVE_QUOTE.TIIE_OIS.28D.MID",
+            },
+        )
+        self.assertEqual(
+            first_node["source_observation_time"],
+            "2026-06-30T00:00:00+00:00",
         )
         self.assertEqual(first_node["instrument_type"], "overnight_indexed_swap")
         self.assertEqual(first_node["helper_type"], "ois_rate_helper")
@@ -207,7 +212,9 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         self.assertEqual(first_node["maturity_date"], "2026-07-29")
         self.assertEqual(first_node["pillar_date"], "2026-07-29")
 
-        identifiers = {node["asset_identifier"] for node in row["key_nodes"]}
+        identifiers = {
+            node["source_instrument_identifier"] for node in row["key_nodes"]
+        }
         self.assertNotIn("FX.USD.MXN.ON", identifiers)
         self.assertNotIn("Swap.104W.MXN.FTIIE.1D/USD.SOFR.1D.SOFR", identifiers)
 
@@ -235,7 +242,9 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         )
         row = frame.reset_index().iloc[0]
         bad_nodes = [dict(row["key_nodes"][0])]
-        bad_nodes[0]["asset_identifier"] = "Swap.104W.MXN.FTIIE.1D/USD.SOFR.1D.SOFR"
+        bad_nodes[0]["source_instrument_identifier"] = (
+            "Swap.104W.MXN.FTIIE.1D/USD.SOFR.1D.SOFR"
+        )
 
         with self.assertRaisesRegex(ValueError, "FTIIE.1D/28D.BANXICO"):
             validate_tiie_ois_key_nodes(
@@ -263,8 +272,19 @@ class ValmerRatesCurvesTests(unittest.TestCase):
 
         first_node = row["key_nodes"][0]
         self.assertEqual(
-            first_node["asset_identifier"],
+            first_node["source_instrument_identifier"],
             "Future.USD.CME.CME SR1 EOM.JUL.26",
+        )
+        self.assertEqual(
+            first_node["source_reference"],
+            {
+                "type": "index",
+                "identifier": "VALMER_CURVE_QUOTE.SOFR_FUTURE.SR1.2026_07.EOM.MID",
+            },
+        )
+        self.assertEqual(
+            first_node["source_observation_time"],
+            "2026-06-30T00:00:00+00:00",
         )
         self.assertEqual(first_node["instrument_type"], "sofr_future")
         self.assertEqual(first_node["helper_type"], "sofr_future_rate_helper")
@@ -283,7 +303,8 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         swap_node = next(
             node
             for node in row["key_nodes"]
-            if node["asset_identifier"] == "Swap.10Y.USD.SOFR.1D/1Y.SOFR"
+            if node["source_instrument_identifier"]
+            == "Swap.10Y.USD.SOFR.1D/1Y.SOFR"
         )
         self.assertEqual(swap_node["instrument_type"], "overnight_indexed_swap")
         self.assertEqual(swap_node["helper_type"], "ois_rate_helper")
@@ -310,7 +331,9 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         self.assertEqual(swap_node["earliest_date"], "2026-07-02")
         self.assertEqual(swap_node["maturity_date"], "2036-07-02")
 
-        identifiers = {node["asset_identifier"] for node in row["key_nodes"]}
+        identifiers = {
+            node["source_instrument_identifier"] for node in row["key_nodes"]
+        }
         self.assertNotIn("Future.USD.CME.CME SR3 IMM.JUN.26", identifiers)
         self.assertNotIn("Swap.1Y.USD.FEDFUNDS.1D/1Y.FEDFUNDS1", identifiers)
         self.assertNotIn("Swap.USD.10Y.FEDFUNDS.1D/SOFR.1D.SOFR", identifiers)
@@ -339,7 +362,9 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         )
         row = frame.reset_index().iloc[0]
         bad_nodes = [dict(node) for node in row["key_nodes"]]
-        bad_nodes[0]["asset_identifier"] = "Swap.1Y.USD.FEDFUNDS.1D/1Y.FEDFUNDS1"
+        bad_nodes[0]["source_instrument_identifier"] = (
+            "Swap.1Y.USD.FEDFUNDS.1D/1Y.FEDFUNDS1"
+        )
 
         with self.assertRaisesRegex(ValueError, "Fed Funds"):
             validate_usd_sofr_key_nodes(
@@ -369,7 +394,18 @@ class ValmerRatesCurvesTests(unittest.TestCase):
 
         spot_node = row["key_nodes"][0]
         self.assertEqual(spot_node["instrument_type"], "fx_spot")
-        self.assertEqual(spot_node["asset_identifier"], "FX.USD.MXN")
+        self.assertEqual(spot_node["source_instrument_identifier"], "FX.USD.MXN")
+        self.assertEqual(
+            spot_node["source_reference"],
+            {
+                "type": "index",
+                "identifier": "VALMER_CURVE_QUOTE.USDMXN_SPOT.MID",
+            },
+        )
+        self.assertEqual(
+            spot_node["source_observation_time"],
+            "2026-06-30T00:00:00+00:00",
+        )
         self.assertEqual(spot_node["quote"], 17.46855)
         self.assertEqual(spot_node["fx_pair"], "USD/MXN")
 
@@ -484,169 +520,6 @@ class ValmerRatesCurvesTests(unittest.TestCase):
                 curve_identifier="VALMER_USD_SOFR_OVERNIGHT",
                 valuation_date="2026-06-30",
             )
-
-    def test_valmer_tiie_update_skips_csv_download_when_source_date_is_not_newer(self):
-        update_statistics = Mock()
-        update_statistics.get_last_update_for_identity.return_value = pd.Timestamp(
-            "2026-06-30",
-            tz="UTC",
-        )
-        with (
-            patch(
-                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
-                return_value=BENCHMARK_DATE_RESPONSE,
-            ) as fetch_date,
-            patch("valmer_connectors.instruments.rates_curves.requests.get") as get,
-        ):
-            frame = build_tiie_irs_mxn_valmer(
-                update_statistics=update_statistics,
-                curve_identifier="VALMER_TIIE_OVERNIGHT",
-                base_node_curve_points=None,
-            )
-
-        fetch_date.assert_called_once_with()
-        get.assert_not_called()
-        update_statistics.get_last_update_for_identity.assert_called_once_with(
-            "VALMER_TIIE_OVERNIGHT"
-        )
-        self.assertTrue(frame.empty)
-        self.assertEqual(frame.index.names, ["time_index", "curve_identifier"])
-        self.assertIn("curve", frame.reset_index().columns)
-        self.assertIn("key_nodes", frame.reset_index().columns)
-
-    def test_valmer_usd_sofr_update_skips_csv_download_when_source_date_is_not_newer(self):
-        update_statistics = Mock()
-        update_statistics.get_last_update_for_identity.return_value = pd.Timestamp(
-            "2026-06-30",
-            tz="UTC",
-        )
-        with (
-            patch(
-                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
-                return_value=BENCHMARK_DATE_RESPONSE,
-            ) as fetch_date,
-            patch("valmer_connectors.instruments.rates_curves.requests.get") as get,
-        ):
-            frame = build_usd_sofr_valmer(
-                update_statistics=update_statistics,
-                curve_identifier="VALMER_USD_SOFR_OVERNIGHT",
-                base_node_curve_points=None,
-            )
-
-        fetch_date.assert_called_once_with()
-        get.assert_not_called()
-        update_statistics.get_last_update_for_identity.assert_called_once_with(
-            "VALMER_USD_SOFR_OVERNIGHT"
-        )
-        self.assertTrue(frame.empty)
-        self.assertEqual(frame.index.names, ["time_index", "curve_identifier"])
-        self.assertIn("curve", frame.reset_index().columns)
-        self.assertIn("key_nodes", frame.reset_index().columns)
-
-    def test_valmer_usd_mxn_xccy_update_rebuilds_current_source_date(self):
-        update_statistics = Mock()
-        update_statistics.get_last_update_for_identity.return_value = pd.Timestamp(
-            "2026-06-30",
-            tz="UTC",
-        )
-        mxn_response = Mock(content=(DATA_DIR / "IRS_MXN_CURVE.csv").read_bytes())
-        usd_response = Mock(content=(DATA_DIR / "IRS_USD_CURVE.csv").read_bytes())
-
-        with (
-            patch(
-                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
-                return_value=BENCHMARK_DATE_RESPONSE,
-            ) as fetch_date,
-            patch(
-                "valmer_connectors.instruments.rates_curves.requests.get",
-                side_effect=[mxn_response, usd_response],
-            ) as get,
-        ):
-            frame = build_usd_mxn_xccy_valmer(
-                update_statistics=update_statistics,
-                curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
-                base_node_curve_points=None,
-            )
-
-        fetch_date.assert_called_once_with()
-        get.assert_has_calls(
-            [
-                call(VALMER_USD_MXN_XCCY_IRS_MXN_URL, timeout=30),
-                call(VALMER_USD_SOFR_IRS_URL, timeout=30),
-            ]
-        )
-        mxn_response.raise_for_status.assert_called_once_with()
-        usd_response.raise_for_status.assert_called_once_with()
-        update_statistics.get_last_update_for_identity.assert_not_called()
-        row = frame.reset_index().iloc[0]
-        self.assertEqual(row["time_index"], pd.Timestamp("2026-06-30", tz="UTC"))
-        self.assertEqual(
-            row["curve_identifier"],
-            "VALMER_MXN_USD_COLLATERAL_DISCOUNT",
-        )
-
-    def test_valmer_tiie_update_downloads_csv_when_source_date_is_newer(self):
-        update_statistics = Mock()
-        update_statistics.get_last_update_for_identity.return_value = pd.Timestamp(
-            "2026-06-29",
-            tz="UTC",
-        )
-        curve_response = Mock(content=IRS_MXN_SAMPLE)
-
-        with (
-            patch(
-                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
-                return_value=BENCHMARK_DATE_RESPONSE,
-            ) as fetch_date,
-            patch(
-                "valmer_connectors.instruments.rates_curves.requests.get",
-                return_value=curve_response,
-            ) as get,
-        ):
-            frame = build_tiie_irs_mxn_valmer(
-                update_statistics=update_statistics,
-                curve_identifier="VALMER_TIIE_OVERNIGHT",
-                base_node_curve_points=None,
-            )
-
-        fetch_date.assert_called_once_with()
-        get.assert_called_once_with(VALMER_TIIE_IRS_MXN_URL, timeout=30)
-        curve_response.raise_for_status.assert_called_once_with()
-        row = frame.reset_index().iloc[0]
-        self.assertEqual(row["time_index"], pd.Timestamp("2026-06-30", tz="UTC"))
-        self.assertEqual(row["curve_identifier"], "VALMER_TIIE_OVERNIGHT")
-
-    def test_valmer_usd_sofr_update_downloads_csv_when_source_date_is_newer(self):
-        update_statistics = Mock()
-        update_statistics.get_last_update_for_identity.return_value = pd.Timestamp(
-            "2026-06-29",
-            tz="UTC",
-        )
-        curve_response = Mock(content=(DATA_DIR / "IRS_USD_CURVE.csv").read_bytes())
-
-        with (
-            patch(
-                "valmer_connectors.instruments.rates_curves.fetch_valmer_benchmark_date_content",
-                return_value=BENCHMARK_DATE_RESPONSE,
-            ) as fetch_date,
-            patch(
-                "valmer_connectors.instruments.rates_curves.requests.get",
-                return_value=curve_response,
-            ) as get,
-        ):
-            frame = build_usd_sofr_valmer(
-                update_statistics=update_statistics,
-                curve_identifier="VALMER_USD_SOFR_OVERNIGHT",
-                base_node_curve_points=None,
-            )
-
-        fetch_date.assert_called_once_with()
-        get.assert_called_once_with(VALMER_USD_SOFR_IRS_URL, timeout=30)
-        curve_response.raise_for_status.assert_called_once_with()
-        row = frame.reset_index().iloc[0]
-        self.assertEqual(row["time_index"], pd.Timestamp("2026-06-30", tz="UTC"))
-        self.assertEqual(row["curve_identifier"], "VALMER_USD_SOFR_OVERNIGHT")
-
 
 if __name__ == "__main__":
     unittest.main()

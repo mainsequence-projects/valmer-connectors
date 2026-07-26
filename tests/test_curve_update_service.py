@@ -7,9 +7,6 @@ import pandas as pd
 import valmer_connectors.services as services
 from valmer_connectors.instruments.curve_key_nodes import (
     validate_mxn_government_key_nodes,
-    validate_tiie_ois_key_nodes,
-    validate_usd_mxn_xccy_key_nodes,
-    validate_usd_sofr_key_nodes,
 )
 from valmer_connectors.services import curve_update
 
@@ -169,60 +166,83 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
                 base_node_curve_points=None,
             )
 
-    def test_tiie_irs_mxn_update_uses_shared_runner(self):
-        with patch(
-            "valmer_connectors.services.curve_update._run_valmer_discount_curve_update"
-        ) as run_curve:
+    def test_tiie_irs_mxn_update_uses_dependency_backed_node(self):
+        with (
+            patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
+            patch(
+                "valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"
+            ),
+            patch(
+                "valmer_connectors.services.curve_update.ValmerTiieDiscountCurveNode"
+            ) as node_class,
+        ):
             curve_update.run_tiie_irs_mxn_curve_update()
 
-        run_curve.assert_called_once_with(
-            curve_identifier="VALMER_TIIE_OVERNIGHT",
-            curve_builder=curve_update.build_tiie_irs_mxn_valmer,
-            key_nodes_validator=validate_tiie_ois_key_nodes,
-        )
+        config = node_class.call_args.kwargs["curve_config"]
+        self.assertEqual(config.curve_unique_identifier, "VALMER_TIIE_OVERNIGHT")
+        self.assertEqual(config.source_families, ("tiie_ois",))
+        node_class.return_value.run.assert_called_once_with(force_update=True)
 
-    def test_usd_sofr_update_uses_shared_runner(self):
-        with patch(
-            "valmer_connectors.services.curve_update._run_valmer_discount_curve_update"
-        ) as run_curve:
+    def test_usd_sofr_update_uses_dependency_backed_node(self):
+        with (
+            patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
+            patch(
+                "valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"
+            ),
+            patch(
+                "valmer_connectors.services.curve_update.ValmerUsdSofrDiscountCurveNode"
+            ) as node_class,
+        ):
             curve_update.run_usd_sofr_curve_update()
 
-        run_curve.assert_called_once_with(
-            curve_identifier="VALMER_USD_SOFR_OVERNIGHT",
-            curve_builder=curve_update.build_usd_sofr_valmer,
-            key_nodes_validator=validate_usd_sofr_key_nodes,
-        )
+        config = node_class.call_args.kwargs["curve_config"]
+        self.assertEqual(config.curve_unique_identifier, "VALMER_USD_SOFR_OVERNIGHT")
+        self.assertEqual(config.source_families, ("sofr_future", "sofr_ois"))
+        node_class.return_value.run.assert_called_once_with(force_update=True)
 
-    def test_usd_mxn_xccy_update_uses_shared_runner(self):
-        with patch(
-            "valmer_connectors.services.curve_update._run_valmer_discount_curve_update"
-        ) as run_curve:
+    def test_usd_mxn_xccy_update_uses_dependency_backed_node(self):
+        with (
+            patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
+            patch(
+                "valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"
+            ),
+            patch(
+                "valmer_connectors.services.curve_update.ValmerUsdMxnCollateralDiscountCurveNode"
+            ) as node_class,
+        ):
             curve_update.run_usd_mxn_xccy_curve_update()
 
-        run_curve.assert_called_once_with(
-            curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
-            curve_builder=curve_update.build_usd_mxn_xccy_valmer,
-            key_nodes_validator=validate_usd_mxn_xccy_key_nodes,
-            hash_namespace=None,
-            rebuild_current=False,
+        config = node_class.call_args.kwargs["curve_config"]
+        self.assertEqual(
+            config.curve_unique_identifier,
+            "VALMER_MXN_USD_COLLATERAL_DISCOUNT",
         )
+        self.assertEqual(
+            config.source_families,
+            ("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),
+        )
+        node_class.return_value.run.assert_called_once_with(force_update=True)
 
     def test_usd_mxn_xccy_update_forwards_rebuild_controls(self):
-        with patch(
-            "valmer_connectors.services.curve_update._run_valmer_discount_curve_update"
-        ) as run_curve:
+        with (
+            patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
+            patch(
+                "valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"
+            ),
+            patch(
+                "valmer_connectors.services.curve_update.ValmerUsdMxnCollateralDiscountCurveNode"
+            ) as node_class,
+        ):
             curve_update.run_usd_mxn_xccy_curve_update(
                 hash_namespace="pytest-xccy",
                 rebuild_current=True,
             )
 
-        run_curve.assert_called_once_with(
-            curve_identifier="VALMER_MXN_USD_COLLATERAL_DISCOUNT",
-            curve_builder=curve_update.build_usd_mxn_xccy_valmer,
-            key_nodes_validator=validate_usd_mxn_xccy_key_nodes,
-            hash_namespace="pytest-xccy",
-            rebuild_current=True,
+        self.assertEqual(
+            node_class.call_args.kwargs["hash_namespace"],
+            "pytest-xccy",
         )
+        node_class.return_value.run.assert_called_once()
 
     def test_services_package_exports_all_curve_updates(self):
         self.assertIs(
@@ -416,7 +436,12 @@ def _fake_government_curve_frame(source_df, *, curve_identifier):
                             time_index + pd.Timedelta(days=28)
                         ).date().isoformat(),
                         "quote": 9.9,
-                        "asset_identifier": str(source_df["unique_identifier"].iloc[0]),
+                        "source_reference": {
+                            "type": "asset",
+                            "identifier": str(
+                                source_df["unique_identifier"].iloc[0]
+                            ),
+                        },
                     }
                 ],
             }

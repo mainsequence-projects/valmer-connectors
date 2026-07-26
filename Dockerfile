@@ -3,7 +3,7 @@
 # MainSequence scaffold Dockerfile
 # Base image resolved from DEFAULT_BASE_IMAGE or platform defaults.
 #
-FROM ghcr.io/main-sequence-server-side/poddeploymentorchestrator-jupyterhub-py311:latest
+FROM ghcr.io/main-sequence-server-side/poddeploymentorchestrator-jupyterhub-py313:latest
 
 WORKDIR /app
 

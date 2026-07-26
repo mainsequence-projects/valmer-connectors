@@ -89,7 +89,10 @@ class FredReferenceRateTests(unittest.TestCase):
             frame.reset_index()["time_index"].tolist(),
             [pd.Timestamp("2026-07-17", tz="UTC")],
         )
-        self.assertAlmostEqual(frame.iloc[0]["rate"], 0.0425)
+        self.assertAlmostEqual(frame.iloc[0]["value"], 0.0425)
+        self.assertEqual(frame.iloc[0]["unit"], "decimal")
+        self.assertEqual(frame.iloc[0]["observation_status"], "ready")
+        self.assertEqual(frame.iloc[0]["metadata_json"]["source_quote"], 4.25)
 
     def test_observations_preserve_numeric_zero(self):
         frame = normalize_fred_observations(
@@ -97,7 +100,7 @@ class FredReferenceRateTests(unittest.TestCase):
             index_identifier=US_TREASURY_CMT_2Y_INDEX_IDENTIFIER,
         )
 
-        self.assertEqual(frame.iloc[0]["rate"], 0.0)
+        self.assertEqual(frame.iloc[0]["value"], 0.0)
 
     def test_resolve_api_key_hydrates_secret_detail(self):
         class SecretValue:
@@ -113,13 +116,6 @@ class FredReferenceRateTests(unittest.TestCase):
             api_key = resolve_fred_api_key(environ={})
 
         self.assertEqual(api_key, "fred-key")
-
-    def test_smoke_runner_requires_hash_namespace(self):
-        with self.assertRaisesRegex(FredReferenceRateError, "hash namespace"):
-            run_fred_reference_rates_update(
-                api_key="key",
-                require_hash_namespace=True,
-            )
 
     def test_runner_wires_runtime_indexes_config_and_node(self):
         with (
@@ -138,7 +134,6 @@ class FredReferenceRateTests(unittest.TestCase):
                 api_key="key",
                 validate_metadata=False,
                 runtime_end="2026-07-18",
-                hash_namespace="adr-0009-smoke",
             )
 
         bootstrap.assert_called_once_with(seed_static_rows=False)
@@ -149,12 +144,12 @@ class FredReferenceRateTests(unittest.TestCase):
             config.index_unique_identifiers,
             [US_TREASURY_CMT_2Y_INDEX_IDENTIFIER],
         )
-        self.assertEqual(node_class.call_args.kwargs["hash_namespace"], "adr-0009-smoke")
+        self.assertIsNone(node_class.call_args.kwargs["hash_namespace"])
         node.run.assert_called_once_with(force_update=True)
 
 
 class FredReferenceRateCliTests(unittest.TestCase):
-    def test_cli_dispatches_smoke_update(self):
+    def test_cli_dispatches_normal_update(self):
         parser = build_parser()
         args = parser.parse_args(
             [
@@ -162,17 +157,14 @@ class FredReferenceRateCliTests(unittest.TestCase):
                 "update-fred",
                 "--index-identifier",
                 US_TREASURY_CMT_2Y_INDEX_IDENTIFIER,
-                "--hash-namespace",
-                "adr-0009-smoke",
-                "--smoke",
             ]
         )
         with patch("fred.reference_rates.run_fred_reference_rates_update") as run_update:
             result = args.func(args)
 
         self.assertEqual(result, 0)
-        self.assertTrue(run_update.call_args.kwargs["require_hash_namespace"])
-        self.assertEqual(run_update.call_args.kwargs["hash_namespace"], "adr-0009-smoke")
+        self.assertIsNone(run_update.call_args.kwargs["hash_namespace"])
+        self.assertNotIn("backfill_start", run_update.call_args.kwargs)
 
 
 if __name__ == "__main__":

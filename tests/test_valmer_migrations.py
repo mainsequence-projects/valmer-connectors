@@ -1,7 +1,9 @@
 import unittest
 
 from msm.base import markets_table_name
+from msm.data_nodes.indices import index_values_storage_table_name
 from msm.models.assets import AssetTable
+from msm.models.index_calculations import IndexCalculationDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import markets_auto_register_namespace
 
@@ -16,8 +18,8 @@ from migrations import (
     migration,
 )
 from migrations.registry import METATABLE_PROVIDER_MODELS, metatable_provider_models
-from valmer_connectors.data_nodes.reference_rate_observations import (
-    ReferenceRateObservationsStorage,
+from valmer_connectors.data_nodes.canonical_index_values import (
+    DailyIndexValuesStorage,
 )
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.markets import (
@@ -61,7 +63,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             (
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
-                ReferenceRateObservationsStorage,
+                DailyIndexValuesStorage,
             ),
         )
         self.assertEqual(METATABLE_PROVIDER_MODELS, VALMER_MIGRATION_MODELS)
@@ -72,7 +74,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             (
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
-                ReferenceRateObservationsStorage,
+                DailyIndexValuesStorage,
             ),
         )
         self.assertEqual(tuple(migration.metatable_models), VALMER_MIGRATION_MODELS)
@@ -97,12 +99,8 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            ReferenceRateObservationsStorage.__table__.name,
-            markets_table_name(
-                VALMER_MARKETS_STORAGE_APP,
-                ReferenceRateObservationsStorage.__markets_authored_identifier__,
-                suffix=markets_auto_register_namespace(),
-            ),
+            DailyIndexValuesStorage.__table__.name,
+            index_values_storage_table_name(cadence="1d"),
         )
         self.assertEqual(
             ValmerAssetDetailsTable.__metatable_identifier__,
@@ -113,8 +111,8 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             f"{VALMER_MARKETS_NAMESPACE}.vector_de_precios_valmer",
         )
         self.assertEqual(
-            ReferenceRateObservationsStorage.__metatable_identifier__,
-            f"{VALMER_MARKETS_NAMESPACE}.reference_rate_observations",
+            DailyIndexValuesStorage.__metatable_identifier__,
+            "IndexValuesTS.1d",
         )
         self.assertEqual(
             ValmerAssetDetailsTable.__table__.info["namespace"],
@@ -125,8 +123,8 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             VALMER_MARKETS_NAMESPACE,
         )
         self.assertEqual(
-            ReferenceRateObservationsStorage.__table__.info["namespace"],
-            VALMER_MARKETS_NAMESPACE,
+            DailyIndexValuesStorage.__table__.info["namespace"],
+            "mainsequence.markets",
         )
 
     def test_provider_metadata_includes_core_markets_reference_tables(self):
@@ -138,14 +136,18 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             {
                 ValmerAssetDetailsTable.__table__.name,
                 ValmerVectorPricesStorage.__table__.name,
-                ReferenceRateObservationsStorage.__table__.name,
+                DailyIndexValuesStorage.__table__.name,
                 AssetTable.__table__.name,
                 IndexTable.__table__.name,
+                IndexCalculationDefinitionTable.__table__.name,
             },
         )
         self.assertIn(AssetTable.__table__.name, target_table_names)
         self.assertIn(IndexTable.__table__.name, target_table_names)
-        self.assertEqual(VALMER_REFERENCE_MODELS, (AssetTable, IndexTable))
+        self.assertEqual(
+            VALMER_REFERENCE_MODELS,
+            (AssetTable, IndexTable, IndexCalculationDefinitionTable),
+        )
         self.assertNotIn(IndexTable, VALMER_MIGRATION_MODELS)
 
     def test_provider_default_include_excludes_core_markets_tables(self):

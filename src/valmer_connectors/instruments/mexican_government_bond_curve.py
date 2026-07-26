@@ -125,7 +125,10 @@ def build_cetes_zero_coupon_key_node(row: pd.Series) -> BootstrapInstrument:
         key_node=_clean_key_node(
             {
                 "maturity_date": maturity_date.date().isoformat(),
-                "asset_identifier": str(row["unique_identifier"]),
+                "source_reference": {
+                    "type": "asset",
+                    "identifier": str(row["unique_identifier"]),
+                },
                 "instrument_type": "zero_coupon_bond",
                 "helper_type": "zero_coupon_bond_helper",
                 "quote": price,
@@ -180,7 +183,10 @@ def build_m_bono_fixed_rate_key_node(row: pd.Series) -> BootstrapInstrument:
         key_node=_clean_key_node(
             {
                 "maturity_date": maturity_date.date().isoformat(),
-                "asset_identifier": str(row["unique_identifier"]),
+                "source_reference": {
+                    "type": "asset",
+                    "identifier": str(row["unique_identifier"]),
+                },
                 "instrument_type": "fixed_rate_bond",
                 "helper_type": "fixed_rate_bond_helper",
                 "quote": clean_price,

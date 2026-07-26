@@ -17,12 +17,13 @@ from banxico.settings import (
     BANXICO_TOKEN_SECRET_NAME,
 )
 from banxico.sie import BanxicoSieClient
-from valmer_connectors.data_nodes.reference_rate_observations import (
+from valmer_connectors.data_nodes.canonical_index_values import (
     ReferenceRateIndexDefinition,
+    ReferenceRateIndexValuesNode,
     ReferenceRateObservationConfiguration,
-    ReferenceRateObservationsNode,
-    empty_reference_rate_frame,
-    normalize_reference_rate_rows,
+    canonical_index_value_row,
+    empty_index_values_frame,
+    normalize_index_value_rows,
     resolve_reference_rate_update_window,
     upsert_reference_rate_indexes,
 )
@@ -62,7 +63,7 @@ BANXICO_POLICY_TARGET_DEFINITION = BanxicoPolicyRateDefinition(
         country="MX",
         observation_type="policy_target",
     ),
-    required_title_terms=("OBJETIVO", "TASA", "INTERBANCARIA"),
+    required_title_terms=("OBJETIVO", "TASA"),
 )
 
 DEFAULT_BANXICO_POLICY_RATE_DEFINITIONS = (BANXICO_POLICY_TARGET_DEFINITION,)
@@ -141,10 +142,14 @@ def normalize_banxico_policy_observations(
     series_payloads: Iterable[Mapping[str, Any]],
     *,
     series_id_to_index_identifier: Mapping[str, str],
+    definitions: Iterable[BanxicoPolicyRateDefinition] = (
+        DEFAULT_BANXICO_POLICY_RATE_DEFINITIONS
+    ),
 ) -> pd.DataFrame:
     """Normalize Banxico percentage observations to the shared storage contract."""
 
     rows: list[dict[str, Any]] = []
+    definition_by_index = definitions_by_index_identifier(definitions)
     for series_payload in series_payloads:
         series_id = str(
             series_payload.get("idSerie") or series_payload.get("idserie") or ""
@@ -178,22 +183,31 @@ def normalize_banxico_policy_observations(
                 raise BanxicoPolicyRateError(
                     "Banxico policy observation must be finite."
                 )
+            definition = definition_by_index.get(index_identifier)
+            if definition is None:
+                raise BanxicoPolicyRateError(
+                    f"Missing Banxico definition for Index {index_identifier!r}."
+                )
             rows.append(
-                {
-                    "time_index": pd.to_datetime(
+                canonical_index_value_row(
+                    time_index=pd.to_datetime(
                         item.get("fecha"),
                         format="%d/%m/%Y",
                         utc=True,
                         errors="raise",
                     ),
-                    "index_identifier": index_identifier,
-                    "rate": numeric_value / 100.0,
-                }
+                    index_identifier=index_identifier,
+                    value=numeric_value / 100.0,
+                    unit="decimal",
+                    metadata_json=definition.index.observation_metadata(
+                        source_quote=numeric_value
+                    ),
+                )
             )
-    return normalize_reference_rate_rows(rows) if rows else empty_reference_rate_frame()
+    return normalize_index_value_rows(rows) if rows else empty_index_values_frame()
 
 
-class BanxicoPolicyRatesNode(ReferenceRateObservationsNode):
+class BanxicoPolicyRatesNode(ReferenceRateIndexValuesNode):
     """Publish the accepted Banco de Mexico policy-target series."""
 
     def __init__(
@@ -260,7 +274,7 @@ class BanxicoPolicyRatesNode(ReferenceRateObservationsNode):
             runtime_end=self.runtime_end,
         )
         if window is None:
-            return empty_reference_rate_frame()
+            return empty_index_values_frame()
         payloads = self.client.fetch_series_data(
             [definition.series_id],
             start_date=window.start_date,
@@ -271,6 +285,7 @@ class BanxicoPolicyRatesNode(ReferenceRateObservationsNode):
             series_id_to_index_identifier={
                 definition.series_id: definition.index_identifier
             },
+            definitions=self.definitions,
         )
 
 
@@ -280,20 +295,12 @@ def run_banxico_policy_rates_update(
     token: str | None = None,
     token_secret_name: str = BANXICO_TOKEN_SECRET_NAME,
     validate_metadata: bool = True,
-    bootstrap_lookback_days: int = 90,
-    backfill_start: dt.datetime | str | None = None,
-    backfill_end: dt.datetime | str | None = None,
     runtime_end: dt.date | dt.datetime | str | pd.Timestamp | None = None,
     hash_namespace: str | None = None,
-    require_hash_namespace: bool = False,
     force_update: bool = True,
 ) -> None:
     """Attach runtime state, register the policy Index, and execute the producer."""
 
-    if require_hash_namespace and not hash_namespace:
-        raise BanxicoPolicyRateError(
-            "The first shared-backend smoke run requires an explicit hash namespace."
-        )
     selected = select_banxico_policy_rate_definitions(index_identifiers)
 
     from valmer_connectors.instruments.bootstrap import bootstrap_runtime
@@ -308,9 +315,6 @@ def run_banxico_policy_rates_update(
     client = BanxicoSieClient(token=token)
     config = ReferenceRateObservationConfiguration(
         index_unique_identifiers=[item.index_identifier for item in selected],
-        bootstrap_lookback_days=bootstrap_lookback_days,
-        offset_start=backfill_start,
-        backfill_end=backfill_end,
     )
     node = BanxicoPolicyRatesNode(
         config,

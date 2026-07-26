@@ -23,14 +23,9 @@ class BanxicoPolicyRateTests(unittest.TestCase):
         self.assertEqual(payload["metadata_json"]["source_series_id"], "SF61745")
         self.assertEqual(payload["metadata_json"]["observation_type"], "policy_target")
 
-    def test_metadata_validation_requires_policy_target_terms(self):
+    def test_metadata_validation_accepts_live_policy_target_title(self):
         validated = validate_banxico_policy_metadata(
-            [
-                {
-                    "idSerie": "SF61745",
-                    "titulo": "Objetivo para la tasa de interes interbancaria a un dia",
-                }
-            ],
+            [{"idSerie": "SF61745", "titulo": "Tasa objetivo"}],
             [BANXICO_POLICY_TARGET_DEFINITION],
         )
         self.assertIn(BANXICO_POLICY_TARGET_INDEX_IDENTIFIER, validated)
@@ -38,6 +33,12 @@ class BanxicoPolicyRateTests(unittest.TestCase):
         with self.assertRaisesRegex(BanxicoPolicyRateError, "missing terms"):
             validate_banxico_policy_metadata(
                 [{"idSerie": "SF61745", "titulo": "Tipo de cambio FIX"}],
+                [BANXICO_POLICY_TARGET_DEFINITION],
+            )
+
+        with self.assertRaisesRegex(BanxicoPolicyRateError, "did not include series"):
+            validate_banxico_policy_metadata(
+                [{"idSerie": "SF99999", "titulo": "Tasa objetivo"}],
                 [BANXICO_POLICY_TARGET_DEFINITION],
             )
 
@@ -61,7 +62,9 @@ class BanxicoPolicyRateTests(unittest.TestCase):
             frame.reset_index()["time_index"].tolist(),
             [pd.Timestamp("2026-02-01", tz="UTC")],
         )
-        self.assertAlmostEqual(frame.iloc[0]["rate"], 0.075)
+        self.assertAlmostEqual(frame.iloc[0]["value"], 0.075)
+        self.assertEqual(frame.iloc[0]["unit"], "decimal")
+        self.assertEqual(frame.iloc[0]["metadata_json"]["source_quote"], 7.5)
 
     def test_observations_preserve_numeric_zero(self):
         frame = normalize_banxico_policy_observations(
@@ -76,14 +79,7 @@ class BanxicoPolicyRateTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(frame.iloc[0]["rate"], 0.0)
-
-    def test_smoke_runner_requires_hash_namespace(self):
-        with self.assertRaisesRegex(BanxicoPolicyRateError, "hash namespace"):
-            run_banxico_policy_rates_update(
-                token="token",
-                require_hash_namespace=True,
-            )
+        self.assertEqual(frame.iloc[0]["value"], 0.0)
 
     def test_runner_wires_runtime_indexes_config_and_node(self):
         with (
@@ -116,30 +112,20 @@ class BanxicoPolicyRateTests(unittest.TestCase):
 
 
 class BanxicoPolicyRateCliTests(unittest.TestCase):
-    def test_cli_dispatches_bounded_backfill(self):
+    def test_cli_dispatches_normal_update(self):
         parser = build_parser()
         args = parser.parse_args(
             [
                 "reference-rates",
                 "update-banxico-policy",
-                "--backfill-start",
-                "2021-07-19T00:00:00Z",
-                "--backfill-end",
-                "2026-04-19T00:00:00Z",
             ]
         )
         with patch("banxico.policy_rates.run_banxico_policy_rates_update") as run_update:
             result = args.func(args)
 
         self.assertEqual(result, 0)
-        self.assertEqual(
-            run_update.call_args.kwargs["backfill_start"],
-            "2021-07-19T00:00:00Z",
-        )
-        self.assertEqual(
-            run_update.call_args.kwargs["backfill_end"],
-            "2026-04-19T00:00:00Z",
-        )
+        self.assertIsNone(run_update.call_args.kwargs["hash_namespace"])
+        self.assertNotIn("backfill_start", run_update.call_args.kwargs)
 
 
 if __name__ == "__main__":

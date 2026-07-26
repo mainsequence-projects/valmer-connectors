@@ -10,6 +10,11 @@ from valmer_connectors.queries.asset_details import (
     read_valmer_asset_detail_maturity_fields,
     resolve_valmer_detail_identifier_aliases,
 )
+from valmer_connectors.queries.curve_quote_indices import (
+    load_discount_curve_key_nodes,
+    load_valmer_curve_quote_snapshot,
+    load_valmer_curve_quote_snapshots,
+)
 from valmer_connectors.queries.vector_quotes import (
     filter_valmer_vector_columns,
     latest_dirty_price_by_identifier,
@@ -27,6 +32,9 @@ __all__ = [
     "expand_valmer_asset_detail_alias_frame",
     "filter_valmer_vector_columns",
     "latest_dirty_price_by_identifier",
+    "load_discount_curve_key_nodes",
+    "load_valmer_curve_quote_snapshot",
+    "load_valmer_curve_quote_snapshots",
     "normalize_valmer_quote_frame",
     "read_valmer_asset_detail_alias_frame",
     "read_valmer_asset_detail_maturity_fields",

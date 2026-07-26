@@ -6,8 +6,8 @@ from mainsequence.meta_tables.migrations import build_metatable_model_registry
 
 
 def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
-    from valmer_connectors.data_nodes.reference_rate_observations import (
-        ReferenceRateObservationsStorage,
+    from valmer_connectors.data_nodes.canonical_index_values import (
+        DailyIndexValuesStorage,
     )
     from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
     from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
@@ -15,7 +15,7 @@ def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
     return [
         ValmerAssetDetailsTable,
         ValmerVectorPricesStorage,
-        ReferenceRateObservationsStorage,
+        DailyIndexValuesStorage,
     ]
 
 

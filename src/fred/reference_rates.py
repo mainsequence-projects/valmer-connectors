@@ -22,12 +22,13 @@ from fred.settings import (
     US_TREASURY_CMT_10Y_INDEX_IDENTIFIER,
     US_TREASURY_CMT_30Y_INDEX_IDENTIFIER,
 )
-from valmer_connectors.data_nodes.reference_rate_observations import (
+from valmer_connectors.data_nodes.canonical_index_values import (
     ReferenceRateIndexDefinition,
+    ReferenceRateIndexValuesNode,
     ReferenceRateObservationConfiguration,
-    ReferenceRateObservationsNode,
-    empty_reference_rate_frame,
-    normalize_reference_rate_rows,
+    canonical_index_value_row,
+    empty_index_values_frame,
+    normalize_index_value_rows,
     resolve_reference_rate_update_window,
     upsert_reference_rate_indexes,
 )
@@ -247,6 +248,7 @@ def normalize_fred_observations(
     observations: Iterable[Mapping[str, Any]],
     *,
     index_identifier: str,
+    definition: FredReferenceRateDefinition | None = None,
 ) -> pd.DataFrame:
     """Normalize FRED percentage observations without filling missing dates."""
 
@@ -267,17 +269,28 @@ def normalize_fred_observations(
             raise FredReferenceRateError(
                 f"FRED observation for {index_identifier!r} is not finite."
             )
-        rows.append(
-            {
-                "time_index": observation.get("date"),
-                "index_identifier": index_identifier,
-                "rate": numeric_value / 100.0,
-            }
+        resolved_definition = definition or definitions_by_index_identifier().get(
+            index_identifier
         )
-    return normalize_reference_rate_rows(rows) if rows else empty_reference_rate_frame()
+        if resolved_definition is None:
+            raise FredReferenceRateError(
+                f"Missing FRED definition for Index {index_identifier!r}."
+            )
+        rows.append(
+            canonical_index_value_row(
+                time_index=observation.get("date"),
+                index_identifier=index_identifier,
+                value=numeric_value / 100.0,
+                unit="decimal",
+                metadata_json=resolved_definition.index.observation_metadata(
+                    source_quote=numeric_value
+                ),
+            )
+        )
+    return normalize_index_value_rows(rows) if rows else empty_index_values_frame()
 
 
-class FredReferenceRatesNode(ReferenceRateObservationsNode):
+class FredReferenceRatesNode(ReferenceRateIndexValuesNode):
     """Publish accepted FRED Treasury yields and the Fed target upper limit."""
 
     def __init__(
@@ -338,7 +351,7 @@ class FredReferenceRatesNode(ReferenceRateObservationsNode):
             runtime_end=self.runtime_end,
         )
         if window is None:
-            return empty_reference_rate_frame()
+            return empty_index_values_frame()
         observations = self.client.fetch_series_observations(
             definition.series_id,
             start_date=window.start_date,
@@ -347,6 +360,7 @@ class FredReferenceRatesNode(ReferenceRateObservationsNode):
         return normalize_fred_observations(
             observations,
             index_identifier=index_identifier,
+            definition=definition,
         )
 
 
@@ -356,20 +370,12 @@ def run_fred_reference_rates_update(
     api_key: str | None = None,
     api_key_secret_name: str = FRED_API_KEY_SECRET_NAME,
     validate_metadata: bool = True,
-    bootstrap_lookback_days: int = 90,
-    backfill_start: dt.datetime | str | None = None,
-    backfill_end: dt.datetime | str | None = None,
     runtime_end: dt.date | dt.datetime | str | pd.Timestamp | None = None,
     hash_namespace: str | None = None,
-    require_hash_namespace: bool = False,
     force_update: bool = True,
 ) -> None:
     """Attach runtime state, register FRED indexes, and execute the producer."""
 
-    if require_hash_namespace and not hash_namespace:
-        raise FredReferenceRateError(
-            "The first shared-backend smoke run requires an explicit hash namespace."
-        )
     selected = select_fred_reference_rate_definitions(index_identifiers)
 
     from valmer_connectors.instruments.bootstrap import bootstrap_runtime
@@ -381,9 +387,6 @@ def run_fred_reference_rates_update(
     )
     config = ReferenceRateObservationConfiguration(
         index_unique_identifiers=[item.index_identifier for item in selected],
-        bootstrap_lookback_days=bootstrap_lookback_days,
-        offset_start=backfill_start,
-        backfill_end=backfill_end,
     )
     node = FredReferenceRatesNode(
         config,

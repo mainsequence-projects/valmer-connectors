@@ -113,7 +113,7 @@ Detailed guides:
 
 ### Requirements
 
-- Python 3.11 or newer
+- CPython 3.13.x (the repository currently excludes Python 3.14)
 - A working MainSequence environment
 - Access to the Valmer artifact bucket and to the Valmer benchmark CSV endpoint
 
@@ -224,8 +224,8 @@ for MkDocs through `mkdocs.yml`.
 - `docs/markets.md`: AssetTable, ValmerAssetDetailsTable, and
   extension-library asset registration boundaries
 - `docs/pricing.md`: pricing hydration, reference indexes, and curve publication
-- `docs/reference-rate-observations.md`: FRED and Banxico analytical-rate
-  storage, smoke, backfill, scheduling, and verification workflow
+- `docs/reference-rate-observations.md`: canonical FRED, Banxico, and Valmer
+  daily Index-observation storage and verification workflow
 - `docs/instruments.md`: row-to-instrument mapping rules
 - `docs/metatable-query-optimization.md`: thin MetaTable projection reads and
   bulk pricing-details persistence behavior
@@ -233,6 +233,11 @@ for MkDocs through `mkdocs.yml`.
   contract for the local USD/MXN F-TIIE/SOFR cross-currency discount curve
 - `docs/implementation/curve-resolution-and-asset-patching-plan.md`: planned
   fix for Valmer curve/index bindings and forced pricing-details patch runs
+- `docs/implementation/valmer-curve-quote-index-pipeline-refactor.md`: executable
+  task for canonical FRED, Banxico, and Valmer observations plus the
+  dependency-backed TIIE, SOFR, and USD/MXN curve graph
+- `docs/implementation/python-3-13-mainsequence-5-upgrade-plan.md`: Python 3.13,
+  Main Sequence 5, Index-contract, migration, verification, and rollout task
 - `docs/agent-skills.md`: importing bundled Valmer Codex skills into host
   projects
 - `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up

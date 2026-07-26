@@ -1,11 +1,13 @@
-from valmer_connectors.data_nodes.reference_rate_observations import (
+from valmer_connectors.data_nodes.canonical_index_values import (
+    DailyIndexValuesNode,
+    DailyIndexValuesStorage,
+    ReferenceRateIndexValuesNode,
     ReferenceRateObservationConfiguration,
-    ReferenceRateObservationsNode,
-    ReferenceRateObservationsStorage,
 )
 
 __all__ = [
+    "DailyIndexValuesNode",
+    "DailyIndexValuesStorage",
+    "ReferenceRateIndexValuesNode",
     "ReferenceRateObservationConfiguration",
-    "ReferenceRateObservationsNode",
-    "ReferenceRateObservationsStorage",
 ]

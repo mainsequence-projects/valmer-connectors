@@ -366,67 +366,45 @@ build_qll_bond_from_row(...)
 That adapter converts one normalized Valmer source row into an `msm_pricing`
 instrument.
 
-## TIIE Curve Publication
+## Quote-Backed Curve Publication
 
-The active TIIE curve publication path is:
+Valmer source downloads belong only to the quote producers. The active curve
+builders read exact-date observations from `IndexValuesTS.1d`:
 
 ```text
-valmer-connectors curves update-tiie-irs-mxn
-    |
-    v
-bootstrap_runtime()
-    |
-    v
-configure_valmer_discount_curves_cadence()
-    |
-    v
-DiscountCurvesNode(
-    CurveConfig(curve_unique_identifier="VALMER_TIIE_OVERNIGHT")
-)
-    |
-    v
-set_curve_builder(build_tiie_irs_mxn_valmer)
-    |
-    v
-run(force_update=True)
+ValmerIrsMxnIndexValuesNode -> ValmerTiieDiscountCurveNode
+ValmerIrsUsdIndexValuesNode -> ValmerUsdSofrDiscountCurveNode
+
+ValmerIrsMxnIndexValuesNode
+  + ValmerTiieDiscountCurveNode
+  + ValmerUsdSofrDiscountCurveNode
+    -> ValmerUsdMxnCollateralDiscountCurveNode
 ```
 
-The curve writes to the canonical `msm_pricing.data_nodes.DiscountCurvesNode`
-storage. The old standalone Valmer TIIE curve DataNode is not an active
-publication path.
+TIIE uses the 15 persisted `tiie_ois` observations. SOFR uses the 14 persisted
+SOFR futures and 11 SOFR OIS observations. The complete USD producer also
+persists Fed Funds OIS and Fed Funds/SOFR basis history, but those rows are not
+SOFR helpers. XCCY consumes persisted USD/MXN spot, forward, and TIIE/SOFR basis
+observations plus the same-date persisted TIIE and SOFR curve key nodes.
 
-TIIE rows are built from Valmer `IRS_MXN_CURVE.csv`, not from a direct
-zero-rate CSV. The builder:
+Every quote-backed helper records typed Index provenance:
 
-- resolves the Valmer benchmark date through the same AJAX flow used by
-  `https://www.valmer.com.mx/en/`: open the homepage context, then parse the
-  `Indices_Benchmarks` date from `getInsumoVectorGubernamental.do`
-- compares that source date with the latest persisted
-  `DiscountCurvesStorage.time_index` for `VALMER_TIIE_OVERNIGHT`
-- downloads `IRS_MXN_CURVE.csv` only when the Valmer source date is newer than
-  the latest stored curve observation
-- includes only `Swap.<tenor>.MXN.FTIIE.1D/28D.BANXICO` source rows
-- excludes FX rows and MXN FTIIE/USD SOFR cross-currency rows
-- builds QuantLib `OISRateHelper` instruments against an FTIIE 1D overnight
-  index
-- exports the constructed curve as zero-rate points in `curve`, including an
-  implied 1D zero point
+```text
+source_reference.type = "index"
+source_reference.identifier = "VALMER_CURVE_QUOTE.<stable identity>"
+source_instrument_identifier = "<raw Valmer identifier>"
+```
 
-Each TIIE `key_nodes` entry follows the recommended `CurveKeyNode` shape and
-records the observed OIS par quote provenance:
-`instrument_type = overnight_indexed_swap`,
-`helper_type = ois_rate_helper`, `quote_type = par_swap_rate`,
-`quote_unit = decimal`, and `quote_side = mid`.
-The Valmer curve runner attaches a TIIE-specific key-node validator before the
-core `DiscountCurvesNode` compresses the provenance column.
+The key-node validator rejects Asset references and rejected top-level identity
+fields for these quote families. It also validates quote type/unit, source
+quote/unit, source date, conventions, and raw source identity before core
+`DiscountCurvesNode` compression.
 
-The 1D zero point in `curve` is implied by the bootstrapped OIS curve. It is
-not represented as a source key node unless a confirmed TIIE overnight anchor is
-added.
-
-No row metadata is populated; the core `DiscountCurvesNode` normalizer supplies
-the nullable storage `metadata_json` column as `None` when the backend contract
-requires it.
+Run the quote producers before curves when invoking the launchers manually;
+the named curve DataNodes declare the same ordering through `dependencies()`.
+The output remains canonical `DiscountCurvesStorage`, and the implied curve
+points are distinct from the persisted input observations and key-node audit
+provenance.
 
 ## MXN Government Bond Curve Publication
 
@@ -593,8 +571,8 @@ key_nodes
 ```
 
 The node is configured with `CurveConfig(curve_unique_identifier=...)`, but the
-builder frame uses `curve_identifier`. Do not emit legacy
-`curve_unique_identifier` in the builder output.
+builder frame uses `curve_identifier`. Do not emit the removed
+`curve_unique_identifier` field in the builder output.
 
 The emitted `curve` value is an uncompressed dictionary of zero-rate points
 keyed by days to maturity. The emitted `key_nodes` value is uncompressed

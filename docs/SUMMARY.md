@@ -14,8 +14,8 @@
   extension-library asset registration boundaries.
 - `docs/pricing.md`: pricing runtime bootstrap, target-bond hydration, and curve
   publication.
-- `docs/reference-rate-observations.md`: external FRED and Banxico analytical
-  rate storage, smoke, backfill, repair, scheduling, and verification workflow.
+- `docs/reference-rate-observations.md`: canonical FRED, Banxico, and Valmer
+  daily Index observations, repair, scheduling, and verification workflow.
 - `docs/instruments.md`: Valmer row-to-`msm_pricing` instrument mapping.
 - `docs/metatable-query-optimization.md`: current thin-projection MetaTable
   read contract for hot Valmer validation paths.
@@ -49,6 +49,12 @@
 - `docs/implementation/spread-analysis-dashboard-import-plan.md`: plan for
   importing only the spread-analysis Streamlit dashboard as a dashboard-owned
   Valmer example without adding new core library services.
+- `docs/implementation/valmer-curve-quote-index-pipeline-refactor.md`: current
+  implementation and verification task for canonical daily Index observations
+  and dependency-backed TIIE, SOFR, and USD/MXN curves.
+- `docs/implementation/python-3-13-mainsequence-5-upgrade-plan.md`: executable
+  runtime, Index-contract, migration, verification, and platform rollout plan
+  for Python 3.13 and Main Sequence 5.
 
 ## ADRs
 

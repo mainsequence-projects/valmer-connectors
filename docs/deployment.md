@@ -25,12 +25,14 @@ mainsequence project project_resource list 113 --path . --timeout 60
 mainsequence project images list 113 --timeout 60
 mainsequence markets portfolios list --timeout 60
 valmer-connectors runtime validate
+valmer-connectors reference-rates update-fred
+valmer-connectors reference-rates update-banxico-policy
+valmer-connectors quotes update-irs-mxn
+valmer-connectors quotes update-irs-usd
 valmer-connectors curves update-tiie-irs-mxn
 valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
-valmer-connectors reference-rates update-fred --smoke --hash-namespace adr-0009-fred-smoke
-valmer-connectors reference-rates update-banxico-policy --smoke --hash-namespace adr-0009-banxico-smoke
 ```
 
 Use the dashboard after deployment to confirm:
@@ -40,12 +42,14 @@ Use the dashboard after deployment to confirm:
 - curve publication health
 - external reference-rate coverage and freshness
 
-## Current Local Limitation
+## Current Platform Verification
 
-This pass could not execute the live MainSequence CLI flow from the sandboxed
-environment because the installed SDK tries to contact
-`https://main-sequence.app/orm/api/pods/job/get_job_startup_state/` during CLI
-startup.
-
-The exact commands above remain the required live verification sequence once
-networked access and valid auth are available.
+Revision `0004` and the historical row reconciliation are complete: 8,637 FRED
+and Banxico observations are present in `IndexValuesTS.1d`, and the obsolete
+physical table is gone. The quote/curve launch sequence is not yet live-verified
+because the local `tsorm_web_local` backend currently fails its Django system
+check for the unrelated missing `pod_manager.DeploymentRun` model and resets SDK
+requests. Restore that backend first, then run the commands above in order and
+inspect immediate no-op reruns. The repository job batch has not yet been
+synchronized; job creation, run status, and logs remain required before
+scheduled production readiness is claimed.

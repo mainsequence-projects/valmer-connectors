@@ -96,13 +96,13 @@ of relying on memory.
 - `index_type`
 - `display_name`
 - `description`
-- `provider`
 - `metadata_json`
 
 `IndexTypeTable` is the core index type registry. For fixed-income indexes,
 register `interest_rate` through `IndexType` before creating the index row.
 
-Do not add legacy Constant-name fields to `IndexTable`.
+Do not add provider, methodology-owner, or legacy Constant-name fields to
+`IndexTable`.
 
 `IndexConventionDetailsTable` is pricing-owned convention metadata keyed
 one-to-one by `index_uid`. It stores the convention dump needed to reconstruct
@@ -129,6 +129,14 @@ The binding uniqueness boundary is `(market_data_set_uid, binding_key)`, where
 `curve_uid` is not unique: multiple roles, indices, quote sides, source sets,
 or selector types may deliberately select the same curve. Do not infer a single
 owning index or selector from a `Curve` row.
+
+Floating-rate bonds and swaps use an explicit two-role curve contract. Resolve
+the floating index with `role_key="projection"` or `role_key="forwarding"`,
+and resolve discounting with a separate `role_key="discount"` binding. Those
+two role bindings may point to the same physical `curve_uid`, but both bindings
+must exist. There is no scalar curve shortcut and no hidden default that reuses
+projection as discounting. Do not use `Curve.curve_type` as a role check unless
+the caller supplied an explicit `expected_curve_type`.
 
 ## Runtime Usability Invariant
 
@@ -205,7 +213,6 @@ index = Index.upsert(
     unique_identifier="USD-SOFR-3M",
     index_type=INDEX_TYPE_INTEREST_RATE,
     display_name="USD SOFR 3M",
-    provider="example",
 )
 
 IndexConventionDetails.upsert(
@@ -224,9 +231,19 @@ IndexConventionDetails.upsert(
     source="example",
 )
 
-curve = Curve.upsert(
-    unique_identifier="USD-SOFR-3M-DISCOUNT",
-    display_name="USD SOFR 3M Discount Curve",
+projection_curve = Curve.upsert(
+    unique_identifier="USD-SOFR-3M-PROJECTION",
+    display_name="USD SOFR 3M Projection Curve",
+    curve_type="projection",
+    currency_code="USD",
+    quote_side="mid",
+    interpolation_method="log_linear_discount",
+    compounding="compounded_annual",
+    source="example",
+)
+discount_curve = Curve.upsert(
+    unique_identifier="USD-OIS-DISCOUNT",
+    display_name="USD OIS Discount Curve",
     curve_type="discount",
     currency_code="USD",
     quote_side="mid",
@@ -240,7 +257,19 @@ market_data_set = PricingMarketDataSet.upsert(
     display_name="Default pricing market data",
 )
 CurveBuildingDetails.upsert(
-    curve_uid=curve.uid,
+    curve_uid=projection_curve.uid,
+    builder_type="zero_rate_curve",
+    quote_convention="zero_rate",
+    rate_unit="decimal",
+    day_counter_code="Actual360",
+    calendar_code="TARGET",
+    interpolation_method="log_linear_discount",
+    compounding="simple",
+    extrapolation_policy="enabled",
+    source="example",
+)
+CurveBuildingDetails.upsert(
+    curve_uid=discount_curve.uid,
     builder_type="zero_rate_curve",
     quote_convention="zero_rate",
     rate_unit="decimal",
@@ -256,7 +285,15 @@ PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
     role_key="projection",
     index_uid=index.uid,
     quote_side="mid",
-    curve_uid=curve.uid,
+    curve_uid=projection_curve.uid,
+    source="example",
+)
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+    market_data_set_uid=market_data_set.uid,
+    role_key="discount",
+    index_uid=index.uid,
+    quote_side="mid",
+    curve_uid=discount_curve.uid,
     source="example",
 )
 PricingMarketDataSetBinding.upsert(
@@ -418,11 +455,18 @@ Rules:
 - The builder also returns `key_nodes` construction provenance. `key_nodes` is
   source-owned JSON object/list provenance. The node compresses it before
   persistence and read/API helpers return decompressed JSON. Prefer the
-  optional `CurveKeyNode` helper when the standard fields fit: `maturity_date`,
-  `asset_identifier`, `instrument_type`, `quote`, `quote_type`, `quote_unit`,
-  `quote_side`, and optional yield-native `yield` via the Python field
-  `yield_value`. Producers may add source-specific extensions and enforce them
-  through `normalize_key_nodes(...)` or `set_key_nodes_validator(...)`.
+  optional `CurveKeyNode` helper when the standard fields fit:
+  `source_reference`, `maturity_date`, `instrument_type`, `quote`,
+  `quote_type`, `quote_unit`, `quote_side`, and optional yield-native `yield`
+  via the Python field `yield_value`. `source_reference` contains `type`
+  (`asset` or `index`) plus the corresponding canonical unique identifier.
+  Fixed-income helper key nodes inherit `FixedIncomeCurveKeyNode`, so bond
+  quotes may use asset sources while swap, futures, deposit, FX, and basis quote
+  series may use index sources. Source identity is independent of helper type;
+  do not add OIS fields to futures or other helper models. Top-level
+  `asset_identifier` and `index_identifier` key-node fields are rejected.
+  Producers may add source-specific extensions and enforce them through
+  `normalize_key_nodes(...)` or `set_key_nodes_validator(...)`.
   Per-node `quote_type` and `quote_unit` describe raw source inputs;
   `CurveBuildingDetails` describes the final stored curve.
 - When a producer needs stricter source-specific semantics, override
@@ -524,12 +568,13 @@ An example should print or otherwise expose each step:
 
 1. Register asset/index/reference rows.
 2. Upsert `IndexConventionDetails`.
-3. Upsert `Curve`.
-4. Upsert `CurveBuildingDetails`.
+3. Upsert projection and discount `Curve` rows.
+4. Upsert `CurveBuildingDetails` for both curves.
 5. Upsert `PricingMarketDataSetCurveBinding` through
-   `upsert_index_curve_selection(...)` for index-scoped selections.
+   `upsert_index_curve_selection(...)` for `projection` and `discount`
+   index-scoped selections.
 6. Publish fixings.
-7. Publish discount curves.
+7. Publish projection and discount curve observations.
 8. Attach pricing storage tables and upsert the pricing market-data set plus
    `PricingMarketDataSetBinding` rows explicitly.
 9. Attach/load the instrument by asset.
@@ -551,7 +596,9 @@ Before finishing a change:
 - Curve-binding reviews distinguish selector uniqueness from curve sharing:
   duplicate `(market_data_set_uid, binding_key)` rows are invalid, but multiple
   bindings pointing at the same `curve_uid` are valid when the policy calls for
-  shared curve identity.
+  shared physical curve identity. Floating-rate projection and discount require
+  two explicit role bindings even when both bindings point to the same
+  `curve_uid`.
 - Runtime curve reads have a `PricingMarketDataSetBinding` for
   `PRICING_CONCEPT_DISCOUNT_CURVES`.
 - Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.

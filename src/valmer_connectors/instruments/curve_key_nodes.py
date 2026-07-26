@@ -15,6 +15,9 @@ from valmer_connectors.instruments.curve_bootstrap import (
     TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
     USD_SOFR_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
 )
+from valmer_connectors.instruments.curve_quote_indices import (
+    curve_quote_index_identifier_from_source,
+)
 from valmer_connectors.instruments.rates_curves import (
     VALMER_TIIE_CALENDAR_CODE,
     VALMER_TIIE_IRS_SOURCE_FILE,
@@ -45,10 +48,18 @@ def validate_tiie_ois_key_nodes(
             curve_identifier=curve_identifier,
             required_fragment=".MXN.FTIIE.1D/28D.BANXICO",
         )
+        _require_curve_quote_index_reference(node, curve_identifier=curve_identifier)
         _require_fields(
             node,
             curve_identifier=curve_identifier,
-            fields=("maturity_date", "asset_identifier", "tenor", "earliest_date", "pillar_date"),
+            fields=(
+                "maturity_date",
+                "source_instrument_identifier",
+                "source_observation_time",
+                "tenor",
+                "earliest_date",
+                "pillar_date",
+            ),
         )
         _require_date_fields(
             node,
@@ -180,16 +191,22 @@ def validate_usd_sofr_key_nodes(
     has_future = False
     has_ois = False
     for node in nodes:
-        asset_identifier = _require_string(
+        source_instrument_identifier = _require_string(
             node,
             curve_identifier=curve_identifier,
-            field="asset_identifier",
+            field="source_instrument_identifier",
         )
-        if "FEDFUNDS" in asset_identifier.upper():
+        if "FEDFUNDS" in source_instrument_identifier.upper():
             raise ValmerCurveKeyNodeError(
                 f"{curve_identifier} key_nodes must not include Fed Funds rows: "
-                f"{asset_identifier!r}."
+                f"{source_instrument_identifier!r}."
             )
+        _require_curve_quote_index_reference(node, curve_identifier=curve_identifier)
+        _require_string(
+            node,
+            curve_identifier=curve_identifier,
+            field="source_observation_time",
+        )
         _require_equal(
             node,
             curve_identifier=curve_identifier,
@@ -215,14 +232,14 @@ def validate_usd_sofr_key_nodes(
             _validate_usd_sofr_future_node(
                 node,
                 curve_identifier=curve_identifier,
-                asset_identifier=asset_identifier,
+                source_instrument_identifier=source_instrument_identifier,
             )
         elif instrument_type == "overnight_indexed_swap":
             has_ois = True
             _validate_usd_sofr_ois_node(
                 node,
                 curve_identifier=curve_identifier,
-                asset_identifier=asset_identifier,
+                source_instrument_identifier=source_instrument_identifier,
             )
         else:
             raise ValmerCurveKeyNodeError(
@@ -264,10 +281,15 @@ def validate_mxn_government_key_nodes(
                 f"{curve_identifier} key_nodes must satisfy the generic bond-helper "
                 f"contract: {exc}"
             ) from exc
+        _require_source_reference(
+            node,
+            curve_identifier=curve_identifier,
+            expected_type="asset",
+        )
         _require_fields(
             node,
             curve_identifier=curve_identifier,
-            fields=("maturity_date", "asset_identifier", "quote_source"),
+            fields=("maturity_date", "quote_source"),
         )
         _require_date_fields(node, curve_identifier=curve_identifier, fields=("maturity_date",))
         _require_equal(
@@ -346,6 +368,12 @@ def validate_usd_mxn_xccy_key_nodes(
     has_ccs = False
     for node in nodes:
         parse_cross_currency_key_node(node)
+        _require_curve_quote_index_reference(node, curve_identifier=curve_identifier)
+        _require_string(
+            node,
+            curve_identifier=curve_identifier,
+            field="source_observation_time",
+        )
         _require_equal(
             node,
             curve_identifier=curve_identifier,
@@ -397,7 +425,7 @@ def _validate_usd_mxn_fx_spot_node(
     _require_equal(
         node,
         curve_identifier=curve_identifier,
-        field="asset_identifier",
+        field="source_instrument_identifier",
         expected="FX.USD.MXN",
     )
     _require_equal(
@@ -658,15 +686,15 @@ def _validate_usd_sofr_future_node(
     node: Mapping[str, Any],
     *,
     curve_identifier: str,
-    asset_identifier: str,
+    source_instrument_identifier: str,
 ) -> None:
     if not (
-        asset_identifier.startswith("Future.USD.CME.CME SR1 EOM.")
-        or asset_identifier.startswith("Future.USD.CME.CME SR3 IMM.")
+        source_instrument_identifier.startswith("Future.USD.CME.CME SR1 EOM.")
+        or source_instrument_identifier.startswith("Future.USD.CME.CME SR3 IMM.")
     ):
         raise ValmerCurveKeyNodeError(
             f"{curve_identifier} SOFR future key node has unsupported source row "
-            f"{asset_identifier!r}."
+            f"{source_instrument_identifier!r}."
         )
     _require_equal(
         node,
@@ -716,17 +744,17 @@ def _validate_usd_sofr_ois_node(
     node: Mapping[str, Any],
     *,
     curve_identifier: str,
-    asset_identifier: str,
+    source_instrument_identifier: str,
 ) -> None:
     _require_source_family(
         node,
         curve_identifier=curve_identifier,
         required_fragment=".USD.SOFR.1D/1Y.SOFR",
     )
-    if "FEDFUNDS" in asset_identifier.upper():
+    if "FEDFUNDS" in source_instrument_identifier.upper():
         raise ValmerCurveKeyNodeError(
             f"{curve_identifier} SOFR OIS key node has unsupported Fed Funds row "
-            f"{asset_identifier!r}."
+            f"{source_instrument_identifier!r}."
         )
     _require_fields(node, curve_identifier=curve_identifier, fields=("tenor",))
     _require_equal(
@@ -928,16 +956,75 @@ def _require_source_family(
     curve_identifier: str,
     required_fragment: str,
 ) -> None:
-    asset_identifier = _require_string(
+    source_instrument_identifier = _require_string(
         node,
         curve_identifier=curve_identifier,
-        field="asset_identifier",
+        field="source_instrument_identifier",
     )
-    if required_fragment not in asset_identifier:
+    if required_fragment not in source_instrument_identifier:
         raise ValmerCurveKeyNodeError(
-            f"{curve_identifier} key node asset_identifier {asset_identifier!r} "
+            f"{curve_identifier} key node source_instrument_identifier "
+            f"{source_instrument_identifier!r} "
             f"must contain {required_fragment!r}."
         )
+
+
+def _require_curve_quote_index_reference(
+    node: Mapping[str, Any],
+    *,
+    curve_identifier: str,
+) -> str:
+    source_instrument_identifier = _require_string(
+        node,
+        curve_identifier=curve_identifier,
+        field="source_instrument_identifier",
+    )
+    source_identifier = _require_source_reference(
+        node,
+        curve_identifier=curve_identifier,
+        expected_type="index",
+    )
+    try:
+        expected_identifier = curve_quote_index_identifier_from_source(
+            source_instrument_identifier
+        )
+    except ValueError as exc:
+        raise ValmerCurveKeyNodeError(
+            f"{curve_identifier} key node has unsupported Valmer source "
+            f"{source_instrument_identifier!r}."
+        ) from exc
+    if source_identifier != expected_identifier:
+        raise ValmerCurveKeyNodeError(
+            f"{curve_identifier} key node source_reference identifier must be "
+            f"{expected_identifier!r}; got {source_identifier!r}."
+        )
+    return source_identifier
+
+
+def _require_source_reference(
+    node: Mapping[str, Any],
+    *,
+    curve_identifier: str,
+    expected_type: str,
+) -> str:
+    reference = node.get("source_reference")
+    if not isinstance(reference, Mapping):
+        raise ValmerCurveKeyNodeError(
+            f"{curve_identifier} key node field 'source_reference' must be an object."
+        )
+    source_type = reference.get("type")
+    if source_type != expected_type:
+        raise ValmerCurveKeyNodeError(
+            f"{curve_identifier} key node source_reference type must be "
+            f"{expected_type!r}; got {source_type!r}."
+        )
+    identifier = reference.get("identifier")
+    if not isinstance(identifier, str) or not identifier.strip():
+        raise ValmerCurveKeyNodeError(
+            f"{curve_identifier} key node source_reference identifier must be "
+            "a non-empty string."
+        )
+    return identifier
 
 
 def _require_fields(
@@ -1015,5 +1102,6 @@ __all__ = [
     "ValmerCurveKeyNodeError",
     "validate_mxn_government_key_nodes",
     "validate_tiie_ois_key_nodes",
+    "validate_usd_mxn_xccy_key_nodes",
     "validate_usd_sofr_key_nodes",
 ]

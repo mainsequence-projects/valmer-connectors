@@ -186,6 +186,44 @@
       "justMyCode": false
     },
     {
+      "name": "Valmer Quotes: Persist IRS MXN",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "quotes",
+        "update-irs-mxn"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "Valmer Quotes: Persist IRS USD",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "quotes",
+        "update-irs-usd"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
       "name": "Valmer Curve: Build TIIE Overnight OIS",
       "type": "python",
       "request": "launch",
@@ -234,17 +272,33 @@
       "justMyCode": false
     },
     {
-      "name": "FRED Reference Rates: Namespaced Smoke Update",
+      "name": "FRED Reference Rates: Update",
       "type": "python",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
       "module": "valmer_connectors.cli.main",
       "args": [
         "reference-rates",
-        "update-fred",
-        "--smoke",
-        "--hash-namespace",
-        "adr-0009-fred-smoke"
+        "update-fred"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "Banxico Policy Target: Update",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "valmer_connectors.cli.main",
+      "args": [
+        "reference-rates",
+        "update-banxico-policy"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",

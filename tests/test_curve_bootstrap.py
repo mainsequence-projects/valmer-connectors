@@ -4,8 +4,8 @@ from unittest.mock import Mock, patch
 from msm.constants import INDEX_TYPE_INTEREST_RATE
 from msm_pricing.instruments.json_codec import calendar_from_json
 
-from valmer_connectors.data_nodes.reference_rate_observations import (
-    ReferenceRateObservationsStorage,
+from valmer_connectors.data_nodes.canonical_index_values import (
+    DailyIndexValuesStorage,
 )
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.bootstrap import seed_static_defaults
@@ -744,7 +744,7 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             markets_models=[
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
-                ReferenceRateObservationsStorage,
+                DailyIndexValuesStorage,
             ],
             timeout=15,
             attach_runtime=True,

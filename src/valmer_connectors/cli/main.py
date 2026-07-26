@@ -99,6 +99,24 @@ def _curves_update_tiie_irs_mxn_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _quotes_update_irs_mxn_command(_args: argparse.Namespace) -> int:
+    from valmer_connectors.data_nodes.curve_quote_indices import (
+        run_valmer_irs_mxn_quote_update,
+    )
+
+    run_valmer_irs_mxn_quote_update()
+    return 0
+
+
+def _quotes_update_irs_usd_command(_args: argparse.Namespace) -> int:
+    from valmer_connectors.data_nodes.curve_quote_indices import (
+        run_valmer_irs_usd_quote_update,
+    )
+
+    run_valmer_irs_usd_quote_update()
+    return 0
+
+
 def _curves_update_usd_sofr_command(args: argparse.Namespace) -> int:
     from valmer_connectors.services.curve_update import run_usd_sofr_curve_update
 
@@ -148,12 +166,8 @@ def _reference_rates_update_fred_command(args: argparse.Namespace) -> int:
         index_identifiers=args.index_identifier or None,
         api_key_secret_name=args.api_key_secret_name,
         validate_metadata=not args.skip_metadata_validation,
-        bootstrap_lookback_days=args.bootstrap_lookback_days,
-        backfill_start=args.backfill_start,
-        backfill_end=args.backfill_end,
         runtime_end=args.end_date,
         hash_namespace=args.hash_namespace,
-        require_hash_namespace=args.smoke,
     )
     return 0
 
@@ -165,12 +179,8 @@ def _reference_rates_update_banxico_command(args: argparse.Namespace) -> int:
         index_identifiers=args.index_identifier or None,
         token_secret_name=args.token_secret_name,
         validate_metadata=not args.skip_metadata_validation,
-        bootstrap_lookback_days=args.bootstrap_lookback_days,
-        backfill_start=args.backfill_start,
-        backfill_end=args.backfill_end,
         runtime_end=args.end_date,
         hash_namespace=args.hash_namespace,
-        require_hash_namespace=args.smoke,
     )
     return 0
 
@@ -495,6 +505,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vector_update_parser.set_defaults(func=_vector_update_command)
 
+    quotes_parser = subcommands.add_parser(
+        "quotes", help="Persist Valmer curve-construction quotes as Index values."
+    )
+    quotes_subcommands = quotes_parser.add_subparsers(
+        dest="quotes_command",
+        required=True,
+    )
+    quotes_mxn_parser = quotes_subcommands.add_parser(
+        "update-irs-mxn",
+        help="Persist every recognized IRS_MXN_CURVE quote before curve construction.",
+    )
+    quotes_mxn_parser.set_defaults(func=_quotes_update_irs_mxn_command)
+    quotes_usd_parser = quotes_subcommands.add_parser(
+        "update-irs-usd",
+        help="Persist every recognized IRS_USD_CURVE quote before curve construction.",
+    )
+    quotes_usd_parser.set_defaults(func=_quotes_update_irs_usd_command)
+
     curves_parser = subcommands.add_parser("curves", help="Valmer curve commands.")
     curves_subcommands = curves_parser.add_subparsers(
         dest="curves_command",
@@ -502,7 +530,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     curves_update_parser = curves_subcommands.add_parser(
         "update-tiie-irs-mxn",
-        help="Run the Valmer TIIE overnight OIS curve update from IRS_MXN_CURVE.",
+        help="Run the dependency-backed Valmer TIIE overnight OIS curve update.",
     )
     curves_update_parser.add_argument(
         "--curve-identifier",
@@ -513,7 +541,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     curves_usd_sofr_parser = curves_subcommands.add_parser(
         "update-usd-sofr",
-        help="Run the Valmer USD SOFR overnight OIS curve update from IRS_USD_CURVE.",
+        help="Run the dependency-backed Valmer USD SOFR overnight OIS curve update.",
     )
     curves_usd_sofr_parser.add_argument(
         "--curve-identifier",
@@ -680,22 +708,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _add_reference_rate_window_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--bootstrap-lookback-days",
-        type=_positive_int,
-        default=90,
-        help="First-run calendar-day lookback. Defaults to 90 days.",
-    )
-    parser.add_argument(
-        "--backfill-start",
-        default=None,
-        help="Inclusive timezone-aware bounded-backfill start timestamp.",
-    )
-    parser.add_argument(
-        "--backfill-end",
-        default=None,
-        help="Inclusive timezone-aware bounded-backfill end timestamp.",
-    )
-    parser.add_argument(
         "--end-date",
         default=None,
         help="Optional runtime request end date. Normal jobs default to yesterday UTC.",
@@ -704,11 +716,6 @@ def _add_reference_rate_window_arguments(parser: argparse.ArgumentParser) -> Non
         "--hash-namespace",
         default=None,
         help="DataNode hash namespace for an isolated shared-backend validation run.",
-    )
-    parser.add_argument(
-        "--smoke",
-        action="store_true",
-        help="Require an explicit hash namespace for the initial 90-day smoke run.",
     )
     parser.add_argument(
         "--skip-metadata-validation",

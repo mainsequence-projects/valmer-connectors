@@ -1,40 +1,57 @@
 # Open Tasks
 
-## Complete ADR 0009 live verification
+## Restore the local platform API and complete the canonical pipeline run
 
-- Scope: run the isolated Banxico smoke update with an explicit hash namespace.
-  Owning skills: `mainsequence-data-nodes` and
-  `mainsequence-markets-asset-indexed-data-nodes`. Expected output: observations for
-  the configured Banxico policy index with decimal rates and no filled source gaps.
-  Evidence: a successful update log plus queried storage rows for the identity.
-- Scope: execute the documented bounded backfill and then normal incremental updates.
-  Owning skill: `mainsequence-data-nodes`. Expected output: the requested historical
-  range followed by stable normal producer identity. Evidence: storage bounds and
-  per-identity progress from update logs or platform inspection.
-- Scope: synchronize `scheduled_jobs.yaml` and verify both reference-rate jobs.
-  Owning skill: `mainsequence-orchestration-and-releases`. Expected artifact: enabled
-  weekday FRED and Banxico jobs using the normal incremental scripts. Evidence:
-  platform job configuration, one successful run per job, and corresponding logs.
+- Scope: restore `tsorm_web_local` without changing this repository's data
+  contracts, then execute FRED, Banxico, IRS MXN quotes, IRS USD quotes, TIIE,
+  SOFR, USD/MXN XCCY, and MXN government curve launchers in that order. Owning
+  skills: `mainsequence-data-nodes`,
+  `mainsequence-markets-derived-index-workflow`, and
+  `mainsequence-markets-fixed-income-curve-building`. Expected output: all 81
+  current Valmer quote observations and all four deleted curve families are
+  republished through normal typed DataNodes. Evidence: successful command
+  exits, exact-date platform reads, typed Index source-reference reconciliation
+  for every quote-backed key node, Asset reconciliation for government helpers,
+  and immediate second normal runs with no duplicate keys.
+- Current blocker: the unrelated local backend checkout fails Django system
+  checks because `pod_manager.DeploymentRun` is missing and resets requests on
+  port 8000. Do not bypass the DataNodes with direct database inserts.
 
-## Assess SDK / backend read-query mismatch
+## Retire the obsolete reference-rate catalog row
 
-- Scope: classify the HTTP 415 returned by
-  `TimeIndexMetaTable.run_query(...)` when SDK `4.4.32` sends the documented
-  `text/plain` body to the local backend.
-  Owning skill: `doc-bug-auditor`. Expected decision: identify whether the backend
-  parser or SDK request contract must change and prepare a concrete upstream fix.
-  Evidence: reproduce the 415 against MetaTable UID
-  `3d112772-65e6-4fa7-9610-cc455c06aa0d` while the standard time-series read API
-  continues to return the same persisted rows.
+- Scope: remove protected catalog UID
+  `3d112772-65e6-4fa7-9610-cc455c06aa0d` using the supported Alembic-provider
+  retirement/reset operation. Owning skills: `mainsequence-metatable-migrations`
+  and `doc-bug-auditor`. Expected output: no obsolete catalog entry; the
+  canonical `IndexValuesTS.1d` entry remains active with all 8,637 migrated
+  observations. Evidence: catalog lookup returns no obsolete UID, canonical
+  per-index counts/date bounds/sums remain unchanged, and migration revision is
+  still `0004`.
+- Current blocker: SDK 4.4.32 `mainsequence data-node delete` exposes
+  `override_protection` but not the backend-required
+  `override_schema_management_protection` confirmed cascade option.
 
-## Completed ADR 0009 platform work
+## Schedule and verify the data jobs
 
-- Project MetaTable migration `0003` was applied and finalized in the authenticated
-  project on 2026-07-18. The reference-rate MetaTable UID is
-  `3d112772-65e6-4fa7-9610-cc455c06aa0d`.
-- The namespaced FRED smoke launch `adr-0009-fred-smoke` completed successfully on
-  2026-07-19 using the project-readable `FRED_API_KEY` Secret. Updater hash
-  `fredreferenceratesnode_55787e85c3f036d0c36786691e56589e` uploaded 334 rows.
-- Standard time-series reads verified all five FRED identities: 61 rows for each
-  Treasury series through `2026-07-16`, plus 90 Fed target-upper rows through
-  `2026-07-18`. All five series begin at `2026-04-20`.
+- Scope: synchronize `scheduled_jobs.yaml` after the pipeline live run. Owning
+  skill: `mainsequence-orchestration-and-releases`. Expected output: weekday
+  quote jobs at 13:00/13:05 UTC, TIIE/SOFR/XCCY at 13:10/13:15/13:20,
+  government curve at 13:25, plus FRED, Banxico, vector, and fixings coverage.
+  Evidence: job configuration, one successful run per data job, ordered logs,
+  and platform reads proving the expected published dates.
+
+## Assess project-jobs CLI project resolution
+
+- Scope: classify why `mainsequence project jobs list --path .` cannot obtain a
+  backend row id for project UID `64338319-bd19-48db-bf14-945d8debb9be` while
+  direct project-UID filtering works. Owning skill: `doc-bug-auditor`. Expected
+  output: concrete SDK or backend fix recommendation. Evidence: CLI reproduction
+  and comparison with the direct SDK response.
+
+## Assess SDK/backend raw-query mismatch
+
+- Scope: classify the HTTP 415 returned by documented
+  `TimeIndexMetaTable.run_query(...)` requests with `text/plain`. Owning skill:
+  `doc-bug-auditor`. Expected output: concrete SDK or backend request-contract
+  fix recommendation. Evidence: reproduce against a live MetaTable while the
+  governed compiled-SQL operation returns the expected rows.

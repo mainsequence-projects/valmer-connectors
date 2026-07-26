@@ -27,6 +27,9 @@ from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_TIIE_OVERNIGHT_CURVE_DEFINITION,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION,
 )
+from valmer_connectors.instruments.curve_quote_indices import (
+    curve_quote_source_reference,
+)
 from valmer_connectors.instruments.curve_reconstruction import (
     resolve_valmer_overnight_index,
 )
@@ -326,8 +329,37 @@ def build_tiie_irs_mxn_curve_frame(
             "IRS_MXN_CURVE.csv has no valuation-date column; pass valuation_date explicitly."
         )
 
+    return _build_tiie_curve_frame_from_source_frame(
+        read_tiie_irs_mxn_csv(content),
+        curve_identifier=curve_identifier,
+        valuation_date=valuation_date,
+        overnight_rate=overnight_rate,
+    )
+
+
+def build_tiie_curve_frame_from_quote_snapshot(
+    quote_snapshot: pd.DataFrame,
+    *,
+    curve_identifier: str,
+    valuation_date: Any,
+) -> pd.DataFrame:
+    """Bootstrap TIIE strictly from persisted canonical Index observations."""
+
+    return _build_tiie_curve_frame_from_source_frame(
+        _quote_snapshot_to_source_frame(quote_snapshot, families={"tiie_ois"}),
+        curve_identifier=curve_identifier,
+        valuation_date=valuation_date,
+    )
+
+
+def _build_tiie_curve_frame_from_source_frame(
+    source_frame: pd.DataFrame,
+    *,
+    curve_identifier: str,
+    valuation_date: Any,
+    overnight_rate: float | None = None,
+) -> pd.DataFrame:
     valuation_ts = _parse_valuation_date(valuation_date)
-    source_frame = read_tiie_irs_mxn_csv(content)
     domestic_quotes = _select_domestic_tiie_ois_quotes(source_frame)
 
     key_nodes = _build_tiie_key_nodes(domestic_quotes)
@@ -374,12 +406,42 @@ def build_usd_sofr_curve_frame(
             "IRS_USD_CURVE.csv has no valuation-date column; pass valuation_date explicitly."
         )
 
+    return _build_usd_sofr_curve_frame_from_source_frame(
+        read_usd_sofr_irs_csv(content),
+        curve_identifier=curve_identifier,
+        valuation_date=valuation_date,
+    )
+
+
+def build_usd_sofr_curve_frame_from_quote_snapshot(
+    quote_snapshot: pd.DataFrame,
+    *,
+    curve_identifier: str,
+    valuation_date: Any,
+) -> pd.DataFrame:
+    """Bootstrap SOFR strictly from persisted futures and OIS Index observations."""
+
+    return _build_usd_sofr_curve_frame_from_source_frame(
+        _quote_snapshot_to_source_frame(
+            quote_snapshot,
+            families={"sofr_future", "sofr_ois"},
+        ),
+        curve_identifier=curve_identifier,
+        valuation_date=valuation_date,
+    )
+
+
+def _build_usd_sofr_curve_frame_from_source_frame(
+    source_frame: pd.DataFrame,
+    *,
+    curve_identifier: str,
+    valuation_date: Any,
+) -> pd.DataFrame:
     valuation_ts = _parse_valuation_date(
         valuation_date,
         error_class=ValmerUsdSofrCurveError,
         source_name="Valmer USD SOFR",
     )
-    source_frame = read_usd_sofr_irs_csv(content)
     future_quotes, ois_quotes = _select_usd_sofr_quotes(source_frame)
 
     candidate_key_nodes = _build_usd_sofr_key_nodes(future_quotes, ois_quotes)
@@ -470,104 +532,89 @@ def build_usd_mxn_xccy_curve_frame(
     ).set_index(["time_index", "curve_identifier"])
 
 
-def build_tiie_irs_mxn_valmer(
+def build_usd_mxn_xccy_curve_frame_from_quote_snapshot(
+    quote_snapshot: pd.DataFrame,
     *,
-    update_statistics,
-    curve_identifier: str,
-    base_node_curve_points=None,
+    tiie_curve_key_nodes: list[dict[str, Any]],
+    usd_sofr_curve_key_nodes: list[dict[str, Any]],
+    curve_identifier: str = VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+    valuation_date: Any,
 ) -> pd.DataFrame:
-    _ = base_node_curve_points
-    valuation_date = parse_valmer_benchmark_date(fetch_valmer_benchmark_date_content())
-    last_update = _last_curve_update_time(update_statistics, curve_identifier)
-    if last_update is not None and valuation_date <= last_update:
-        return _empty_curve_frame()
+    """Build XCCY from persisted quotes and exact-date upstream curve observations."""
 
-    curve_response = requests.get(VALMER_TIIE_IRS_MXN_URL, timeout=30)
-    curve_response.raise_for_status()
-    return build_tiie_irs_mxn_curve_frame(
-        curve_response.content,
-        curve_identifier=curve_identifier,
-        valuation_date=valuation_date,
+    valuation_ts = _parse_valuation_date(
+        valuation_date,
+        error_class=ValmerUsdMxnXccyCurveError,
+        source_name="Valmer USD/MXN cross-currency",
     )
-
-
-def build_usd_sofr_valmer(
-    *,
-    update_statistics,
-    curve_identifier: str,
-    base_node_curve_points=None,
-) -> pd.DataFrame:
-    _ = base_node_curve_points
-    valuation_date = parse_valmer_benchmark_date(
-        fetch_valmer_benchmark_date_content(),
-        error_class=ValmerUsdSofrCurveError,
+    source_frame = _quote_snapshot_to_source_frame(
+        quote_snapshot,
+        families={"fx_spot", "fx_forward", "tiie_sofr_xccy_basis"},
     )
-    last_update = _last_curve_update_time(
-        update_statistics,
-        curve_identifier,
-        error_class=ValmerUsdSofrCurveError,
+    spot_quote, fx_swap_quotes, basis_quotes = _select_usd_mxn_xccy_quotes(
+        source_frame
     )
-    if last_update is not None and valuation_date <= last_update:
-        return _empty_curve_frame()
-
-    curve_response = requests.get(VALMER_USD_SOFR_IRS_URL, timeout=30)
-    curve_response.raise_for_status()
-    return build_usd_sofr_curve_frame(
-        curve_response.content,
-        curve_identifier=curve_identifier,
-        valuation_date=valuation_date,
-    )
-
-
-def build_usd_mxn_xccy_valmer(
-    *,
-    update_statistics,
-    curve_identifier: str,
-    base_node_curve_points=None,
-) -> pd.DataFrame:
-    _ = base_node_curve_points
-    valuation_date = parse_valmer_benchmark_date(
-        fetch_valmer_benchmark_date_content(),
+    tiie_projection_curve = _reconstruct_valmer_curve_term_structure(
+        tiie_curve_key_nodes,
+        valuation_ts=valuation_ts,
         error_class=ValmerUsdMxnXccyCurveError,
     )
-    _ = update_statistics
-
-    mxn_curve_response = requests.get(VALMER_USD_MXN_XCCY_IRS_MXN_URL, timeout=30)
-    mxn_curve_response.raise_for_status()
-    usd_curve_response = requests.get(VALMER_USD_SOFR_IRS_URL, timeout=30)
-    usd_curve_response.raise_for_status()
-    return build_usd_mxn_xccy_curve_frame(
-        mxn_curve_response.content,
-        usd_sofr_curve_content=usd_curve_response.content,
-        curve_identifier=curve_identifier,
-        valuation_date=valuation_date,
+    usd_sofr_curve = _reconstruct_valmer_curve_term_structure(
+        usd_sofr_curve_key_nodes,
+        valuation_ts=valuation_ts,
+        error_class=ValmerUsdMxnXccyCurveError,
     )
-
-
-def _last_curve_update_time(
-    update_statistics,
-    curve_identifier: str,
-    *,
-    error_class: type[ValueError] = ValmerTiieCurveError,
-) -> pd.Timestamp | None:
-    getter = getattr(update_statistics, "get_last_update_for_identity", None)
-    if not callable(getter):
-        return None
-    last_update = getter(curve_identifier)
-    if last_update is None:
-        return None
-    return _parse_valuation_date(last_update, error_class=error_class)
-
-
-def _empty_curve_frame() -> pd.DataFrame:
+    curve, key_nodes = _build_usd_mxn_xccy_curve_and_key_nodes(
+        spot_quote=spot_quote,
+        fx_swap_quotes=fx_swap_quotes,
+        basis_quotes=basis_quotes,
+        valuation_ts=valuation_ts,
+        tiie_projection_curve=tiie_projection_curve,
+        usd_sofr_curve=usd_sofr_curve,
+    )
+    curve_points = _export_zero_rate_points(
+        curve,
+        valuation_ts=valuation_ts,
+        node_days=VALMER_USD_MXN_XCCY_IMPLIED_FRONT_DAYS,
+        error_class=ValmerUsdMxnXccyCurveError,
+    )
     return pd.DataFrame(
-        columns=[
-            "time_index",
-            "curve_identifier",
-            "curve",
-            "key_nodes",
+        [
+            {
+                "time_index": valuation_ts,
+                "curve_identifier": curve_identifier,
+                "curve": curve_points,
+                "key_nodes": key_nodes,
+            }
         ]
     ).set_index(["time_index", "curve_identifier"])
+
+
+def _quote_snapshot_to_source_frame(
+    quote_snapshot: pd.DataFrame,
+    *,
+    families: set[str],
+) -> pd.DataFrame:
+    working = quote_snapshot.reset_index().copy()
+    if "source_family" not in working:
+        working["source_family"] = working["metadata_json"].map(
+            lambda value: value.get("source_family") if isinstance(value, dict) else None
+        )
+    working = working.loc[working["source_family"].isin(families)].copy()
+    if working.empty:
+        raise ValueError(f"Persisted quote snapshot has no rows for {sorted(families)!r}.")
+    rows = []
+    for row in working.itertuples(index=False):
+        metadata = row.metadata_json
+        if not isinstance(metadata, dict):
+            raise ValueError("Persisted quote observation metadata_json must be an object.")
+        rows.append(
+            {
+                "instrument_identifier": metadata["source_instrument_identifier"],
+                "quote": metadata["source_quote"],
+            }
+        )
+    return pd.DataFrame(rows, columns=VALMER_TIIE_IRS_MXN_COLUMNS)
 
 
 def _select_domestic_tiie_ois_quotes(source_frame: pd.DataFrame) -> list[ValmerIrsMxnQuote]:
@@ -886,6 +933,7 @@ def _build_usd_mxn_xccy_curve_and_key_nodes(
         helper_key_nodes.extend(_build_usd_mxn_xccy_basis_key_node(quote) for quote in basis_quotes)
         key_nodes = [_build_usd_mxn_fx_spot_key_node(spot_quote, valuation_ts)]
         key_nodes.extend(helper_key_nodes)
+        _stamp_key_nodes_source_observation_time(key_nodes, valuation_ts=valuation_ts)
         result = reconstruct_curve_result_from_key_nodes(
             key_nodes,
             valuation_date=valuation_date,
@@ -951,7 +999,8 @@ def _build_usd_mxn_fx_spot_key_node(
     valuation_ts: pd.Timestamp,
 ) -> dict[str, Any]:
     return {
-        "asset_identifier": quote.instrument_identifier,
+        "source_reference": curve_quote_source_reference(quote.instrument_identifier),
+        "source_instrument_identifier": quote.instrument_identifier,
         "maturity_date": valuation_ts.date().isoformat(),
         "instrument_type": "fx_spot",
         "helper_type": "fx_spot",
@@ -971,7 +1020,8 @@ def _build_usd_mxn_fx_swap_key_node(
     spot_quote: ValmerUsdMxnFxSpotQuote,
 ) -> dict[str, Any]:
     return {
-        "asset_identifier": quote.instrument_identifier,
+        "source_reference": curve_quote_source_reference(quote.instrument_identifier),
+        "source_instrument_identifier": quote.instrument_identifier,
         "instrument_type": "fx_swap",
         "helper_type": "fx_swap_rate_helper",
         "quote": quote.forward_points,
@@ -1001,7 +1051,8 @@ def _build_usd_mxn_xccy_basis_key_node(
     quote: ValmerUsdMxnXccyBasisQuote,
 ) -> dict[str, Any]:
     return {
-        "asset_identifier": quote.instrument_identifier,
+        "source_reference": curve_quote_source_reference(quote.instrument_identifier),
+        "source_instrument_identifier": quote.instrument_identifier,
         "instrument_type": "cross_currency_basis_swap",
         "helper_type": "const_notional_cross_currency_basis_swap_rate_helper",
         "quote": quote.basis_decimal,
@@ -1032,7 +1083,8 @@ def _build_usd_mxn_xccy_basis_key_node(
 
 def _build_tiie_ois_key_node(quote: ValmerIrsMxnQuote) -> dict[str, Any]:
     return {
-        "asset_identifier": quote.instrument_identifier,
+        "source_reference": curve_quote_source_reference(quote.instrument_identifier),
+        "source_instrument_identifier": quote.instrument_identifier,
         "instrument_type": "overnight_indexed_swap",
         "helper_type": "ois_rate_helper",
         "quote": quote.quote_decimal,
@@ -1065,7 +1117,11 @@ def _build_tiie_ois_key_node(quote: ValmerIrsMxnQuote) -> dict[str, Any]:
 
 def _build_tiie_overnight_deposit_key_node(overnight_rate: float) -> dict[str, Any]:
     return {
-        "asset_identifier": "TIIE_OVERNIGHT_DEPOSIT_1D",
+        "source_reference": {
+            "type": "index",
+            "identifier": TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
+        },
+        "source_instrument_identifier": "TIIE_OVERNIGHT_DEPOSIT_1D",
         "instrument_type": "overnight_deposit",
         "helper_type": "overnight_deposit_helper",
         "quote": overnight_rate,
@@ -1084,7 +1140,8 @@ def _build_tiie_overnight_deposit_key_node(overnight_rate: float) -> dict[str, A
 
 def _build_usd_sofr_future_key_node(quote: ValmerUsdSofrFutureQuote) -> dict[str, Any]:
     return {
-        "asset_identifier": quote.instrument_identifier,
+        "source_reference": curve_quote_source_reference(quote.instrument_identifier),
+        "source_instrument_identifier": quote.instrument_identifier,
         "instrument_type": "sofr_future",
         "helper_type": "sofr_future_rate_helper",
         "quote": quote.source_price,
@@ -1107,7 +1164,8 @@ def _build_usd_sofr_future_key_node(quote: ValmerUsdSofrFutureQuote) -> dict[str
 
 def _build_usd_sofr_ois_key_node(quote: ValmerUsdSofrOisQuote) -> dict[str, Any]:
     return {
-        "asset_identifier": quote.instrument_identifier,
+        "source_reference": curve_quote_source_reference(quote.instrument_identifier),
+        "source_instrument_identifier": quote.instrument_identifier,
         "instrument_type": "overnight_indexed_swap",
         "helper_type": "ois_rate_helper",
         "quote": quote.quote_decimal,
@@ -1144,6 +1202,7 @@ def _enrich_key_nodes_with_helper_dates(
     valuation_ts: pd.Timestamp,
     error_class: type[ValueError],
 ) -> None:
+    _stamp_key_nodes_source_observation_time(key_nodes, valuation_ts=valuation_ts)
     ql = _quantlib()
     valuation_date = _ql_date(valuation_ts)
     previous_evaluation_date = ql.Settings.instance().evaluationDate
@@ -1162,6 +1221,16 @@ def _enrich_key_nodes_with_helper_dates(
         raise error_class("Unable to build Valmer curve helpers from key nodes.") from exc
     finally:
         ql.Settings.instance().evaluationDate = previous_evaluation_date
+
+
+def _stamp_key_nodes_source_observation_time(
+    key_nodes: list[dict[str, Any]],
+    *,
+    valuation_ts: pd.Timestamp,
+) -> None:
+    source_observation_time = valuation_ts.isoformat()
+    for node in key_nodes:
+        node["source_observation_time"] = source_observation_time
 
 
 def _filter_usable_usd_sofr_key_nodes(

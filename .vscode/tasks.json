@@ -2,21 +2,15 @@
   "version": "0.0.1",
   "tasks": [
       {
-        "label": "Create .venv (matching pyproject)",
+        "label": "Create .venv (Python 3.13)",
         "type": "shell",
-        "command": "bash -lc 'for v in python3.11 python3.10 python3; do command -v $v >/dev/null && PYBIN=$v && break; done; ${PYBIN:-python} -m venv .venv'",
+        "command": "uv venv --python 3.13 ${workspaceFolder}/.venv",
         "problemMatcher": []
       },
       {
-        "label": "Install uv",
+        "label": "Sync locked environment (Python 3.13)",
         "type": "shell",
-        "command": "${workspaceFolder}/.venv/bin/python -m pip install uv",
-        "problemMatcher": []
-      },
-      {
-        "label": "Install requirements (using uv)",
-        "type": "shell",
-        "command": "${workspaceFolder}/.venv/bin/uv pip install -r ${workspaceFolder}/requirements.txt",
+        "command": "uv sync --locked --python 3.13",
         "problemMatcher": []
       },
       {
@@ -35,9 +29,8 @@
       {
         "label": "Setup environment",
         "dependsOn": [
-          "Create .venv (matching pyproject)",
-          "Install uv",
-          "Install requirements (using uv)"
+          "Create .venv (Python 3.13)",
+          "Sync locked environment (Python 3.13)"
         ],
         "dependsOrder": "sequence",
         "problemMatcher": []

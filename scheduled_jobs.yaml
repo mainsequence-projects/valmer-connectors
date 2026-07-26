@@ -19,7 +19,34 @@ jobs:
         type: crontab
         expression: "10 13 * * 1-5"
   - name: valmer-tiie-zero-curve-refresh
-    execution_path: scripts/update_tiie_zero_curve.py
+    execution_path: scripts/update_valmer_tiie_curve.py
+    spot: false
+    cpu_request: 0.50
+    memory_request: 1.00
+    task_schedule:
+      schedule:
+        type: crontab
+        expression: "10 13 * * 1-5"
+  - name: valmer-irs-mxn-quotes-refresh
+    execution_path: scripts/update_valmer_irs_mxn_quotes.py
+    spot: false
+    cpu_request: 0.50
+    memory_request: 1.00
+    task_schedule:
+      schedule:
+        type: crontab
+        expression: "0 13 * * 1-5"
+  - name: valmer-irs-usd-quotes-refresh
+    execution_path: scripts/update_valmer_irs_usd_quotes.py
+    spot: false
+    cpu_request: 0.50
+    memory_request: 1.00
+    task_schedule:
+      schedule:
+        type: crontab
+        expression: "5 13 * * 1-5"
+  - name: valmer-usd-sofr-curve-refresh
+    execution_path: scripts/update_valmer_usd_sofr_curve.py
     spot: false
     cpu_request: 0.50
     memory_request: 1.00
@@ -27,6 +54,24 @@ jobs:
       schedule:
         type: crontab
         expression: "15 13 * * 1-5"
+  - name: valmer-usd-mxn-xccy-curve-refresh
+    execution_path: scripts/update_valmer_usd_mxn_xccy_curve.py
+    spot: false
+    cpu_request: 0.50
+    memory_request: 1.00
+    task_schedule:
+      schedule:
+        type: crontab
+        expression: "20 13 * * 1-5"
+  - name: valmer-mxn-government-curve-refresh
+    execution_path: scripts/update_valmer_mxn_government_curve.py
+    spot: false
+    cpu_request: 0.50
+    memory_request: 1.00
+    task_schedule:
+      schedule:
+        type: crontab
+        expression: "25 13 * * 1-5"
   - name: banxico-policy-target-refresh
     execution_path: scripts/update_banxico_policy_rates.py
     spot: false

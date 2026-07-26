@@ -9,6 +9,16 @@ import structlog
 from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
 
 from mainsequence.client import UpdateStatistics
+from valmer_connectors.data_nodes.canonical_index_values import (
+    DailyIndexValuesStorage,
+)
+from valmer_connectors.data_nodes.curve_building import (
+    ValmerQuoteBackedCurveConfig,
+    ValmerTiieDiscountCurveNode,
+    ValmerUsdMxnCollateralDiscountCurveNode,
+    ValmerUsdSofrDiscountCurveNode,
+    ValmerXccyCurveConfig,
+)
 from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
@@ -27,11 +37,6 @@ from valmer_connectors.instruments.mexican_government_bond_curve import (
     MexicanGovernmentBondCurveError,
     build_mxn_government_curve_frame,
     select_mxn_government_bootstrap_instruments,
-)
-from valmer_connectors.instruments.rates_curves import (
-    build_tiie_irs_mxn_valmer,
-    build_usd_mxn_xccy_valmer,
-    build_usd_sofr_valmer,
 )
 
 CurveBuilder = Callable[..., pd.DataFrame]
@@ -151,11 +156,15 @@ def run_tiie_irs_mxn_curve_update(
 ) -> None:
     """Publish the Valmer TIIE overnight OIS curve from IRS_MXN_CURVE."""
 
-    _run_valmer_discount_curve_update(
-        curve_identifier=curve_identifier,
-        curve_builder=build_tiie_irs_mxn_valmer,
-        key_nodes_validator=validate_tiie_ois_key_nodes,
-    )
+    bootstrap_runtime()
+    configure_valmer_discount_curves_cadence()
+    ValmerTiieDiscountCurveNode(
+        curve_config=ValmerQuoteBackedCurveConfig(
+            curve_unique_identifier=curve_identifier,
+            quote_storage_table=DailyIndexValuesStorage,
+            source_families=("tiie_ois",),
+        )
+    ).run(force_update=True)
 
 
 def run_usd_sofr_curve_update(
@@ -164,11 +173,15 @@ def run_usd_sofr_curve_update(
 ) -> None:
     """Publish the Valmer USD SOFR overnight OIS curve from IRS_USD_CURVE."""
 
-    _run_valmer_discount_curve_update(
-        curve_identifier=curve_identifier,
-        curve_builder=build_usd_sofr_valmer,
-        key_nodes_validator=validate_usd_sofr_key_nodes,
-    )
+    bootstrap_runtime()
+    configure_valmer_discount_curves_cadence()
+    ValmerUsdSofrDiscountCurveNode(
+        curve_config=ValmerQuoteBackedCurveConfig(
+            curve_unique_identifier=curve_identifier,
+            quote_storage_table=DailyIndexValuesStorage,
+            source_families=("sofr_future", "sofr_ois"),
+        )
+    ).run(force_update=True)
 
 
 def run_usd_mxn_xccy_curve_update(
@@ -179,13 +192,23 @@ def run_usd_mxn_xccy_curve_update(
 ) -> None:
     """Publish the Valmer USD/MXN F-TIIE/SOFR cross-currency curve."""
 
-    _run_valmer_discount_curve_update(
-        curve_identifier=curve_identifier,
-        curve_builder=build_usd_mxn_xccy_valmer,
-        key_nodes_validator=validate_usd_mxn_xccy_key_nodes,
+    bootstrap_runtime()
+    configure_valmer_discount_curves_cadence()
+    node = ValmerUsdMxnCollateralDiscountCurveNode(
+        curve_config=ValmerXccyCurveConfig(
+            curve_unique_identifier=curve_identifier,
+            quote_storage_table=DailyIndexValuesStorage,
+            curve_storage_table=DiscountCurvesNode._required_storage_table(),
+            source_families=("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),
+            tiie_curve_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+            sofr_curve_identifier=VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
+        ),
         hash_namespace=hash_namespace,
-        rebuild_current=rebuild_current,
     )
+    run_kwargs = {"force_update": True}
+    if rebuild_current:
+        run_kwargs["override_update_stats"] = UpdateStatistics.return_empty()
+    node.run(**run_kwargs)
 
 
 def run_mxn_government_curve_update(

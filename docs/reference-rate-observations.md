@@ -1,13 +1,28 @@
-# External Reference-Rate Observations
+# Canonical Daily Index Observations
 
-This project publishes six externally supplied analytical rates through
-`valmer_connectors.reference_rate_observations`. The table is separate from
-pricing `IndexFixingsStorage`: Treasury constant-maturity yields and policy
-targets are analytical observations, not coupon or swap fixings.
+FRED, Banxico, and Valmer curve quotes are published as daily `Index` values in
+`IndexValuesTS.1d`. Treasury yields and policy targets are analytical market
+observations, while Valmer par rates, basis spreads, futures prices, FX spot,
+and forward points are curve inputs. None of them is stored as an Asset price or
+pricing fixing.
 
-## Published Series
+## Storage Contract
 
-| Index identifier | Provider series | Meaning |
+| Property | Value |
+| --- | --- |
+| MetaTable | `IndexValuesTS.1d` |
+| Physical table | `ms_markets__index_values__t_1d` |
+| Grain | `(time_index, index_identifier)` |
+| Values | `value`, `unit` |
+| Provenance | `definition_uid`, `observation_status`, `source_as_of`, `metadata_json` |
+| Identity | `index_identifier -> IndexTable.unique_identifier` |
+
+Source-published observations use `definition_uid = null`. Percentage-form
+rates are divided by 100 exactly once and stored with `unit = "decimal"`.
+
+## FRED and Banxico Series
+
+| Index identifier | Source | Meaning |
 | --- | --- | --- |
 | `US_TREASURY_CMT_2Y` | FRED `DGS2` | 2-year Treasury constant-maturity yield |
 | `US_TREASURY_CMT_5Y` | FRED `DGS5` | 5-year Treasury constant-maturity yield |
@@ -16,118 +31,80 @@ targets are analytical observations, not coupon or swap fixings.
 | `FED_FUNDS_TARGET_UPPER` | FRED `DFEDTARU` | Federal Funds target-range upper limit |
 | `BANXICO_POLICY_TARGET` | Banxico `SF61745` | Banco de Mexico policy target |
 
-Each row has this grain and unit:
+`FED_FUNDS_TARGET_UPPER` is not an effective Fed Funds fixing, OIS quote, or
+curve input.
 
-```text
-(time_index, index_identifier) -> rate
+## Valmer Curve Quote Series
+
+The MXN producer publishes all 34 recognized rows from `IRS_MXN_CURVE.csv`; the
+USD producer publishes all 47 recognized rows from `IRS_USD_CURVE.csv`. Each
+stable identity starts with `VALMER_CURVE_QUOTE.` and retains source family,
+vendor identifier, source quote/unit, quote side, and source file in metadata.
+
+Run producers before curves:
+
+```bash
+valmer-connectors quotes update-irs-mxn
+valmer-connectors quotes update-irs-usd
+valmer-connectors curves update-tiie-irs-mxn
+valmer-connectors curves update-usd-sofr
+valmer-connectors curves update-usd-mxn-xccy
 ```
 
-`time_index` is nanosecond-resolution UTC and `rate` is an annualized decimal.
-The source percentage is divided by `100.0` exactly once. Missing FRED `"."`
-values and Banxico unavailable markers are omitted; observations are never
-forward-filled.
+The curve DataNodes also declare these relationships through
+`dependencies()`. Builders query exact persisted dates and never download raw
+Valmer files.
 
-## Required Secrets
+## External Producer Operations
+
+Required secrets:
 
 - `FRED_API_KEY`
 - `BANXICO_TOKEN`
 
-Each producer checks the environment first and a project-readable Main Sequence
-Secret second. Secrets are runtime inputs and never enter DataNode configuration,
-hashes, metadata, or logs.
+Run:
+
+```bash
+valmer-connectors reference-rates update-fred
+valmer-connectors reference-rates update-banxico-policy
+```
+
+On first execution each source node requests five inclusive calendar years
+ending yesterday UTC. Later runs begin one calendar day after each Index's own
+latest observation. Missing source values are omitted and never forward-filled.
 
 ## Migration
 
-Apply the core ms-markets migration before the Valmer provider migration:
+Apply core ms-markets migrations before the project provider:
 
 ```bash
 mainsequence migrations upgrade --provider msm.migrations:migration head
-mainsequence migrations upgrade --provider migrations:migration head
+PYTHONPATH=src mainsequence migrations upgrade --provider migrations:migration head
 ```
 
-Revision `0003` creates
-`valmer_connectors__reference_rate_observations`. `IndexTable` is included only
-as foreign-key reference metadata; it is not a Valmer-owned migration model.
+Project revision `0004` created the canonical daily table, copied and reconciled
+all 8,637 prior FRED/Banxico observations, and dropped the obsolete physical
+table. Runtime code contains only the canonical producer path.
 
-## Initial 90-Day Smoke
+## Repair
 
-The first run against shared storage must use an explicit hash namespace:
-
-```bash
-valmer-connectors reference-rates update-fred \
-  --smoke \
-  --hash-namespace adr-0009-fred-smoke
-
-valmer-connectors reference-rates update-banxico-policy \
-  --smoke \
-  --hash-namespace adr-0009-banxico-smoke
-```
-
-With no persisted progress, each producer requests exactly the most recent 90
-inclusive calendar days ending yesterday UTC. Metadata validation runs before
-publication. Confirm all six identities, latest dates, plausible decimal rates,
-and the absence of duplicate keys before any non-namespaced run.
-
-## Five-Year Backfill
-
-Record the smoke request start date. Backfill only the older missing range,
-ending on the day before that smoke start:
-
-```bash
-valmer-connectors reference-rates update-fred \
-  --backfill-start <FIVE_YEAR_START>T00:00:00Z \
-  --backfill-end <SMOKE_START_MINUS_ONE_DAY>T00:00:00Z
-
-valmer-connectors reference-rates update-banxico-policy \
-  --backfill-start <FIVE_YEAR_START>T00:00:00Z \
-  --backfill-end <SMOKE_START_MINUS_ONE_DAY>T00:00:00Z
-```
-
-Both timestamps are required, inclusive, timezone-aware, and hashed. A bounded
-backfill therefore has a deterministic update identity distinct from normal
-incremental execution. Revalidate the complete 1Y, 3Y, and 5Y windows after the
-backfill.
-
-## Normal Incremental Jobs
-
-`scheduled_jobs.yaml` defines independent jobs:
-
-- `banxico-policy-target-refresh` at `13:20 UTC` on weekdays
-- `fred-reference-rates-refresh` at `23:30 UTC` on weekdays
-
-The scripts leave backfill bounds unset. Each identity starts one calendar day
-after its own latest persisted observation. Provider failures remain isolated
-because the jobs execute separately.
-
-## Repairing Revised Source History
-
-Repairs must reset only the affected identity tail before republishing:
+Delete only the affected Index tail from the canonical storage before rerunning
+its producer:
 
 ```python
-ReferenceRateObservationsStorage.get_time_index_meta_table().delete_after_date(
+DailyIndexValuesStorage.get_time_index_meta_table().delete_after_date(
     "<INCLUSIVE_UTC_CUTOFF>",
     dimension_filters={"index_identifier": ["<INDEX_IDENTIFIER>"]},
 )
 ```
 
-Do not use raw SQL or an unscoped `delete_after_date(None)`.
+Never issue unscoped deletion or raw SQL.
 
 ## Verification
 
-After the code is pushed and an image is available:
-
-```bash
-mainsequence project schedule_batch_jobs scheduled_jobs.yaml <IMAGE_ID> --path .
-mainsequence project jobs list
-mainsequence project jobs runs list <JOB_ID>
-mainsequence project jobs runs logs <JOB_RUN_ID> --max-wait-seconds 900
-mainsequence data-node list
-```
-
-Production readiness requires authenticated migration application, live source
-metadata checks, the namespaced smoke, the bounded five-year backfill, and job
-run/log inspection. Local tests alone do not prove those platform outcomes.
-
-Spread construction remains outside these producers. Applications select the
-M-Bond benchmark, inner-join common observation dates, calculate basis-point
-spreads and statistics, and apply explicit policy-rate as-of rules.
+- Compare row counts, first/last dates, units, and duplicate keys per Index.
+- Require 34 MXN plus 47 USD Valmer observations for a complete source date.
+- Resolve every curve key node's typed Index source reference on the exact curve
+  date and reconcile value, unit, source quote, source unit, and vendor identity.
+- Run every producer twice and confirm the second run adds no duplicate keys.
+- Inspect scheduled platform runs and logs; local tests do not prove a live job.

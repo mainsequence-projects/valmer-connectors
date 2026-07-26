@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valmer-connectors"
-version = "0.1.22"
+version = "0.1.23"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "arch>=8.0.0",
-    "mainsequence>=4.4.27",
+    "mainsequence>=5.0.0,<6",
     "ms-markets>=0.0.65",
     "pandas-market-calendars>=5.4.0",
     "plotly>=6.8.0",
@@ -34,7 +34,7 @@ valmer_connectors = ["agent_skills/valmer-connectors/*/SKILL.md"]
 
 [tool.ruff]
 line-length = 100                 # Max line length for Ruff/Black.
-target-version = "py311"          # Optimize checks/fixes for Python 3.10.
+target-version = "py313"          # Check and modernize for the supported Python runtime.
 extend-exclude = [                # Extra paths to ignore.
   "build", "dist", ".venv", ".tox", ".mypy_cache", ".ruff_cache"
 ]
@@ -86,3 +86,4 @@ known-first-party = ["mainsequence","valmer_connectors","banxico","fred","migrat
 
 [tool.uv.sources]
 ms-markets = { path = "../mainsequencemarkets-21f6783c-041a-4631-80ef-934e1dfa3d2b" }
+mainsequence = { path = "../../../../code/MainSequenceClientSide/mainsequence-sdk" }

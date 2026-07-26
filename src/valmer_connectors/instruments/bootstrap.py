@@ -18,8 +18,8 @@ def _valmer_markets_models(
     *,
     extra_markets_models: Sequence[Any] | None = None,
 ) -> list[Any]:
-    from valmer_connectors.data_nodes.reference_rate_observations import (
-        ReferenceRateObservationsStorage,
+    from valmer_connectors.data_nodes.canonical_index_values import (
+        DailyIndexValuesStorage,
     )
     from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
     from valmer_connectors.meta_tables.valmer_asset_details import (
@@ -29,7 +29,7 @@ def _valmer_markets_models(
     markets_models = [
         ValmerAssetDetailsTable,
         ValmerVectorPricesStorage,
-        ReferenceRateObservationsStorage,
+        DailyIndexValuesStorage,
     ]
     if extra_markets_models is not None:
         markets_models.extend(extra_markets_models)
