@@ -41,7 +41,7 @@ class ReferenceRateStorageTests(unittest.TestCase):
         self.assertFalse(columns.time_index.nullable)
         self.assertFalse(columns.index_identifier.nullable)
         self.assertFalse(columns.value.nullable)
-        self.assertFalse(columns.unit.nullable)
+        self.assertNotIn("unit", columns)
         self.assertEqual(
             {foreign_key.target_fullname for foreign_key in columns.index_identifier.foreign_keys},
             {f"{IndexTable.__table__.fullname}.unique_identifier"},
@@ -54,7 +54,6 @@ class ReferenceRateStorageTests(unittest.TestCase):
                     time_index="2026-07-17",
                     index_identifier="US_TREASURY_CMT_10Y",
                     value=0.041,
-                    unit="decimal",
                 )
             ]
         )
@@ -69,7 +68,6 @@ class ReferenceRateStorageTests(unittest.TestCase):
                 time_index="2026-07-17",
                 index_identifier="US_TREASURY_CMT_10Y",
                 value=0.041,
-                unit="decimal",
             )
         ]
         with self.assertRaisesRegex(ValueError, "duplicate"):
@@ -81,7 +79,6 @@ class ReferenceRateStorageTests(unittest.TestCase):
                 time_index="2026-07-17",
                 index_identifier="US_TREASURY_CMT_10Y",
                 value=float("inf"),
-                unit="decimal",
             )
 
 

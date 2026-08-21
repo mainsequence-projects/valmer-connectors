@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from msm.constants import INDEX_TYPE_INTEREST_RATE
+from msm.models import IndexDatasetAvailabilityTable, IndexFormulaInputTable
 from msm_pricing.instruments.json_codec import calendar_from_json
 
 from valmer_connectors.data_nodes.canonical_index_values import (
@@ -745,6 +746,8 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
                 DailyIndexValuesStorage,
+                IndexDatasetAvailabilityTable,
+                IndexFormulaInputTable,
             ],
             timeout=15,
             attach_runtime=True,

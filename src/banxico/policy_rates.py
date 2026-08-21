@@ -198,7 +198,6 @@ def normalize_banxico_policy_observations(
                     ),
                     index_identifier=index_identifier,
                     value=numeric_value / 100.0,
-                    unit="decimal",
                     metadata_json=definition.index.observation_metadata(
                         source_quote=numeric_value
                     ),

@@ -113,7 +113,9 @@ class ValmerCurveQuotePipelineTests(unittest.TestCase):
             self.assertEqual(source_reference["type"], "index")
             observation = observations[source_reference["identifier"]]
             self.assertAlmostEqual(float(node["quote"]), float(observation.value))
-            self.assertEqual(node["quote_unit"], observation.unit)
+            self.assertEqual(
+                node["quote_unit"], observation.metadata_json["quote_unit"]
+            )
             self.assertEqual(
                 node["source_instrument_identifier"],
                 observation.metadata_json["source_instrument_identifier"],

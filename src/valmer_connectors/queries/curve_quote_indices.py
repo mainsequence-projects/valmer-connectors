@@ -20,11 +20,12 @@ from valmer_connectors.data_nodes.canonical_index_values import (
     DailyIndexValuesStorage,
 )
 
+# Canonical IndexValuesTS has no unit column. Quote type/unit and raw-source
+# provenance are required in metadata_json for strict curve-input validation.
 _QUOTE_COLUMNS = [
     "time_index",
     "index_identifier",
     "value",
-    "unit",
     "definition_uid",
     "observation_status",
     "source_as_of",
@@ -144,11 +145,14 @@ def validate_valmer_curve_quote_snapshot(
         "fedfunds_sofr_basis": "decimal",
         "tiie_sofr_xccy_basis": "decimal",
     }
+    units = selected["metadata_json"].map(
+        lambda value: value.get("quote_unit") if isinstance(value, dict) else None
+    )
     invalid = selected.loc[
-        selected.apply(
-            lambda row: row["unit"] != expected_units.get(row["source_family"]),
-            axis=1,
-        )
+        [
+            unit != expected_units.get(family)
+            for unit, family in zip(units, selected["source_family"], strict=True)
+        ]
     ]
     if not invalid.empty:
         raise ValmerCurveQuoteSnapshotError(

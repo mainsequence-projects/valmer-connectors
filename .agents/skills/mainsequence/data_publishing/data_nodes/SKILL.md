@@ -56,12 +56,8 @@ If the task depends on one of those areas, route it explicitly instead of guessi
 
 - MetaTables and storage contracts:
   `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
-- APIs and FastAPI:
+- Command Center-serving FastAPI providers:
   `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
-- Command Center workspaces:
-  `.agents/skills/mainsequence/command_center/workspace_builder/SKILL.md`
-- AppComponents and custom forms:
-  `.agents/skills/mainsequence/command_center/widgets/app_components/SKILL.md`
 - Jobs, images, resources, and releases:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
 - RBAC and sharing:
@@ -119,15 +115,9 @@ Every `mapped_column(...)` in a storage class must include
 what the value means for this dataset and how downstream users should interpret
 it; do not merely repeat the column name or dtype.
 
-Use `__metatable_extra_hash_components__` on storage classes when distinct
-DataNode storage tables could otherwise have the same storage-relevant shape.
-For example, two one-index daily tables with one float column need a stable
-component such as `{"storage_name": "daily_random_number"}` versus
-`{"storage_name": "daily_random_addition"}`.
-
-This is storage identity. Changing it creates a different storage table. Do not
-use it for labels, descriptions, runtime options, test isolation, backend UIDs,
-data-source UIDs, or updater scope.
+When a caller explicitly needs a deterministic contract fingerprint, use
+`compute_metatable_contract_hash(..., extra_components={...})` as a utility. The
+result is not MetaTable identity and is not sent to the backend.
 
 Do not put those concerns in `DataNodeConfiguration`.
 
@@ -153,7 +143,6 @@ class PricesTable(PlatformTimeIndexMetaTable, Base):
     __tablename__ = PRICES_TABLE_NAME
     __metatable_namespace__ = "<domain_namespace>"
     __metatable_identifier__ = "<project_name>.<table_identifier>"
-    __metatable_extra_hash_components__ = {"storage_name": "<stable_storage_name>"}
     __metatable_description__ = (
         "Daily close prices keyed by asset unique identifier for portfolio and "
         "risk analytics."
@@ -349,7 +338,7 @@ delete helpers to clean DataNode storage rows.
 The SDK call targets:
 
 ```text
-POST /orm/api/ts_manager/dynamic_table/<dynamic_table_uid>/delete_after_date/
+POST /api/v1/time-index-meta-tables/<table_uid>/delete-after-date/
 ```
 
 Use a global tail delete only when all streams in the table should be rolled

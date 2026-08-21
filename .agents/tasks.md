@@ -1,12 +1,46 @@
 # Open Tasks
 
+## Complete the Python 3.13 and Main Sequence 5 application refactor
+
+- Scope: implement phases 1 through 4 of
+  `docs/implementation/python-3-13-mainsequence-5-upgrade-plan.md`. Owning
+  skills: `mainsequence-markets-index-workflow`,
+  `mainsequence-data-nodes`, and `mainsequence-metatable-migrations`. Expected
+  output: current `IndexUpsert` payloads, unit-free canonical observations,
+  quote queries that do not project `IndexValuesTS.unit`, and a migration
+  provider referencing `IndexFormulaDefinitionTable` with no compatibility
+  module. Evidence: full pytest collection and suite pass without ignored
+  files, exact-date quote query tests pass against the current table shape,
+  Ruff passes, migration-provider imports pass, and the Python 3.13 package
+  build contains the expected Python/Main Sequence metadata.
+- Current gap: pytest collection fails on
+  `msm.models.index_calculations`; with that test excluded, 236 tests and 36
+  subtests pass and four tests fail on the removed `unit` column.
+
+## Make the Python 3.13 release reproducible and run a canary
+
+- Scope: replace local Main Sequence and ms-markets source paths with immutable
+  sources available to the image builder, authenticate the CLI and private
+  registry, refresh Main Sequence scaffold/skills together, build the Python
+  3.13 image, apply migration preflights, and run the ordered quote-to-curve
+  canary. Owning skills: `mainsequence-orchestration-and-releases` and
+  `mainsequence-metatable-migrations`. Expected output: a portable locked
+  environment, verified Python 3.13 project image, current migration heads, and
+  one successful canary plus immediate no-op rerun. Evidence: fresh-checkout
+  locked sync, image version inspection, migration output, job/run logs, and
+  exact-date Index/curve reads.
+- Current blockers: the CLI token is invalid and GHCR denied the anonymous
+  manifest check. Main Sequence 5.0.1 is now on PyPI, but the project and
+  linked ms-markets checkout still require local source overrides to be
+  reconciled for a portable release lock.
+
 ## Restore the local platform API and complete the canonical pipeline run
 
 - Scope: restore `tsorm_web_local` without changing this repository's data
   contracts, then execute FRED, Banxico, IRS MXN quotes, IRS USD quotes, TIIE,
   SOFR, USD/MXN XCCY, and MXN government curve launchers in that order. Owning
   skills: `mainsequence-data-nodes`,
-  `mainsequence-markets-derived-index-workflow`, and
+  `mainsequence-markets-index-workflow`, and
   `mainsequence-markets-fixed-income-curve-building`. Expected output: all 81
   current Valmer quote observations and all four deleted curve families are
   republished through normal typed DataNodes. Evidence: successful command
@@ -27,9 +61,9 @@
   observations. Evidence: catalog lookup returns no obsolete UID, canonical
   per-index counts/date bounds/sums remain unchanged, and migration revision is
   still `0004`.
-- Current blocker: SDK 4.4.32 `mainsequence data-node delete` exposes
-  `override_protection` but not the backend-required
-  `override_schema_management_protection` confirmed cascade option.
+- Prior blocker: SDK 4.4.32 did not expose the backend-required schema-management
+  override. Re-evaluate the supported retirement operation with SDK 5 only
+  after authentication; do not bypass Alembic ownership.
 
 ## Schedule and verify the data jobs
 

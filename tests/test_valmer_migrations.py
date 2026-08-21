@@ -3,7 +3,7 @@ import unittest
 from msm.base import markets_table_name
 from msm.data_nodes.indices import index_values_storage_table_name
 from msm.models.assets import AssetTable
-from msm.models.index_calculations import IndexCalculationDefinitionTable
+from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import markets_auto_register_namespace
 
@@ -139,14 +139,14 @@ class ValmerMigrationProviderTests(unittest.TestCase):
                 DailyIndexValuesStorage.__table__.name,
                 AssetTable.__table__.name,
                 IndexTable.__table__.name,
-                IndexCalculationDefinitionTable.__table__.name,
+                IndexFormulaDefinitionTable.__table__.name,
             },
         )
         self.assertIn(AssetTable.__table__.name, target_table_names)
         self.assertIn(IndexTable.__table__.name, target_table_names)
         self.assertEqual(
             VALMER_REFERENCE_MODELS,
-            (AssetTable, IndexTable, IndexCalculationDefinitionTable),
+            (AssetTable, IndexTable, IndexFormulaDefinitionTable),
         )
         self.assertNotIn(IndexTable, VALMER_MIGRATION_MODELS)
 

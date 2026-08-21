@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valmer-connectors"
-version = "0.1.23"
+version = "0.1.24"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "arch>=8.0.0",
-    "mainsequence>=5.0.0,<6",
-    "ms-markets>=0.0.65",
+    "mainsequence==6.0.27",
+    "ms-markets==0.0.104",
     "pandas-market-calendars>=5.4.0",
     "plotly>=6.8.0",
     "pymssql>=2.3.13",
@@ -84,6 +84,7 @@ ignore = ["E203", "E501"]
 # Treat these as your own packages so they sort as "first-party".
 known-first-party = ["mainsequence","valmer_connectors","banxico","fred","migrations","agents"]
 
-[tool.uv.sources]
-ms-markets = { path = "../mainsequencemarkets-21f6783c-041a-4631-80ef-934e1dfa3d2b" }
-mainsequence = { path = "../../../../code/MainSequenceClientSide/mainsequence-sdk" }
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

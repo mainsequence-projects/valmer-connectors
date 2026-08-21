@@ -1,6 +1,6 @@
 # Project Status
 
-Last verified: 2026-07-19
+Last verified: 2026-07-25
 
 ## ADR 0009: External Reference-Rate Observations
 
@@ -167,6 +167,44 @@ when `tsorm_web_local` auto-reloaded into an unrelated Django system-check
 failure for missing `pod_manager.DeploymentRun`; port 8000 now resets requests.
 No quote or curve rows were directly inserted to bypass that failure.
 
+## Python 3.13 And Main Sequence 5
+
+The local environment was rebuilt on 2026-07-25:
+
+- `.venv` uses CPython `3.13.11`;
+- installed versions are Main Sequence `5.0.1`, ms-markets `0.0.99`, and
+  valmer-connectors `0.1.23`;
+- the repository contract is `requires-python = ">=3.13,<3.14"` and
+  `mainsequence>=5.0.0,<6`;
+- `.python-version`, Ruff, VS Code, JetBrains, and the Dockerfile now target
+  Python 3.13;
+- `uv.lock` resolves 97 packages for Python `==3.13.*`, `uv lock --check`
+  passes, and `requirements.txt` is synchronized;
+- native imports for QuantLib, NumPy, pandas, SciPy, PyArrow, `pymssql`,
+  `psycopg2`, and Streamlit pass;
+- project CLI version/help smoke tests and Ruff over `src`, `tests`, and
+  `scripts` pass;
+- MkDocs strict build and `uv build` pass; the wheel metadata requires Python
+  `>=3.13,<3.14` and Main Sequence `>=5.0.0,<6`.
+
+The linked Main Sequence checkout is at tag `v5.0.0.1`, reports package version
+`5.0.1`, and contains uncommitted work. Main Sequence 5.0.1 is available on
+PyPI, but the current lock still uses the checkout's local path. This is
+acceptable for the rebuilt linked-development environment, not for a portable
+release image.
+
+Application compatibility is not complete. Full pytest collection fails on the
+removed `msm.models.index_calculations` module. With that migration test
+excluded, 236 tests and 36 subtests pass; four fail because ms-markets 0.0.98
+removed the canonical `IndexValuesTS.unit` column. The production quote-query
+projection still requests that column, so the Index identity, observation,
+query, and migration contracts must be refactored before a platform run.
+
+The executable task is
+`docs/implementation/python-3-13-mainsequence-5-upgrade-plan.md`.
+The private `py313` base-image manifest could not be verified anonymously
+because GHCR denied the request. No image or platform job was claimed.
+
 ## SDK / Platform Discrepancies
 
 - `TimeIndexMetaTable.run_query(...)` from SDK `4.4.32` sends the documented
@@ -189,14 +227,18 @@ No quote or curve rows were directly inserted to bypass that failure.
   `.agents/skills/mainsequence/PINNED_FROM.txt` pin already matched, so no generic
   `mainsequence project update_agent_skills` refresh was needed.
 - On 2026-07-19, `msm copy-msm-skills --path .` refreshed the managed
-  `.agents/skills/ms_markets` namespace from installed `ms-markets` `0.0.97`
-  (original pin `0.0.91`, previous turn pin `0.0.96`).
-- The refreshed `ms_markets` bundle added `indices/derived_index_workflow` and
-  updated the asset, portfolio, and pricing skill instructions to route derived
-  spread/basket/index methodology to that skill and to require explicit projection
-  and discount curve-role bindings for floating-rate pricing workflows.
-- The `0.0.97` refresh copied fixed-income guidance that requires typed
+  `.agents/skills/ms_markets` namespace from installed `ms-markets` `0.0.97`.
+- On 2026-07-25 the same command refreshed the namespace to `0.0.98`, then
+  refreshed it again after the linked package advanced to `0.0.99`; its
+  current Index skill is `indices/index_workflow`.
+- The refreshed fixed-income guidance requires typed
   `source_reference` and rejects the two legacy top-level identity fields.
-- `mainsequence project refresh_token --path .` failed during this implementation
-  with `Not logged in`. No new authenticated platform state was claimed; live row
+- Main Sequence 5.0.1 updated the scaffold-managed `AGENTS.md` locally, but
+  `mainsequence project update_agent_skills --path .` then failed with
+  `Token is invalid` because it now retrieves authenticated platform skills.
+  The partial scaffold update was rolled back; the existing scaffold and
+  managed Main Sequence skills remain consistently pinned to `4.4.32` until
+  both can be refreshed together after login.
+- `mainsequence project refresh_token --path .` previously failed with
+  `Not logged in`. No new authenticated platform state was claimed; live row
   counts above remain from the earlier verified read.

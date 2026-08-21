@@ -281,7 +281,6 @@ def normalize_fred_observations(
                 time_index=observation.get("date"),
                 index_identifier=index_identifier,
                 value=numeric_value / 100.0,
-                unit="decimal",
                 metadata_json=resolved_definition.index.observation_metadata(
                     source_quote=numeric_value
                 ),

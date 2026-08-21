@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from msm.base import MARKETS_SCHEMA, markets_table_name
 from msm.models.assets import AssetTable
-from msm.models.index_calculations import IndexCalculationDefinitionTable
+from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import (
     markets_auto_register_namespace,
@@ -24,7 +24,7 @@ VALMER_MIGRATION_MODELS = tuple(metatable_provider_models())
 VALMER_REFERENCE_MODELS = (
     AssetTable,
     IndexTable,
-    IndexCalculationDefinitionTable,
+    IndexFormulaDefinitionTable,
 )
 VALMER_TARGET_METADATA = metadata_for_models(
     (*VALMER_MIGRATION_MODELS, *VALMER_REFERENCE_MODELS)

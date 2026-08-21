@@ -198,12 +198,17 @@ def upsert_valmer_curve_quote_indexes(frame: pd.DataFrame) -> dict[str, Any]:
             unique_identifier=row.index_identifier,
             index_type=index_type,
             display_name=_quote_display_name(row.index_identifier, family=family),
+            # ADR-0037 index framework: source-published quotes are custom
+            # observations; value_format is display-only. `provider` was removed
+            # from IndexUpsert and now rides in metadata_json.
+            calculation_method="custom",
+            value_format="decimal",
             description=(
                 f"Valmer {row.quote_side if hasattr(row, 'quote_side') else 'mid'} "
                 f"{family.replace('_', ' ')} quote used by curve construction."
             ),
-            provider=VALMER_PROVIDER,
             metadata_json={
+                "provider": VALMER_PROVIDER,
                 "source_file": metadata["source_file"],
                 "source_instrument_identifier": metadata[
                     "source_instrument_identifier"
@@ -384,10 +389,10 @@ def _normalize_quote_row(
         if match is None:
             raise ValmerCurveQuoteError(f"Invalid SOFR future {identifier!r}.")
         value = numeric_quote
-        unit = "price"
         metadata.update(
             {
                 "quote_type": "futures_price",
+                "quote_unit": "price",
                 "source_quote_unit": "price",
                 "contract_code": match.group("contract_code"),
                 "contract_type": match.group("contract_type"),
@@ -401,10 +406,10 @@ def _normalize_quote_row(
         )
     elif family == "fx_spot":
         value = numeric_quote
-        unit = "mxn_per_usd"
         metadata.update(
             {
                 "quote_type": "fx_spot",
+                "quote_unit": "mxn_per_usd",
                 "source_quote_unit": "mxn_per_usd",
                 "base_currency": "USD",
                 "quote_currency": "MXN",
@@ -412,10 +417,10 @@ def _normalize_quote_row(
         )
     elif family == "fx_forward":
         value = numeric_quote / 10000.0
-        unit = "mxn_per_usd"
         metadata.update(
             {
                 "quote_type": "forward_points",
+                "quote_unit": "mxn_per_usd",
                 "source_quote_unit": "points",
                 "point_scale": 10000,
                 "base_currency": "USD",
@@ -424,11 +429,11 @@ def _normalize_quote_row(
         )
     else:
         value = numeric_quote / 100.0
-        unit = "decimal"
         quote_type = "basis_spread" if "basis" in family else "par_swap_rate"
         metadata.update(
             {
                 "quote_type": quote_type,
+                "quote_unit": "decimal",
                 "source_quote_unit": "percent",
             }
         )
@@ -448,7 +453,6 @@ def _normalize_quote_row(
         time_index=pd.Timestamp(valuation_date).normalize(),
         index_identifier=curve_quote_index_identifier_from_source(identifier),
         value=value,
-        unit=unit,
         observation_status="ready",
         source_as_of=pd.Timestamp(valuation_date).normalize(),
         metadata_json=metadata,

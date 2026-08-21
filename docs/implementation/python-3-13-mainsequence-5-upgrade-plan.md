@@ -8,8 +8,8 @@ compatibility refactor and platform rollout remain open.
 Verified local state:
 
 - `.venv` uses CPython `3.13.11`;
-- `mainsequence==5.0.0`, `ms-markets==0.0.98`, and
-  `valmer-connectors==0.1.22` are installed;
+- `mainsequence==5.0.1`, `ms-markets==0.0.99`, and
+  `valmer-connectors==0.1.23` are installed;
 - `pyproject.toml` requires `>=3.13,<3.14` and
   `mainsequence>=5.0.0,<6`;
 - `.python-version`, Ruff, VS Code, JetBrains, and the Dockerfile target Python
@@ -18,11 +18,14 @@ Verified local state:
   passes, and `requirements.txt` was regenerated;
 - QuantLib, NumPy, pandas, SciPy, PyArrow, `pymssql`, `psycopg2`, Streamlit,
   the project CLI, and the native package graph import successfully;
-- Ruff passes for `src`, `tests`, and `scripts`.
+- Ruff passes for `src`, `tests`, and `scripts`;
+- MkDocs strict build and `uv build` pass;
+- the built wheel reports `Requires-Python: <3.14,>=3.13` and
+  `Requires-Dist: mainsequence<6,>=5.0.0`.
 
-The linked local Main Sequence checkout is at the exact official `v5.0.0`
-commit. Main Sequence 5.0.0 is not available from the configured PyPI index, so
-the development lock currently uses that local checkout. The checkout contains
+The linked local Main Sequence checkout is at tag `v5.0.0.1` and reports
+package version `5.0.1`. Main Sequence 5.0.1 is now available from PyPI, but the
+development lock still uses the local checkout. The checkout contains
 uncommitted work and is not a portable release source.
 
 The full suite is not yet green:
@@ -61,13 +64,13 @@ preconditions pass.
 | Area | Current state | Required change |
 | --- | --- | --- |
 | Python | Local environment and repository constraint are 3.13 | Keep the strict `<3.14` upper bound until 3.14 is certified |
-| Main Sequence | 5.0.0 is installed from a local checkout | Use an immutable source for image/release builds |
+| Main Sequence | 5.0.1 is installed from a local checkout although 5.0.1 is now on PyPI | Remove the local override and prove registry-only resolution |
 | Index identity | Valmer payloads still use the old fields and top-level `provider` | Set `calculation_method`, `value_format`, optional `value_suffix`, and move provider provenance into metadata |
 | Index values | Producer helpers still construct `unit`; storage silently omits it | Remove `unit` from the canonical row contract and every producer |
 | Curve quote reads | SQL still projects nonexistent `unit` | Read canonical columns only and derive a typed in-memory `quote_unit` from validated quote semantics |
 | Migration metadata | Imports removed `IndexCalculationDefinitionTable` | Reference `IndexFormulaDefinitionTable` directly; add no alias or decoder |
 | Tests | One collection error and four unit-contract failures | Rewrite tests against the hard new contract and add runtime query coverage |
-| Managed skills | SDK is 5.0.0 but managed skills remain pinned to 4.4.32 | Refresh scaffold and dual-source skills together after login |
+| Managed skills | SDK is 5.0.1 but managed Main Sequence skills remain pinned to 4.4.32 | Refresh scaffold and dual-source skills together after login |
 | Deployment image | Dockerfile names the Python 3.13 platform image | Authenticate to GHCR and prove pull/build; the anonymous registry check was denied |
 | Platform | CLI token is invalid | Login, refresh the token, then verify migrations, images, jobs, runs, and logs |
 
@@ -197,8 +200,8 @@ Owning skill: `mainsequence-orchestration-and-releases`.
 The current local-path sources are valid for linked development only. Before an
 image build:
 
-- use Main Sequence 5.0.0 from the configured package index when published, or
-  pin the immutable official Git tag/commit;
+- remove the Main Sequence path override and resolve the published 5.0.1
+  package from the configured package index;
 - replace the sibling ms-markets path with a published or immutable source
   available to the image builder;
 - regenerate the lock and exported requirements in that release context;
@@ -217,7 +220,7 @@ After `mainsequence login`:
 
 1. refresh the token;
 2. refresh `AGENTS.md` and managed Main Sequence skills together so the pin
-   records SDK 5.0.0 and the platform skill manifest;
+   records SDK 5.0.1 and the platform skill manifest;
 3. authenticate to the private image registry and verify the Python 3.13 base;
 4. build a project image and inspect its Python and package versions;
 5. inspect and apply ms-markets migrations, then Valmer migrations;

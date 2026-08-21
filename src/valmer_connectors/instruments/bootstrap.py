@@ -18,6 +18,8 @@ def _valmer_markets_models(
     *,
     extra_markets_models: Sequence[Any] | None = None,
 ) -> list[Any]:
+    from msm.models import IndexDatasetAvailabilityTable, IndexFormulaInputTable
+
     from valmer_connectors.data_nodes.canonical_index_values import (
         DailyIndexValuesStorage,
     )
@@ -30,6 +32,10 @@ def _valmer_markets_models(
         ValmerAssetDetailsTable,
         ValmerVectorPricesStorage,
         DailyIndexValuesStorage,
+        # ADR-0037 index framework: Index row operations now require these two
+        # bound tables in addition to IndexTable/IndexFormulaDefinitionTable.
+        IndexDatasetAvailabilityTable,
+        IndexFormulaInputTable,
     ]
     if extra_markets_models is not None:
         markets_models.extend(extra_markets_models)

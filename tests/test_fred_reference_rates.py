@@ -90,7 +90,8 @@ class FredReferenceRateTests(unittest.TestCase):
             [pd.Timestamp("2026-07-17", tz="UTC")],
         )
         self.assertAlmostEqual(frame.iloc[0]["value"], 0.0425)
-        self.assertEqual(frame.iloc[0]["unit"], "decimal")
+        self.assertNotIn("unit", frame.columns)
+        self.assertEqual(frame.iloc[0]["metadata_json"]["source_quote_unit"], "percent")
         self.assertEqual(frame.iloc[0]["observation_status"], "ready")
         self.assertEqual(frame.iloc[0]["metadata_json"]["source_quote"], 4.25)
 
