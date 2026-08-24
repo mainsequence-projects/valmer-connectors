@@ -15,7 +15,6 @@ from msm.models.assets import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION, markets_auto_register_namespace
 from sqlalchemy import Float
 
-from mainsequence.client.exceptions import ApiError
 from mainsequence.meta_tables.data_nodes.run_operations import UpdateRunner
 from valmer_connectors.data_nodes.nodes import (
     VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
@@ -244,9 +243,9 @@ class ValmerVectorStorageTest(unittest.TestCase):
                 {
                     "fecha": "20240101",
                     "tipovalor": "BI",
-                    "emisora": "CETE",
+                    "emisora": "CETES",
                     "serie": "B",
-                    "unique_identifier": "BI_CETE_B",
+                    "unique_identifier": "BI_CETES_B",
                 },
             ]
         )
@@ -261,7 +260,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             logger=Mock(),
         )
 
-        self.assertEqual(result["unique_identifier"].tolist(), ["M_BONOS_A", "BI_CETE_B"])
+        self.assertEqual(result["unique_identifier"].tolist(), ["M_BONOS_A", "BI_CETES_B"])
         self.assertEqual(result["fecha"].tolist(), ["20240104", "20240101"])
 
     def test_metatable_sources_filter_each_source_then_concatenate(self):
@@ -327,7 +326,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
                     {
                         "Fecha": "2024-01-01",
                         "TV": "BI",
-                        "Emisora": "CETE",
+                        "Emisora": "CETES",
                         "Serie": "B",
                         "PrecioSucio": 10.0,
                     },
@@ -335,7 +334,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             ),
         }
         node._read_metatable_source_frame = Mock(
-            side_effect=lambda source, logger: source_frames[source.source_name]
+            side_effect=lambda source, **_: source_frames[source.source_name]
         )
 
         with patch.object(
@@ -348,9 +347,74 @@ class ValmerVectorStorageTest(unittest.TestCase):
 
         self.assertEqual(
             node.source_data["unique_identifier"].tolist(),
-            ["M_BONOS_A", "I_CORP_A", "BI_CETE_B"],
+            ["M_BONOS_A", "I_CORP_A", "BI_CETES_B"],
         )
         self.assertEqual(node._read_metatable_source_frame.call_count, 2)
+        self.assertEqual(
+            node._read_metatable_source_frame.call_args_list[0].kwargs[
+                "minimum_valuation_date"
+            ],
+            pd.Timestamp("2024-01-02 23:59:59", tz="UTC"),
+        )
+
+    def test_direct_mssql_source_uses_explicit_table_and_cursor_pushdown(self):
+        source = MetaTableValmerSourceConfig(
+            source_name="government",
+            direct_mssql_table="dbo.vector_precios_gubernamental",
+            column_map={
+                "Fecha": "fecha",
+                "TV": "tipovalor",
+                "Emisora": "emisora",
+                "Serie": "serie",
+                "PrecioSucio": "preciosucio",
+            },
+        )
+        expected = pd.DataFrame(
+            [
+                {
+                    "Fecha": "2024-01-03",
+                    "TV": "M",
+                    "Emisora": "BONOS",
+                    "Serie": "A",
+                    "PrecioSucio": 100.0,
+                }
+            ]
+        )
+
+        with (
+            patch.object(ImportValmer, "_run_direct_mssql_query", return_value=expected) as run,
+            patch.object(ImportValmer, "_resolve_source_metatable") as resolve,
+        ):
+            result = ImportValmer._read_metatable_source_frame(
+                source,
+                logger=Mock(),
+                minimum_valuation_date=pd.Timestamp("2024-01-02 23:59:59", tz="UTC"),
+            )
+
+        pd.testing.assert_frame_equal(result, expected)
+        resolve.assert_not_called()
+        sql = run.call_args.args[0]
+        self.assertIn("FROM [dbo].[vector_precios_gubernamental]", sql)
+        self.assertIn(
+            "WHERE [Fecha] > '2024-01-02T23:59:59.000'",
+            sql,
+        )
+
+    def test_metatable_source_config_requires_one_source_reference(self):
+        column_map = {
+            "Fecha": "fecha",
+            "TV": "tipovalor",
+            "Emisora": "emisora",
+            "Serie": "serie",
+        }
+
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            MetaTableValmerSourceConfig(
+                source_name="government",
+                metatable_identifier="external.gov",
+                direct_mssql_table="dbo.vector_precios_gubernamental",
+                column_map=column_map,
+            )
 
     def test_metatable_query_result_builds_frame_from_rows_and_columns(self):
         result = {
@@ -402,42 +466,6 @@ class ValmerVectorStorageTest(unittest.TestCase):
             ["Fecha", "TV", "Emisora", "Serie", "PrecioSucio"],
         )
         self.assertEqual(frame.loc[0, "PrecioSucio"], 100.0)
-
-    def test_metatable_query_raw_sql_validation_uses_raw_body_fallback(self):
-        meta_table = Mock()
-        meta_table.run_query.return_value = {
-            "ok": False,
-            "error": {
-                "kind": "validation_error",
-                "message": "Request body must be the raw SQL string.",
-            },
-        }
-
-        with patch.object(
-            ImportValmer,
-            "_run_metatable_query_with_raw_sql_body",
-            return_value={"ok": True, "results": [{"Fecha": "2024-01-03"}]},
-        ) as raw_fallback:
-            result = ImportValmer._run_metatable_query(meta_table, "SELECT 1")
-
-        self.assertEqual(result["ok"], True)
-        raw_fallback.assert_called_once_with(meta_table, "SELECT 1", timeout=None)
-
-    def test_metatable_query_text_plain_api_error_uses_raw_body_fallback(self):
-        meta_table = Mock()
-        meta_table.run_query.side_effect = ApiError(
-            'Unsupported media type "text/plain" in request.'
-        )
-
-        with patch.object(
-            ImportValmer,
-            "_run_metatable_query_with_raw_sql_body",
-            return_value={"ok": True, "results": [{"Fecha": "2024-01-03"}]},
-        ) as raw_fallback:
-            result = ImportValmer._run_metatable_query(meta_table, "SELECT 1")
-
-        self.assertEqual(result["ok"], True)
-        raw_fallback.assert_called_once_with(meta_table, "SELECT 1", timeout=None)
 
     def test_metatable_source_normalization_matches_columns_in_pandas(self):
         source = MetaTableValmerSourceConfig(
@@ -1483,6 +1511,91 @@ class ValmerVectorStorageTest(unittest.TestCase):
                     latest,
                     latest,
                 )
+
+    def test_sync_asset_registry_raises_when_pricing_instrument_build_fails(self):
+        asset_uid = uuid.uuid4()
+        asset = SimpleNamespace(
+            uid=asset_uid,
+            unique_identifier="M_BONOS_241205",
+            asset_type=ASSET_TYPE_BOND,
+        )
+        node = ImportValmer.__new__(ImportValmer)
+        latest = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "M_BONOS_241205",
+                    "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
+                    "valornominalactualizado": 100.0,
+                    "tipovalor": "M",
+                    "emisora": "BONOS",
+                    "serie": "241205",
+                    "tasacupon": 10.0,
+                }
+            ]
+        )
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_meta_operation_batch_size",
+                    return_value=1000,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.resolve_valmer_asset_refs",
+                    return_value={},
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes._upsert_asset_table_rows",
+                    return_value={"M_BONOS_241205": asset},
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.upsert_valmer_asset_details",
+                    return_value=[],
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "_get_current_pricing_face_values_by_uid",
+                    return_value={},
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "valmer_connectors.data_nodes.nodes.get_instrument_conventions",
+                    side_effect=RuntimeError("invalid source schedule"),
+                )
+            )
+            add_many = stack.enter_context(
+                patch("valmer_connectors.data_nodes.nodes.add_many_pricing_details")
+            )
+            stack.enter_context(
+                patch.object(
+                    ImportValmer,
+                    "logger",
+                    new_callable=PropertyMock,
+                    return_value=Mock(),
+                )
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "M_BONOS_241205.*instrument build failures.*invalid source schedule",
+            ):
+                ImportValmer._sync_asset_registry_and_pricing(
+                    node,
+                    ["M_BONOS_241205"],
+                    latest,
+                    latest,
+                )
+
+        add_many.assert_not_called()
 
     def test_sync_asset_registry_raises_when_current_pricing_readback_is_missing(self):
         asset_uid = uuid.uuid4()

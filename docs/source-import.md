@@ -232,8 +232,15 @@ The source adapter:
 2. queries the registered Valmer vector storage table for `MAX(time_index)`
 3. lists files from the configured OneDrive drive/folder
 4. selects only `VectorAnalitico24h_*.xls` files newer than storage
-5. downloads selected files into a local cache directory
-6. runs the existing local-file Valmer parser on the cached files
+5. sorts selected files by their valuation date, oldest first
+6. downloads selected files into a local cache directory
+
+The oldest-first ordering is part of the restart contract, not a presentation
+detail. Each successfully persisted batch can advance `MAX(time_index)`. If a
+later file were processed before an older selected file, a restart could then
+exclude that older file even though it had never been published. Files without
+a parseable valuation date sort after dated files and retain filename ordering.
+7. runs the existing local-file Valmer parser on the cached files
 
 With `--bypass-vector-cursor-filter`, the OneDrive adapter does not send the
 latest vector time index to file selection, so historical files can be
@@ -396,6 +403,52 @@ Each source is read and normalized independently, filtered against the vector
 cursor per `asset_identifier`, and only then concatenated with the other source
 frames. Duplicate `(time_index, asset_identifier)` rows across MetaTable
 sources fail unless a source-priority rule is added in a later implementation.
+
+### Direct MSSQL compatibility source
+
+Use a governed MetaTable identifier or UID whenever the Main Sequence MSSQL
+DataSource supports table registration. Some legacy MSSQL DataSources do not
+advertise `supports_table_registration`; the backend therefore cannot restore
+a missing external MetaTable on those connections.
+
+For that case, a source config may opt into the direct MSSQL compatibility
+reader with an explicit schema-qualified table name:
+
+```json
+{
+  "sources": [
+    {
+      "source_name": "example_historical_vector",
+      "direct_mssql_table": "dbo.example_vector_history",
+      "sql_dialect": "mssql",
+      "column_map": {
+        "Fecha": "fecha",
+        "TV": "tipovalor",
+        "Emisora": "emisora",
+        "Serie": "serie",
+        "PrecioSucio": "preciosucio"
+      }
+    }
+  ]
+}
+```
+
+Pass exactly one of `metatable_identifier`, `metatable_uid`, or
+`direct_mssql_table`. The direct config contains no credentials. The reader
+resolves them from either the `VALMER_METATABLE_MSSQL_*` environment variables
+or the local exploration aliases `EXTERNAL_URL`, `EXTERNAL_BD`,
+`EXTERNAL_USER`, and `EXTERNAL_PWD`.
+
+When a vector cursor exists, the reader pushes the minimum stored per-asset
+cursor into the SQL query as a lower `Fecha` bound, then applies the normal
+per-asset cursor filter in pandas. Repair runs using
+`--bypass-vector-cursor-filter` intentionally omit that SQL bound. An initial
+load with no stored cursor reads the full configured table.
+
+This path is an explicit compatibility exception: it bypasses governed
+MetaTable query execution. Keep credentials in environment/secret management,
+use a read-only SQL login, and migrate the config back to a MetaTable identifier
+when the DataSource gains table-registration support.
 
 ## Low-Level Debug Artifact Path
 

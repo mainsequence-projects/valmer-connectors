@@ -25,8 +25,13 @@ Values are normalized to decimal, `definition_uid` is null, and source
 provenance is stored in bounded metadata. Benchmark selection, date alignment,
 spread calculations, and policy-rate analytics remain downstream concerns.
 
-## Migration
+## Schema and Repopulation
 
-Project revision `0004` copied and reconciled all 8,637 observations into the
-canonical daily storage and dropped the obsolete physical table. No runtime
-compatibility reader, translator, dual writer, or fallback remains.
+The project owns no separate reference-rate storage. On a fresh data source,
+apply ms-markets revision `0015` first and then the Valmer current-schema
+baseline `0001`. The Valmer baseline creates the canonical daily Index table
+directly with its current foreign keys; it performs no historical copy or
+translation.
+
+After schema recreation, repopulate FRED and Banxico observations from their
+source APIs. Runtime code writes only `IndexValuesTS.1d`.

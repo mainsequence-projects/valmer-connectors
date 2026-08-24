@@ -42,7 +42,15 @@ from valmer_connectors.instruments.mexican_government_bond_curve import (
 CurveBuilder = Callable[..., pd.DataFrame]
 KeyNodesValidator = Callable[..., Any]
 LOGGER = structlog.get_logger(__name__)
-VALMER_MXN_GOVERNMENT_BOND_OFFSET_START = dt.datetime(2026, 6, 1, tzinfo=dt.UTC)
+VALMER_MXN_GOVERNMENT_BOND_OFFSET_START = dt.datetime(
+    2024,
+    8,
+    30,
+    23,
+    59,
+    59,
+    tzinfo=dt.UTC,
+)
 _VECTOR_CURVE_SOURCE_COLUMNS = [
     "time_index",
     "unique_identifier",
@@ -335,7 +343,11 @@ def load_mxn_government_curve_source_from_vector_storage(
         )
 
     from msm.api.base import operation_result_rows
-    from msm.repositories.base import compile_markets_statement, execute_markets_operation
+    from msm.repositories.base import (
+        MarketsRepositoryContext,
+        compile_markets_statement,
+        execute_markets_operation,
+    )
     from sqlalchemy import and_, func, or_, select
 
     from valmer_connectors.data_nodes.valmer_vector_storage import (
@@ -346,7 +358,17 @@ def load_mxn_government_curve_source_from_vector_storage(
         ensure_valmer_asset_detail_runtime,
     )
 
-    context = ensure_valmer_asset_detail_runtime(timeout=timeout)
+    runtime_context = ensure_valmer_asset_detail_runtime(timeout=timeout)
+    context = MarketsRepositoryContext(
+        limits={
+            "max_rows": 250_000,
+            "statement_timeout_ms": 120_000,
+        },
+        data_source_uid=runtime_context.data_source_uid,
+        timeout=timeout if timeout is not None else runtime_context.timeout,
+        namespace=runtime_context.namespace,
+        reserved_policy=runtime_context.reserved_policy,
+    )
     vector_table = ValmerVectorPricesStorage.__table__
     details_table = ValmerAssetDetailsTable.__table__
     joined = vector_table.join(
@@ -452,6 +474,11 @@ def load_mxn_government_curve_source_from_vector_storage(
         access="read",
     )
     result = execute_markets_operation(operation, context=context)
+    if result.get("truncated"):
+        raise MexicanGovernmentBondCurveError(
+            "Valmer government curve source exceeds the 250,000-row governed "
+            "query limit; refusing to bootstrap from a truncated history."
+        )
     rows = list(operation_result_rows(result))
     frame = _vector_storage_rows_to_curve_source_frame(
         rows,

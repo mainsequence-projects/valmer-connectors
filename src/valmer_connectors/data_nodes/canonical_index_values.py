@@ -74,6 +74,7 @@ class ReferenceRateIndexDefinition:
         from msm.constants import INDEX_TYPE_INTEREST_RATE
 
         metadata_json: dict[str, Any] = {
+            "provider": self.provider,
             "source_series_id": self.source_series_id,
             "currency": self.currency,
             "country": self.country,
@@ -89,7 +90,8 @@ class ReferenceRateIndexDefinition:
             "index_type": INDEX_TYPE_INTEREST_RATE,
             "display_name": self.display_name,
             "description": self.description,
-            "provider": self.provider,
+            "calculation_method": "custom",
+            "value_format": "percent",
             "metadata_json": metadata_json,
         }
 

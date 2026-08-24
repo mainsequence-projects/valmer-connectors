@@ -10,13 +10,19 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import structlog
+from msm.api.base import operation_result_rows
+from msm.repositories.base import compile_markets_statement, execute_markets_operation
+from sqlalchemy import func, select
 
 from valmer_connectors.data_nodes.nodes import (
     ImportValmer,
     ImportValmerConfig,
     MetaTableValmerSourceConfig,
 )
-from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
+from valmer_connectors.data_nodes.valmer_vector_storage import (
+    ValmerVectorPricesStorage,
+    ensure_valmer_vector_runtime,
+)
 from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 from valmer_connectors.settings import (
     DEFAULT_VECTOR_FIRST_LOOP_COUNT,
@@ -213,16 +219,18 @@ def _rows_from_query_result(result: object) -> list[dict]:
 
 
 def _latest_vector_storage_time_index() -> dt.datetime | None:
-    storage = ValmerVectorPricesStorage.get_time_index_meta_table()
-    if storage is None:
-        return None
-    result = ImportValmer._run_metatable_query(
-        storage,
-        "SELECT MAX(time_index) AS latest_time_index "
-        f"FROM {ValmerVectorPricesStorage.__tablename__}",
-        timeout=120,
+    context = ensure_valmer_vector_runtime(timeout=120)
+    table = ValmerVectorPricesStorage.__table__
+    statement = select(func.max(table.c.time_index).label("latest_time_index"))
+    operation = compile_markets_statement(
+        statement,
+        context=context,
+        operation="select",
+        models=[ValmerVectorPricesStorage],
+        access="read",
     )
-    rows = _rows_from_query_result(result)
+    result = execute_markets_operation(operation, context=context)
+    rows = list(operation_result_rows(result))
     if not rows:
         return None
     value = rows[0].get("latest_time_index")

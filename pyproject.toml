@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valmer-connectors"
-version = "0.1.24"
+version = "0.1.25"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "arch>=8.0.0",
-    "mainsequence==6.0.27",
-    "ms-markets==0.0.104",
+    "mainsequence",
+    "ms-markets==0.0.110",
     "pandas-market-calendars>=5.4.0",
     "plotly>=6.8.0",
     "pymssql>=2.3.13",

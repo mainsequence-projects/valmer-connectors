@@ -351,7 +351,7 @@ ValmerVectorPricesStorage
     |
     v
 ValmerMxnGovernmentBondDiscountCurvesNode
-    OFFSET_START = 2026-06-01T00:00:00Z
+    OFFSET_START = 2024-08-30T23:59:59Z
     |
     v
 query persisted snapshots from the DataNode update boundary
@@ -507,7 +507,7 @@ Implementation locations:
   explicit `mid` `PricingMarketDataSetCurveBinding` upserts
 - `src/valmer_connectors/services/curve_update.py`
   for a service function that runs the project-specific
-  `DiscountCurvesNode` subclass with `OFFSET_START = 2026-06-01T00:00:00Z`
+  `DiscountCurvesNode` subclass with `OFFSET_START = 2024-08-30T23:59:59Z`
   and reads persisted vector storage snapshots
 - `src/valmer_connectors/cli/main.py`
   for the CLI command:
@@ -556,7 +556,8 @@ request, not through an MXN currency fallback.
 - [x] Add a service and CLI command for running the new curve update.
 - [x] Build the curve from `ValmerVectorPricesStorage` joined to
       `ValmerAssetDetailsTable`, not from a separate raw artifact read.
-- [x] Set the MXN government curve DataNode `OFFSET_START` to June 1, 2026.
+- [x] Set the MXN government curve DataNode `OFFSET_START` to the first
+  available persisted vector snapshot, August 30, 2024 at 23:59:59 UTC.
 - [x] Add unit tests for row selection using the local sample shape.
 - [x] Add unit tests for CETES helper validation and M Bonos helper validation.
 - [x] Add a frame-shape test proving the builder returns

@@ -17,9 +17,9 @@ from valmer_connectors.services.onedrive_graph import (
 class OneDriveGraphServiceTests(unittest.TestCase):
     def test_select_onedrive_vector_files_for_update_filters_by_filename_date(self):
         files = [
-            OneDriveGraphFile("1", "VectorAnalitico24h_2024-12-02.xls", 10, None),
             OneDriveGraphFile("2", "VectorAnalitico24h_2024-12-03.xls", 10, None),
             OneDriveGraphFile("3", "manual-vector.xls", 10, None),
+            OneDriveGraphFile("1", "VectorAnalitico24h_2024-12-02.xls", 10, None),
         ]
 
         selected = select_onedrive_vector_files_for_update(
@@ -28,6 +28,20 @@ class OneDriveGraphServiceTests(unittest.TestCase):
         )
 
         self.assertEqual([item.item_id for item in selected], ["2", "3"])
+
+    def test_select_onedrive_vector_files_for_update_sorts_oldest_first(self):
+        files = [
+            OneDriveGraphFile("3", "VectorAnalitico24h_2024-12-04.xls", 10, None),
+            OneDriveGraphFile("1", "VectorAnalitico24h_2024-12-02.xls", 10, None),
+            OneDriveGraphFile("2", "VectorAnalitico24h_2024-12-03.xls", 10, None),
+        ]
+
+        selected = select_onedrive_vector_files_for_update(
+            files,
+            latest_time_index=None,
+        )
+
+        self.assertEqual([item.item_id for item in selected], ["1", "2", "3"])
 
     def test_secret_value_reads_main_sequence_secret_value(self):
         secret = Mock()

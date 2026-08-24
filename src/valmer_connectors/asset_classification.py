@@ -15,7 +15,7 @@ def classify_valmer_asset_type(row: Mapping[str, Any]) -> str | None:
     subyacente = _clean_text(row.get("subyacente"))
     monedaemision = _clean_text(row.get("monedaemision"))
 
-    if (tipovalor, emisora) == ("BI", "CETE"):
+    if (tipovalor, emisora) == ("BI", "CETES"):
         return ASSET_TYPE_BOND
     if (tipovalor, emisora) == ("M", "BONOS") and _numeric_gt(
         row.get("tasacupon"), 0

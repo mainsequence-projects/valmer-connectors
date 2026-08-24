@@ -85,8 +85,12 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
 
         tiie_28 = payload_by_identifier["TIIE_28"]
         self.assertEqual(tiie_28["index_type"], INDEX_TYPE_INTEREST_RATE)
-        self.assertEqual(tiie_28["provider"], BANCO_DE_MEXICO_PROVIDER)
-        self.assertIsNone(tiie_28["metadata_json"])
+        self.assertEqual(tiie_28["calculation_method"], "custom")
+        self.assertEqual(tiie_28["value_format"], "percent")
+        self.assertEqual(
+            tiie_28["metadata_json"],
+            {"provider": BANCO_DE_MEXICO_PROVIDER},
+        )
 
         for identifier in (
             "TIIE_OVERNIGHT",
@@ -98,7 +102,7 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             "CETE_182",
         ):
             self.assertEqual(
-                payload_by_identifier[identifier]["provider"],
+                payload_by_identifier[identifier]["metadata_json"]["provider"],
                 BANCO_DE_MEXICO_PROVIDER,
             )
 
@@ -109,8 +113,15 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
 
         sofr = payload_by_identifier["USD_SOFR_OVERNIGHT"]
         self.assertEqual(sofr["index_type"], INDEX_TYPE_INTEREST_RATE)
-        self.assertEqual(sofr["provider"], FEDERAL_RESERVE_BANK_OF_NEW_YORK_PROVIDER)
-        self.assertEqual(sofr["metadata_json"], {"market": "US"})
+        self.assertEqual(sofr["calculation_method"], "custom")
+        self.assertEqual(sofr["value_format"], "percent")
+        self.assertEqual(
+            sofr["metadata_json"],
+            {
+                "market": "US",
+                "provider": FEDERAL_RESERVE_BANK_OF_NEW_YORK_PROVIDER,
+            },
+        )
 
     def test_convention_payload_keeps_pricing_terms_off_index_payload(self):
         definition = next(

@@ -66,7 +66,7 @@ broader Valmer universe, require a caller-owned classifier:
 
 ```python
 def classify_asset_type(row):
-    if (row["tipovalor"], row["emisora"]) in {("M", "BONOS"), ("BI", "CETE")}:
+    if (row["tipovalor"], row["emisora"]) in {("M", "BONOS"), ("BI", "CETES")}:
         return ASSET_TYPE_BOND
     return None
 ```

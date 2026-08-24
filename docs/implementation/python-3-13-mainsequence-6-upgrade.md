@@ -1,50 +1,45 @@
-# Python 3.13 And Main Sequence 5 Upgrade Implementation Task
+# Python 3.13 And Main Sequence 6 Upgrade
 
 ## Status
 
-Local environment cutover was completed on 2026-07-25. The application
-compatibility refactor and platform rollout remain open.
+The local dependency, application, and MetaTable-schema cutover was completed
+on 2026-08-21. Full canary execution and platform scheduling remain open.
 
 Verified local state:
 
 - `.venv` uses CPython `3.13.11`;
-- `mainsequence==5.0.1`, `ms-markets==0.0.99`, and
-  `valmer-connectors==0.1.23` are installed;
-- `pyproject.toml` requires `>=3.13,<3.14` and
-  `mainsequence>=5.0.0,<6`;
+- `mainsequence==6.0.46`, `ms-markets==0.0.110`, and
+  `valmer-connectors==0.1.24` are installed;
+- the project declares `mainsequence` without a version pin, keeps
+  `ms-markets==0.0.110`, and the lock contains no developer-machine source
+  paths;
 - `.python-version`, Ruff, VS Code, JetBrains, and the Dockerfile target Python
   3.13;
-- `uv.lock` resolves 97 packages for Python `==3.13.*`, `uv lock --check`
+- `uv.lock` resolves the Python 3.13 package graph, `uv lock --check`
   passes, and `requirements.txt` was regenerated;
 - QuantLib, NumPy, pandas, SciPy, PyArrow, `pymssql`, `psycopg2`, Streamlit,
   the project CLI, and the native package graph import successfully;
 - Ruff passes for `src`, `tests`, and `scripts`;
 - MkDocs strict build and `uv build` pass;
-- the built wheel reports `Requires-Python: <3.14,>=3.13` and
-  `Requires-Dist: mainsequence<6,>=5.0.0`.
+- the full suite passes with 248 tests and 39 subtests;
+- canonical Index values have no `unit` column, current Index payloads validate,
+  and the clean project migration head `0001` targets
+  `IndexFormulaDefinitionTable`.
 
-The linked local Main Sequence checkout is at tag `v5.0.0.1` and reports
-package version `5.0.1`. Main Sequence 5.0.1 is now available from PyPI, but the
-development lock still uses the local checkout. The checkout contains
-uncommitted work and is not a portable release source.
-
-The full suite is not yet green:
-
-- collection fails because `msm.models.index_calculations` was removed;
-- with that migration test excluded, 236 tests and 36 subtests pass and four
-  tests fail because canonical `IndexValuesTS` no longer has a `unit` column;
-- the same removed column is still projected by
-  `queries/curve_quote_indices.py`, so this is a runtime gap, not only stale
-  tests.
+The current upstream SDK is `6.0.46`. ms-markets `0.0.110` declares an
+unbounded `mainsequence` dependency, so the project no longer needs a uv
+override for stale transitive metadata. The project keeps `mainsequence`
+unbounded in `pyproject.toml`, while the lock and exported requirements capture
+the tested SDK version for reproducible environments.
 
 ## Success Condition
 
 The upgrade is complete only when:
 
 - the repository has one strict CPython 3.13 contract and no 3.11 fallback;
-- Main Sequence 5 and the selected ms-markets version resolve from immutable,
+- Main Sequence 6 and the selected ms-markets version resolve from immutable,
   deployment-available sources;
-- all Index identities use the Main Sequence 5/ms-markets custom-or-formula
+- all Index identities use the Main Sequence 6/ms-markets custom-or-formula
   contract;
 - canonical Index observations contain no `unit` field;
 - TIIE, SOFR, Fed Funds, FX, and cross-currency quote semantics remain explicit
@@ -64,19 +59,19 @@ preconditions pass.
 | Area | Current state | Required change |
 | --- | --- | --- |
 | Python | Local environment and repository constraint are 3.13 | Keep the strict `<3.14` upper bound until 3.14 is certified |
-| Main Sequence | 5.0.1 is installed from a local checkout although 5.0.1 is now on PyPI | Remove the local override and prove registry-only resolution |
-| Index identity | Valmer payloads still use the old fields and top-level `provider` | Set `calculation_method`, `value_format`, optional `value_suffix`, and move provider provenance into metadata |
-| Index values | Producer helpers still construct `unit`; storage silently omits it | Remove `unit` from the canonical row contract and every producer |
-| Curve quote reads | SQL still projects nonexistent `unit` | Read canonical columns only and derive a typed in-memory `quote_unit` from validated quote semantics |
-| Migration metadata | Imports removed `IndexCalculationDefinitionTable` | Reference `IndexFormulaDefinitionTable` directly; add no alias or decoder |
-| Tests | One collection error and four unit-contract failures | Rewrite tests against the hard new contract and add runtime query coverage |
-| Managed skills | SDK is 5.0.1 but managed Main Sequence skills remain pinned to 4.4.32 | Refresh scaffold and dual-source skills together after login |
+| Main Sequence | Registry SDK `6.0.46` is installed from an unbounded direct dependency; ms-markets also leaves the SDK unbounded | Keep the lock and full validation suite green |
+| Index identity | Current payloads are explicit custom/formula contracts with provider metadata | Complete live upsert validation after platform login |
+| Index values | Producers and reads use the unit-free canonical schema; the clean project baseline is applied | Verify source repopulation and exact-date reads |
+| Curve quote reads | Quote semantics are required in `metadata_json` | Verify exact-date live reads and key-node reconciliation |
+| Migration metadata | Provider references `IndexFormulaDefinitionTable`; current-only revision `0001` is applied | Keep fresh-schema migration and runtime attachment checks green |
+| Tests | 248 tests and 39 subtests pass | Keep this gate green in the release image |
+| Managed skills | Main Sequence managed skills match SDK `6.0.46`; ms-markets is `0.0.110` | Refresh only when installed versions change |
 | Deployment image | Dockerfile names the Python 3.13 platform image | Authenticate to GHCR and prove pull/build; the anonymous registry check was denied |
-| Platform | CLI token is invalid | Login, refresh the token, then verify migrations, images, jobs, runs, and logs |
+| Platform | Local authenticated migrations and source updates execute | Verify images, jobs, scheduled runs, and logs on the target branch |
 
 ## Implementation Phases
 
-### 1. Finish The Main Sequence 5 Index Contract
+### 1. Finish The Main Sequence 6 Index Contract
 
 Owning skill: `mainsequence-markets-index-workflow`.
 
@@ -157,10 +152,9 @@ In `src/migrations/__init__.py` and migration tests:
 - add no old-module shim, compatibility alias, decoder, or automatic
   translation.
 
-The ms-markets `0015` migration is a one-way replacement. Before applying it,
-prove the old calculation-definition tables contain no definitions requiring
-manual reconstruction. If they do, stop and create exact formula definitions
-with source MetaTable UIDs; do not infer them.
+The project uses a clean current-schema baseline after ms-markets `0015`. It
+does not translate removed calculation-definition tables or provide a
+compatibility path.
 
 Gate: both migration providers import, report the expected heads, and the
 Valmer provider owns only Valmer tables.
@@ -186,8 +180,9 @@ Also verify:
 - package and migration-provider imports;
 - `valmer-connectors version` and `valmer-connectors --help`;
 - QuantLib, `psycopg2`, `pymssql`, NumPy, pandas, SciPy, and PyArrow imports;
-- wheel metadata contains `Requires-Python: <3.14,>=3.13` and
-  `Requires-Dist: mainsequence<6,>=5.0.0`;
+- wheel metadata contains `Requires-Python: <3.14,>=3.13`,
+  `Requires-Dist: mainsequence`, and
+  `Requires-Dist: ms-markets==0.0.110`;
 - MkDocs builds in strict mode.
 
 Gate: every command exits successfully. Ignoring a test file is not an
@@ -197,16 +192,14 @@ acceptable completion result.
 
 Owning skill: `mainsequence-orchestration-and-releases`.
 
-The current local-path sources are valid for linked development only. Before an
-image build:
+The local path sources were removed. Before an image build:
 
-- remove the Main Sequence path override and resolve the published 5.0.1
-  package from the configured package index;
-- replace the sibling ms-markets path with a published or immutable source
-  available to the image builder;
-- regenerate the lock and exported requirements in that release context;
+- resolve the current `mainsequence` release and `ms-markets==0.0.110` from the configured
+  package index;
+- regenerate and compare the lock and exported requirements in the image
+  context;
 - prove a fresh checkout can run `uv sync --locked --python 3.13` without
-  `/Users/jose/...` paths.
+  developer-machine paths.
 
 Gate: lock and requirements contain no developer-machine absolute or relative
 checkout dependency required by the image builder.
@@ -219,8 +212,8 @@ Owning skills: `mainsequence-orchestration-and-releases` and
 After `mainsequence login`:
 
 1. refresh the token;
-2. refresh `AGENTS.md` and managed Main Sequence skills together so the pin
-   records SDK 5.0.1 and the platform skill manifest;
+2. verify `AGENTS.md` and managed skill provenance record SDK `6.0.46`, ms-markets
+   `0.0.104`, and the platform skill manifest;
 3. authenticate to the private image registry and verify the Python 3.13 base;
 4. build a project image and inspect its Python and package versions;
 5. inspect and apply ms-markets migrations, then Valmer migrations;
@@ -228,7 +221,8 @@ After `mainsequence login`:
    dependency order;
 7. run each producer a second time to prove stable updater identity and no
    duplicate keys;
-8. synchronize `scheduled_jobs.yaml` against the verified image;
+8. configure the backend-owned ProjectBranch workflow and jobs against the
+   verified image;
 9. inspect job configurations, runs, logs, and published rows.
 
 Gate: one complete canary cycle and its immediate no-op rerun succeed before
@@ -241,9 +235,9 @@ compatibility work fails, restore the previous dependency contract and lock in
 a dedicated rollback change and recreate `.venv`; do not add Python 3.11
 branches or compatibility modules.
 
-Do not apply ms-markets migration `0015` until the hard preflight passes. Once
-it is applied, rollback requires a verified database backup/restore because the
-migration intentionally has no legacy downgrade.
+The recreated data source is already at ms-markets `0015` and Valmer `0001`.
+Rollback requires a verified database backup/restore; do not add an old-schema
+downgrade or compatibility model.
 
 Do not move scheduled jobs to the Python 3.13 image until the canary gate
 passes. The previous image remains the operational rollback target.

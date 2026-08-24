@@ -1,6 +1,6 @@
 ---
 name: static-site
-description: Apply the static-site specialization of the canonical Main Sequence ResourceRelease workflow. Use to discover live static creation fields, preserve the Command Center frontend ownership boundary, and prepare static-specific creation or configuration inputs for one ProjectBranch.
+description: Apply the Static Site specialization of the canonical ResourceRelease workflow, including delegated FastAPI preflight and optional human-authorized Command Center navigation placement.
 ---
 
 # Main Sequence Static-Site Release
@@ -52,6 +52,25 @@ This skill does not own:
 - project API design or browser authentication; or
 - local source edits, builds, tests, Git operations, or credentials.
 
+## Optional Command Center Navigation Placement
+
+When deployment intent includes a Command Center link, use workflow API
+`2.1.0` and the backend template's nested `navigation_link` shape. Do not add a
+top-level link resource or create a personal link. The exact declaration must
+have a human-approved maximum-audience grant before repository automation may
+materialize its managed link.
+
+Use `navigation_link_grant.list/get/create/update/revoke` only through their
+advertised MCP contracts. A coding agent may identify that approval is needed,
+but it must not claim repository access, Project edit access, Git identity, or
+the Organization automation identity as audience authority. The canonical DRF
+operation checks the human's Project and audience permissions. Placement does
+not grant target access.
+
+A navigation authorization failure does not mean the Static Site deployment
+failed. Read the workflow result and correlated DeploymentRun warning. A
+malformed `navigation_link` block still invalidates the workflow file.
+
 A Project Blueprint may record why a static site exists and its deployment
 intent, but a Blueprint is not a DRF or MCP precondition for creating a static
 release.
@@ -60,14 +79,17 @@ release.
 
 Before implementing or changing the frontend:
 
-1. Resolve the project's installed
+1. Use the Git repository root as the canonical Vite application root. Keep
+   `package.json`, `package-lock.json`, `.agents/`, `src/`, and `dist/` under
+   that root; do not create or discover a nested `frontend/` project.
+2. Resolve the project's installed
    `@dev-mainsequence/command-center-sdk` package.
-2. Read that installed package's version, `package.json`, README, public export
+3. Read that installed package's version, `package.json`, README, public export
    map, and declarations relevant to the work.
-3. Verify that its complete version-matched skill bundle is installed under
+4. Verify that its complete version-matched skill bundle is installed under
    `.agents/skills/command-center/` and that `PINNED_FROM.txt` identifies the
    installed package version.
-4. If the dependency is installed but its skills are missing or stale, use the
+5. If the dependency is installed but its skills are missing or stale, use the
    package's canonical installer rather than copying individual skills. The
    currently documented explicit command is:
 
@@ -75,7 +97,7 @@ Before implementing or changing the frontend:
    npx command-center-sdk skills install --path .
    ```
 
-5. Start with the installed `use-command-center-sdk` skill and use the
+6. Start with the installed `use-command-center-sdk` skill and use the
    applicable installed skills for surface selection, resources, views,
    actions, widgets, workspaces, themes, embeds, SDK extension, contract
    evolution, and verification.
@@ -111,6 +133,20 @@ target identity, permissions, and target CORS policy on every delegated
 request. A source and target may belong to different Projects, ProjectBranches,
 or OrganizationProjectEnvironments; do not infer co-location. Both releases
 must belong to the same Organization.
+
+Preflight this before frontend work: retrieve the exact target with
+`resource_release.get`, read its persisted `cors_allowed_origins`, and compare
+it with the source release's backend-returned `public_url`. FastAPI creation
+normally persists the active platform static-site wildcard (`site-dev` in
+development and `site` in production). Do not infer that platform deployment
+environment from an Organization Environment.
+
+If exchange returns `403` with `code=origin_not_allowed`, treat it as target
+FastAPI policy mismatch. Correct the target through `resource_release.update`,
+verify it with another get, redeploy it through
+`resource_release.deploy_current_version`, and observe the DeploymentRun before
+retrying browser preflight. Project code never submits an origin to Django and
+never writes the reserved `FASTAPI_CORS_ALLOW_ORIGINS` runtime setting.
 
 This skill records only the platform boundary. Read the installed Command
 Center SDK skills for the actual frontend API and transport; do not reproduce

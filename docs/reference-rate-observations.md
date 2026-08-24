@@ -13,12 +13,14 @@ pricing fixing.
 | MetaTable | `IndexValuesTS.1d` |
 | Physical table | `ms_markets__index_values__t_1d` |
 | Grain | `(time_index, index_identifier)` |
-| Values | `value`, `unit` |
+| Value | `value` |
 | Provenance | `definition_uid`, `observation_status`, `source_as_of`, `metadata_json` |
 | Identity | `index_identifier -> IndexTable.unique_identifier` |
 
 Source-published observations use `definition_uid = null`. Percentage-form
-rates are divided by 100 exactly once and stored with `unit = "decimal"`.
+rates are divided by 100 exactly once. Display formatting belongs to the Index
+identity; vendor units and curve-quote canonical units are stored in bounded
+`metadata_json` provenance rather than a storage compatibility column.
 
 ## FRED and Banxico Series
 
@@ -82,9 +84,12 @@ mainsequence migrations upgrade --provider msm.migrations:migration head
 PYTHONPATH=src mainsequence migrations upgrade --provider migrations:migration head
 ```
 
-Project revision `0004` created the canonical daily table, copied and reconciled
-all 8,637 prior FRED/Banxico observations, and dropped the obsolete physical
-table. Runtime code contains only the canonical producer path.
+Project revision `0001` is a clean current-schema baseline. It creates the
+unit-free daily table with current foreign keys to `IndexTable` and
+`IndexFormulaDefinitionTable`; it does not create, copy, translate, or retain a
+project-specific reference-rate table. Runtime code contains only canonical
+producers. Rebuilding a data source therefore means applying the baseline and
+rerunning the FRED and Banxico producers from their source APIs.
 
 ## Repair
 
@@ -102,9 +107,11 @@ Never issue unscoped deletion or raw SQL.
 
 ## Verification
 
-- Compare row counts, first/last dates, units, and duplicate keys per Index.
+- Compare row counts, first/last dates, values, provenance, and duplicate keys
+  per Index.
 - Require 34 MXN plus 47 USD Valmer observations for a complete source date.
 - Resolve every curve key node's typed Index source reference on the exact curve
-  date and reconcile value, unit, source quote, source unit, and vendor identity.
+  date and reconcile value, metadata `quote_unit`, source quote, source unit,
+  and vendor identity.
 - Run every producer twice and confirm the second run adds no duplicate keys.
 - Inspect scheduled platform runs and logs; local tests do not prove a live job.

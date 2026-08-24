@@ -282,7 +282,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
             key_nodes_validator=validate_mxn_government_key_nodes,
         )
 
-    def test_mxn_government_curve_node_uses_june_2026_offset_start(self):
+    def test_mxn_government_curve_node_uses_first_vector_snapshot(self):
         self.assertTrue(
             issubclass(
                 curve_update.ValmerMxnGovernmentBondDiscountCurvesNode,
@@ -291,7 +291,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         )
         self.assertEqual(
             curve_update.ValmerMxnGovernmentBondDiscountCurvesNode.OFFSET_START,
-            dt.datetime(2026, 6, 1, tzinfo=dt.UTC),
+            dt.datetime(2024, 8, 30, 23, 59, 59, tzinfo=dt.UTC),
         )
 
     def test_vector_storage_builder_queries_from_node_offset_before_first_update(self):
@@ -384,6 +384,37 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         self.assertTrue(frame.empty)
         self.assertIn("time_index", frame.columns)
         self.assertIn("tipovalor", frame.columns)
+
+    def test_vector_storage_loader_rejects_truncated_governed_result(self):
+        runtime_context = Mock(
+            data_source_uid="data-source",
+            timeout=30,
+            namespace="mainsequence.markets",
+            reserved_policy="reject",
+        )
+
+        with (
+            patch(
+                "valmer_connectors.meta_tables.valmer_asset_details."
+                "ensure_valmer_asset_detail_runtime",
+                return_value=runtime_context,
+            ),
+            patch(
+                "msm.repositories.base.execute_markets_operation",
+                return_value={"rows": [], "truncated": True},
+            ),
+            patch(
+                "msm.repositories.base.compile_markets_statement",
+                return_value=object(),
+            ),
+        ):
+            with self.assertRaisesRegex(
+                curve_update.MexicanGovernmentBondCurveError,
+                "refusing to bootstrap from a truncated history",
+            ):
+                curve_update.load_mxn_government_curve_source_from_vector_storage(
+                    start_time_index="2024-08-30T23:59:59Z",
+                )
 
     def test_empty_curve_frame_matches_discount_curve_storage_contract(self):
         frame = curve_update._empty_curve_frame()

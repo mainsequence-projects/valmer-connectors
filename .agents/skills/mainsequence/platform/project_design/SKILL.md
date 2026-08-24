@@ -55,9 +55,18 @@ Keep these distinctions:
 - `GitRepository` is the provider/source-control record. Repository detail
   exposes its owning logical Project UID and never selects an entry, main,
   oldest, or current ProjectBranch.
-- `ProjectBranch` is one durable branch-specific configuration and execution
-  context under a Project. Another provider branch gets a different
-  ProjectBranch UID while retaining the same logical Project UID.
+- `OrganizationProjectEnvironment` is the canonical operational partition of
+  the platform. For Project-owned code and resources, the exact Git branch is
+  the repository-side partition marker and `ProjectBranch` is the durable
+  platform context that binds one logical Project to exactly one Environment.
+  Another provider branch gets a different ProjectBranch UID while retaining
+  the same logical Project UID, allowing one Project to participate in several
+  Environment partitions without duplicating the Project.
+- Never model a branch-owned object against `Project` alone and then infer an
+  active, default, main, or current branch. Resolve the exact persisted
+  `ProjectBranch`; all of its Jobs, images, releases, runtimes, Project Coding
+  Agents, and repository-derived resources stay in that branch's Environment.
+  A commit SHA shared by several branches does not merge their partitions.
 - A Project Coding `Agent` derives its ProjectBranch and Organization
   Environment from the typed Project Executor policy. Agent list/search always
   selects one Organization Environment and returns only Project Coding Agents
@@ -76,9 +85,9 @@ Keep these distinctions:
   backend assigns each branch to the same-Organization environment whose
   immutable required branch exactly matches; the caller never supplies an
   environment UID.
-- `OrganizationProjectEnvironment` is the Organization-owned execution, data,
-  and configuration boundary shared by exact compatible ProjectBranches. Its
-  DataSource is routing configuration, not environment identity.
+- `OrganizationProjectEnvironment` is shared by exact compatible
+  ProjectBranches from one or several Projects. Its DataSource is routing
+  configuration, not environment identity.
 - `DataSource` is the sole canonical physical database identity. New
   MetaTable work routes through the ProjectBranch's backend-derived
   Organization Environment; there is no generic Project-to-DataSource
@@ -146,7 +155,7 @@ Keep these distinctions:
   fixed SDK workload build are backend-owned. Never design an `extension_id`,
   image selector, build command, environment, active deployment, or a second
   publication-attempt system.
-- Workflow API `2.0.0` can carry non-secret target-owned `env_vars` for Jobs,
+- Workflow APIs `2.0.0` and `2.1.0` can carry non-secret target-owned `env_vars` for Jobs,
   runtime ResourceReleases, and Project Coding Agents. Static sites use
   `build_environment`; widget extensions accept neither. These literals configure only the declared target or
   its backing Job: they do not create or resolve platform Secrets/Constants,
@@ -162,6 +171,14 @@ Keep these distinctions:
   by a genuine local checkout to discover a persisted ProjectBranch; a
   deployed image never requires `.git` and cannot select another branch or
   environment.
+- For Agent execution, distinguish the runtime responsible User from the
+  AgentSession owner. The runtime responsible User authorizes and audits the
+  service action; `AgentSession.created_by_user` owns the invocation and its
+  model-provider credentials. An A2A child and handle inherit that User from
+  the exact immediate parent session, whose Agent proves the calling service.
+  Every target runtime hydrates independently after exact session
+  authorization; credentials never travel in A2A content and service ownership
+  is never a credential fallback.
 - SDK application code never supplies deployed runtime mode, ProjectBranch,
   repository branch, or Organization Environment. The SDK installs context
   only from an authenticated startup or credential-exchange response and omits
@@ -355,7 +372,7 @@ consumer.
 When a component requires process configuration, record the required variable
 names, non-secret value intent, target ownership, and secret exclusions in its
 existing constraints, decisions, dependencies, and acceptance criteria. The
-implementation handoff uses the live `project-workflows` API `2.0.0` template.
+implementation handoff uses the live `project-workflows` API `2.1.0` template.
 Do not add a second Blueprint environment-variable domain or represent a
 workflow literal as a platform Secret/Constant resource.
 
@@ -450,7 +467,7 @@ Direct manual Job creation selects one already-ready exact project image.
 Direct automatic Job creation does not accept an image selector: the backend
 derives one exact initial image from the ProjectBranch's persisted synchronized
 commit and owns its preparation. Workflow Job declarations likewise carry no
-image or commit selectors: workflow API `2.0.0` derives the exact image from
+image or commit selectors: workflow API `2.1.0` derives the exact image from
 the immutable repository event. Neither automatic path resolves branch HEAD at
 runtime or persists an image-less Job.
 
@@ -496,9 +513,13 @@ Command Center SDK skill bundle owns the manifest and executable module; the
 `project-workflows` and `resource-release` skills own deployment.
 
 For a browser-called FastAPI, record the intended exact or wildcard browser
-origins as API deployment intent. The execution handoff uses the FastAPI
-release's canonical `cors_allowed_origins`; project code and workflow
-`env_vars` do not install or configure platform CORS middleware.
+origins as API deployment intent when the platform default is not sufficient.
+Omitted FastAPI creation uses the current platform deployment's static-site
+wildcard (`site-dev` in development and `site` in production); this is not an
+Organization Environment mapping. The execution handoff uses the FastAPI
+release's canonical persisted `cors_allowed_origins`; project code and workflow
+`env_vars` do not install or configure platform CORS middleware. A changed
+policy requires runtime redeployment before browser CORS headers change.
 
 When an accepted static site calls an accepted FastAPI release through
 platform delegation, record the exact source StaticSiteRelease UID, exact
@@ -592,6 +613,16 @@ Record:
   default or use null for every commit; and
 - observable acceptance criteria.
 
+When an accepted Static Site must appear in Command Center navigation, record
+the intended label, allowlisted icon, enabled state, and recipient category in
+that Static Site's constraints and acceptance criteria. The implementation
+handoff uses the workflow's nested `navigation_link`; it does not add a
+top-level Blueprint links domain. Record that a human grant for the exact
+ProjectBranch, workflow path, resource key, and maximum audience is a
+precondition. Do not treat repository access, Project edit authority, Git
+identity, or the automation identity as audience approval, and do not claim
+placement grants target access.
+
 Represent an API dependency through `depends_on`, using its `apis.<key>`
 reference. Do not invent a build-environment variable name in project design;
 transport configuration belongs to the frontend implementation selected
@@ -634,7 +665,6 @@ static_sites:
     decision_refs:
       - decisions.browser_frontend
     deployment:
-      root_directory: frontend
       routing_mode: spa
       automatic_deployment: true
       automatic_redeployment_policy:
@@ -662,7 +692,8 @@ Before handoff, verify:
 - every project-agent skill references at least one compatible CLI command;
 - every static-site dependency and consumer reference resolves;
 - every delegated static-site-to-FastAPI composition records exact deployed
-  source and target release identity resolution, target CORS intent, and
+  source and target release identity resolution, whether the platform CORS
+  default or a custom override is intended, and
   same-Organization ownership without inventing an environment co-location
   rule;
 - every organization-environment assumption uses an Organization-owned
@@ -708,30 +739,36 @@ requested.
 
 Do not send `repository_branch` to `project.create`; the server creates `main`.
 GitRepository branch discovery is not an MCP tool in the current catalog, and
-manual branch creation/import is retired by the accepted ADR-031 lifecycle.
+manual branch creation/import is retired by the ADR-031/ADR-0036 lifecycle.
 After bootstrap, only a signed provider push may create a missing ProjectBranch,
 and only when the Organization already owns the exact matching environment.
 Git does not create that environment or choose a DataSource. No MCP branch
 creation/import tool exists. Canonical DRF repository detail returns the owning
 logical Project UID; it never computes a branch UID.
 
-This Git-driven cutover is approved but not deployed yet. Current webhook
-processing synchronizes only existing ProjectBranches and the manual DRF
-`import-branch` action remains present. Treat that as a deployment gap: do not
-design new callers around the retiring action and do not claim automatic branch
-provisioning has shipped until runtime evidence confirms the cutover.
+This Git-driven lifecycle is deployed. A persisted signed push creates a
+missing ProjectBranch only when the Organization already owns the exact
+matching Environment. Otherwise the push is ignored and creates no branch. Do
+not design manual branch creation/import as an alternative lifecycle.
 
 Choose the public `project_type` deliberately when the design establishes the
-primary scaffold: `python` or `vite_react`. Omission means `python` for backward
-compatibility. Do not invent separate language, framework, profile, or scaffold
-version fields. The canonical response exposes the derived technology, the
+primary Project scaffold: `python` or `vite_react`. The immutable value belongs
+to the logical Project, and every ProjectBranch under it uses that one type;
+never design mixed branch types or a branch-level override. Omission during
+Project creation means `python`. Do not invent separate language, framework,
+profile, or scaffold version fields. The canonical Project response exposes the derived technology, the
 mandatory pinned framework image, and repository/commit-scoped SDK
-observations. A Vite ProjectBranch keeps browser build variables on its
+observations. A Vite Project keeps browser build variables on its
 StaticSiteRelease rather than ProjectBranch `env_vars`; its environment owns
 MetaTable DataSource routing like every other ProjectBranch. Project creation
-itself always requires
-`default_metatables_data_source_uid`, exposes the safe Project default
-projection, and assigns that DataSource to the initial main ProjectBranch.
+does not accept a DataSource selector. The backend resolves the Organization's
+canonical production environment and assigns the initial `main` ProjectBranch
+to it. The Project stores and exposes no default MetaTables DataSource; managed
+MetaTable routing resolves only through the exact ProjectBranch's persisted
+Organization Environment. The read-only ProjectBranch
+`metatables_data_source` and `metatables_data_source_uid` projections stay in
+the public branch contract and reflect the branch Environment's routing
+configuration.
 Do not infer framework-image paths, tags, or runtime versions: the physical
 infrastructure producer advertises those values, and Project creation resolves
 its advertised default when no image UID is supplied.

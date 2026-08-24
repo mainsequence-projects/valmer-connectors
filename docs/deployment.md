@@ -33,6 +33,7 @@ valmer-connectors curves update-tiie-irs-mxn
 valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
+python scripts/verify_current_pipeline.py
 ```
 
 Use the dashboard after deployment to confirm:
@@ -44,12 +45,30 @@ Use the dashboard after deployment to confirm:
 
 ## Current Platform Verification
 
-Revision `0004` and the historical row reconciliation are complete: 8,637 FRED
-and Banxico observations are present in `IndexValuesTS.1d`, and the obsolete
-physical table is gone. The quote/curve launch sequence is not yet live-verified
-because the local `tsorm_web_local` backend currently fails its Django system
-check for the unrelated missing `pod_manager.DeploymentRun` model and resets SDK
-requests. Restore that backend first, then run the commands above in order and
-inspect immediate no-op reruns. The repository job batch has not yet been
-synchronized; job creation, run status, and logs remain required before
-scheduled production readiness is claimed.
+The local MetaTable data source was rebuilt on 2026-08-21. The ms-markets
+provider is at revision `0015`; the Valmer provider is at its clean
+current-schema baseline `0001`. The Valmer provider owns exactly three tables:
+
+- `valmer_connectors__valmerassetdetails`;
+- `valmer_connectors__vector_de_precios_valmer`;
+- `ms_markets__index_values__t_1d`.
+
+There is no obsolete reference-rate table, compatibility storage, or migration
+decoder. After recreation, FRED, Banxico policy, Banxico fixing, both Valmer
+quote producers, TIIE, SOFR, XCCY, vector history, and the government curve were
+run again.
+
+The final governed-storage audit on 2026-08-21 verified:
+
+- 8,633 reference-rate observations and 81 Valmer quote observations in
+  `IndexValuesTS.1d`;
+- 26,430 observations across seven Banxico fixing indices;
+- 13,083 government-vector observations over 248 dates, including 9,029 CETES
+  and 4,054 M Bonos rows;
+- 248 government curves and one current row for each of TIIE, SOFR, and XCCY;
+- all 55 quote-backed key nodes resolve to exact-date Index observations;
+- all 12,761 government key nodes resolve to exact-date Asset observations.
+
+`scripts/verify_current_pipeline.py` is the repeatable verification command. It
+fails on missing rows, unexpected counts, truncated governed queries, invalid
+key-node schemas, or unresolved source references.

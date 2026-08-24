@@ -235,7 +235,14 @@ def select_onedrive_vector_files_for_update(
         file_time_index = _file_time_index_from_name(item.name)
         if latest_time_index is None or file_time_index is None or file_time_index > latest_time_index:
             selected.append(item)
-    return selected
+    return sorted(
+        selected,
+        key=lambda item: (
+            _file_time_index_from_name(item.name) is None,
+            _file_time_index_from_name(item.name) or dt.datetime.max.replace(tzinfo=dt.UTC),
+            item.name,
+        ),
+    )
 
 
 def _cache_file_is_current(path: Path, item: OneDriveGraphFile) -> bool:

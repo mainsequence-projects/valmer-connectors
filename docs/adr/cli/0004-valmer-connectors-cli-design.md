@@ -181,7 +181,7 @@ Default behavior:
 
 - call `bootstrap_runtime()`;
 - run a project-specific `DiscountCurvesNode` subclass with
-  `OFFSET_START = 2026-06-01T00:00:00Z`;
+  `OFFSET_START = 2024-08-30T23:59:59Z`;
 - read CETES and M Bonos MXN government rows from
   `ValmerVectorPricesStorage` joined to `ValmerAssetDetailsTable`;
 - use the first-run offset or the last stored curve observation to select the

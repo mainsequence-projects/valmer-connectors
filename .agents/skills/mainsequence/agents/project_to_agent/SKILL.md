@@ -52,9 +52,14 @@ The same derived environment scopes Project Coding Agent interaction. Agent
 list/search exposes only Project Coding Agents whose ProjectBranches belong to
 that environment, including compatible branches from other Projects. Astro Tau
 injects the backend-provided environment into MCP discovery and hides the
-selector from the model. Delegation remains provenance-bound: a target session
-must be created under a parent session owned by the calling Project Executor,
-and subagent bindings cannot cross environments or target an unscoped Agent.
+selector from the model. Delegation remains provenance-bound: the parent
+session's Agent must be the calling Project Executor, while the target session
+and handle inherit the parent session's `created_by_user`. That inherited User
+owns model-provider credentials across every A2A hop; each target runtime
+hydrates independently and never receives credentials in the A2A payload.
+The runtime credential's responsible User remains the acting principal, not a
+session-owner or credential fallback. Subagent bindings cannot cross
+environments or target an unscoped Agent.
 
 The Project Executor image inherits the exact verified source provenance of
 its digest-pinned ProjectBranch project image and adds the executor bundle and
@@ -121,7 +126,7 @@ agent. Only project-owned skills outside that tree belong in the source card.
    `project_coding_agent` declaration under `.mainsequence/workflows/`, validate
    it through the backend, and inspect its deployment run after commit. No
    ProjectBranch or Project Executor image input is needed for this declaration.
-   API `2.0.0` may include non-secret target-owned `env_vars`; retrieve the live
+   API `2.1.0` may include non-secret target-owned `env_vars`; retrieve the live
    template for their exact shape. Those literals configure only the service
    backing Job and cannot create platform Secrets/Constants or select branch,
    environment, harness, image, or runtime credentials.
@@ -161,6 +166,7 @@ The source card owns stable repository-authored information:
 - a meaningful human-facing agent name;
 - a truthful description;
 - the project agent definition version; and
+- the stable Main Sequence A2A response-kind profile; and
 - project-owned skill descriptions and their repository paths.
 
 Do not encode the ProjectBranch UID or branch name into the agent name. The
@@ -174,6 +180,19 @@ Use this source shape:
   "name": "Portfolio Risk Analyst",
   "description": "Reviews portfolio risk using the verified capabilities of this project.",
   "version": "1.0.0",
+  "capabilities": {
+    "extensions": [
+      {
+        "uri": "https://mainsequence.ai/a2a/extensions/response-kind/v1",
+        "description": "Select whether message:send returns a completed message or an asynchronous task.",
+        "required": false,
+        "params": {
+          "supportedResponseKinds": ["message", "task"],
+          "defaultResponseKind": "message"
+        }
+      }
+    ]
+  },
   "skills": [
     {
       "id": "portfolio-risk-review",
@@ -199,8 +218,10 @@ Source-card rules:
 - Do not reference `.agents/skills/mainsequence/`.
 - Do not include secrets, tokens, internal runtime locations, or local absolute
   paths.
-- Do not add `supportedInterfaces`, runtime security declarations, or runtime
-  capability flags.
+- Include only response kinds implemented by the selected runtime and backend.
+- Use `message` as the default and do not infer `task` support.
+- Do not add `supportedInterfaces`, runtime security declarations, push
+  notifications, or other runtime capability flags.
 
 ## Runtime A2A Card
 
@@ -213,6 +234,8 @@ The runtime:
 - supplies the security schemes and requirements enforced by that runtime;
 - declares only transport capabilities and media modes that the deployed
   runtime actually supports;
+- intersects the source response-kind declaration with the runtime and backend
+  implementation before advertising it;
 - projects source skills into standard A2A skill entries; and
 - keeps repository-only paths and runtime credentials out of the public card.
 

@@ -27,10 +27,12 @@ class FredReferenceRateTests(unittest.TestCase):
         payload = self.definition.index.to_index_payload()
 
         self.assertEqual(payload["unique_identifier"], "US_TREASURY_CMT_2Y")
-        self.assertEqual(payload["provider"], "FRED")
+        self.assertEqual(payload["calculation_method"], "custom")
+        self.assertEqual(payload["value_format"], "percent")
         self.assertEqual(
             payload["metadata_json"],
             {
+                "provider": "FRED",
                 "source_series_id": "DGS2",
                 "currency": "USD",
                 "country": "US",

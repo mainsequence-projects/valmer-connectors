@@ -202,7 +202,9 @@ def upsert_valmer_curve_quote_indexes(frame: pd.DataFrame) -> dict[str, Any]:
             # observations; value_format is display-only. `provider` was removed
             # from IndexUpsert and now rides in metadata_json.
             calculation_method="custom",
-            value_format="decimal",
+            value_format=(
+                "percent" if family in INTEREST_RATE_FAMILIES else "decimal"
+            ),
             description=(
                 f"Valmer {row.quote_side if hasattr(row, 'quote_side') else 'mid'} "
                 f"{family.replace('_', ' ')} quote used by curve construction."

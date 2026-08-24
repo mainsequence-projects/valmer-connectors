@@ -52,9 +52,9 @@
 - `docs/implementation/valmer-curve-quote-index-pipeline-refactor.md`: current
   implementation and verification task for canonical daily Index observations
   and dependency-backed TIIE, SOFR, and USD/MXN curves.
-- `docs/implementation/python-3-13-mainsequence-5-upgrade-plan.md`: executable
+- `docs/implementation/python-3-13-mainsequence-6-upgrade.md`: executable
   runtime, Index-contract, migration, verification, and platform rollout plan
-  for Python 3.13 and Main Sequence 5.
+  for Python 3.13 and Main Sequence 6.
 
 ## ADRs
 

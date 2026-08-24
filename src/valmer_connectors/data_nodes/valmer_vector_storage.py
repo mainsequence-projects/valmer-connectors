@@ -281,4 +281,31 @@ class ValmerVectorPricesStorage(ValmerMarketsTimeIndexMetaTableMixin, MarketsBas
     )
 
 
-__all__ = ["ValmerVectorPricesStorage"]
+def ensure_valmer_vector_runtime(
+    *,
+    timeout: int | float | tuple[float, float] | None = None,
+):
+    """Return a repository context after verifying vector storage is attached."""
+
+    from msm.bootstrap import get_runtime
+    from msm.repositories.base import MarketsRepositoryContext
+
+    try:
+        markets_runtime = get_runtime()
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "ValmerVectorPricesStorage requires bootstrap_runtime() before row operations."
+        ) from exc
+    try:
+        markets_runtime.table(ValmerVectorPricesStorage).meta_table_uid
+    except ValueError as exc:
+        raise RuntimeError(
+            "ValmerVectorPricesStorage is not attached to the active markets runtime."
+        ) from exc
+    return MarketsRepositoryContext(
+        timeout=timeout,
+        namespace=markets_runtime.namespace,
+    )
+
+
+__all__ = ["ValmerVectorPricesStorage", "ensure_valmer_vector_runtime"]

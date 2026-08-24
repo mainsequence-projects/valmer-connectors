@@ -19,7 +19,9 @@ class BanxicoPolicyRateTests(unittest.TestCase):
         payload = BANXICO_POLICY_TARGET_DEFINITION.index.to_index_payload()
 
         self.assertEqual(payload["unique_identifier"], "BANXICO_POLICY_TARGET")
-        self.assertEqual(payload["provider"], "Banco de Mexico")
+        self.assertEqual(payload["calculation_method"], "custom")
+        self.assertEqual(payload["value_format"], "percent")
+        self.assertEqual(payload["metadata_json"]["provider"], "Banco de Mexico")
         self.assertEqual(payload["metadata_json"]["source_series_id"], "SF61745")
         self.assertEqual(payload["metadata_json"]["observation_type"], "policy_target")
 

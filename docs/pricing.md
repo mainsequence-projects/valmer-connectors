@@ -429,7 +429,7 @@ configure_valmer_discount_curves_cadence()
     |
     v
 ValmerMxnGovernmentBondDiscountCurvesNode
-    OFFSET_START = 2026-06-01T00:00:00Z
+    OFFSET_START = 2024-08-30T23:59:59Z
     |
     v
 builder reads ValmerVectorPricesStorage

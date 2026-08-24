@@ -236,8 +236,8 @@ for MkDocs through `mkdocs.yml`.
 - `docs/implementation/valmer-curve-quote-index-pipeline-refactor.md`: executable
   task for canonical FRED, Banxico, and Valmer observations plus the
   dependency-backed TIIE, SOFR, and USD/MXN curve graph
-- `docs/implementation/python-3-13-mainsequence-5-upgrade-plan.md`: Python 3.13,
-  Main Sequence 5, Index-contract, migration, verification, and rollout task
+- `docs/implementation/python-3-13-mainsequence-6-upgrade.md`: Python 3.13,
+  Main Sequence 6, Index-contract, migration, verification, and rollout task
 - `docs/agent-skills.md`: importing bundled Valmer Codex skills into host
   projects
 - `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up

@@ -26,7 +26,7 @@ def _source_frame() -> pd.DataFrame:
             },
             {
                 "tipovalor": "BI",
-                "emisora": "CETE",
+                "emisora": "CETES",
                 "serie": "260910",
                 "fecha": "2026-06-10",
                 "nombrecompleto": "CETES 260910",
@@ -53,7 +53,7 @@ class ValmerAssetRegistrationTests(unittest.TestCase):
             ASSET_TYPE_BOND,
         )
         self.assertEqual(
-            classify_valmer_asset_type({"tipovalor": "BI", "emisora": "CETE"}),
+            classify_valmer_asset_type({"tipovalor": "BI", "emisora": "CETES"}),
             ASSET_TYPE_BOND,
         )
         self.assertIsNone(
@@ -63,7 +63,7 @@ class ValmerAssetRegistrationTests(unittest.TestCase):
     def test_register_valmer_assets_from_rows_runs_batched_workflow(self):
         existing_cete = SimpleNamespace(
             uid=uuid.uuid4(),
-            unique_identifier="BI_CETE_260910",
+            unique_identifier="BI_CETES_260910",
             asset_type=ASSET_TYPE_BOND,
         )
         new_bono = SimpleNamespace(
@@ -79,7 +79,7 @@ class ValmerAssetRegistrationTests(unittest.TestCase):
 
         with patch(
             "valmer_connectors.assets.registration.resolve_valmer_asset_refs",
-            return_value={"BI_CETE_260910": cete_ref},
+            return_value={"BI_CETES_260910": cete_ref},
         ) as resolve_refs:
             with patch(
                 "valmer_connectors.assets.registration._upsert_asset_table_rows",
@@ -89,7 +89,7 @@ class ValmerAssetRegistrationTests(unittest.TestCase):
                     "valmer_connectors.assets.registration.upsert_valmer_asset_details",
                     return_value={
                         "M_BONOS_341123": {},
-                        "BI_CETE_260910": {},
+                        "BI_CETES_260910": {},
                     },
                 ) as upsert_details:
                     with patch(
@@ -101,7 +101,7 @@ class ValmerAssetRegistrationTests(unittest.TestCase):
                             return_value=(
                                 {
                                     "M_BONOS_341123": {"instrument": object()},
-                                    "BI_CETE_260910": {"instrument": object()},
+                                    "BI_CETES_260910": {"instrument": object()},
                                 },
                                 {},
                             ),
@@ -111,7 +111,7 @@ class ValmerAssetRegistrationTests(unittest.TestCase):
                                 "_persist_valmer_pricing_details_batch",
                                 return_value=[
                                     "M_BONOS_341123",
-                                    "BI_CETE_260910",
+                                    "BI_CETES_260910",
                                 ],
                             ) as persist_pricing:
                                 result = register_valmer_assets_from_rows(
@@ -121,7 +121,7 @@ class ValmerAssetRegistrationTests(unittest.TestCase):
                                 )
 
         resolve_refs.assert_called_once_with(
-            ["M_BONOS_341123", "BI_CETE_260910"],
+            ["M_BONOS_341123", "BI_CETES_260910"],
             batch_size=500,
             logger=logger,
         )
@@ -135,7 +135,7 @@ class ValmerAssetRegistrationTests(unittest.TestCase):
         persist_pricing.assert_called_once()
         self.assertEqual(
             set(result.assets_by_identifier),
-            {"M_BONOS_341123", "BI_CETE_260910"},
+            {"M_BONOS_341123", "BI_CETES_260910"},
         )
         self.assertEqual(result.details_upserted_count, 2)
         self.assertEqual(result.snapshots_published_count, 2)

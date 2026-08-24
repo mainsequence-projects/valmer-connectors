@@ -65,9 +65,8 @@ persisted MXN quotes + same-date TIIE + same-date SOFR
 - `src/valmer_connectors/data_nodes/canonical_index_values.py` owns the single
   `configured_index_values_storage(cadence="1d")` class and common observation
   normalization.
-- FRED and Banxico producers subclass the canonical node and emit
-  `value`, `unit`, `definition_uid`, `observation_status`, `source_as_of`, and
-  `metadata_json`.
+- FRED and Banxico producers subclass the canonical node and emit `value`,
+  `definition_uid`, `observation_status`, `source_as_of`, and `metadata_json`.
 - Runtime bootstrap and the Valmer migration provider bind the same storage
   class object.
 - The obsolete project-specific reference-rate Python module is deleted.
@@ -81,8 +80,8 @@ persisted MXN quotes + same-date TIIE + same-date SOFR
   14 SOFR futures, 11 SOFR OIS, 10 Fed Funds OIS, and 12 Fed Funds/SOFR basis
   observations.
 - Unknown or duplicate source rows fail the complete-snapshot validation.
-- Source quote, source unit, source family, source file, quote side, and raw
-  source identity are retained in `metadata_json`.
+- Canonical quote unit, source quote, source unit, source family, source file,
+  quote side, and raw source identity are retained in `metadata_json`.
 
 ### Dependency-backed curve nodes
 
@@ -113,45 +112,46 @@ persisted MXN quotes + same-date TIIE + same-date SOFR
 
 ## Migration and Data-Cutover Evidence
 
-Revision `0004` creates `ms_markets__index_values__t_1d`, copies all six
-historical series, and drops the obsolete physical table in one transactional
-migration.
+The data source was recreated from the current schema rather than translated.
+ms-markets revision `0015` was applied first. Valmer revision `0001` then
+created only `ValmerAssetDetailsTable`, `ValmerVectorPricesStorage`, and
+`IndexValuesTS.1d`, with current Index and formula-definition foreign keys.
+There is no project-specific reference-rate table or migration-only catalog
+object.
 
-The pre/post migration inventory matched exactly:
+The first source repopulation after recreation produced:
 
-| Index | Rows | First UTC date | Last UTC date |
-| --- | ---: | --- | --- |
-| `BANXICO_POLICY_TARGET` | 1,819 | 2021-07-19 | 2026-07-18 |
-| `FED_FUNDS_TARGET_UPPER` | 1,826 | 2021-07-19 | 2026-07-18 |
-| `US_TREASURY_CMT_2Y` | 1,248 | 2021-07-19 | 2026-07-16 |
-| `US_TREASURY_CMT_5Y` | 1,248 | 2021-07-19 | 2026-07-16 |
-| `US_TREASURY_CMT_10Y` | 1,248 | 2021-07-19 | 2026-07-16 |
-| `US_TREASURY_CMT_30Y` | 1,248 | 2021-07-19 | 2026-07-16 |
+| Producer | Stored rows |
+| --- | ---: |
+| FRED reference rates | 6,814 |
+| Banxico policy target | 1,819 |
+| Banxico supported fixings | 26,430 |
+| Valmer MXN curve quotes | 34 |
+| Valmer USD curve quotes | 47 |
 
-Total: 8,637 canonical observations. Per-index value sums also matched the
-pre-migration inventory.
-
-The obsolete physical table no longer exists. Its protected catalog row cannot
-be removed with the current SDK delete flags because it is Alembic-managed. The
-backend requires a confirmed provider-reset/cascade operation with
-`override_schema_management_protection=true`, which SDK 4.4.32 does not expose
-on `mainsequence data-node delete`. This catalog-only cleanup must be completed
-through the platform's Alembic-provider retirement workflow; do not restore the
-old table or runtime model to work around it.
+These are source-run results, not copied rows.
 
 ## Verification Gates
 
-### Completed locally
+### Completed
 
-- 245 tests and 39 subtests pass.
+- The current-only migration heads are ms-markets `0015` and Valmer `0001`.
 - Pure complete-source normalization yields exactly 34 MXN and 47 USD rows.
-- Pure quote-backed construction yields 15 TIIE, 24 SOFR, and 17 XCCY helpers.
+- Persisted curve construction yields 15 TIIE, 23 SOFR, and 17 XCCY key nodes.
 - Every emitted helper quote reconciles to its canonical persisted-observation
-  representation in the integration contract tests.
+  representation at the exact source date.
+- All 12,761 government key nodes resolve to the exact Asset observation used
+  by the curve snapshot.
+- Government vector history contains 13,083 observations over 248 dates:
+  9,029 CETES rows and 4,054 M Bonos rows.
+- Curve storage contains 248 government rows and one current row for each of
+  TIIE, SOFR, and XCCY.
 - Static search finds no runtime import of the removed reference-rate storage
   and no production direct-download curve builder.
+- `scripts/verify_current_pipeline.py` performs the governed-storage audit and
+  rejects truncated query results.
 
-### Required live run
+### Reproduction order
 
 Run in this order, stopping on the first failure:
 
@@ -166,46 +166,35 @@ valmer-connectors curves update-usd-mxn-xccy
 valmer-connectors curves update-mxn-government
 ```
 
-Then verify:
+Then run `python scripts/verify_current_pipeline.py`. It verifies:
 
 1. `IndexValuesTS.1d` contains all 81 Valmer quote identities for the benchmark
    date: 34 MXN plus 47 USD.
-2. TIIE has 15 key nodes and SOFR has 24; XCCY has the complete selected helper
+2. TIIE has 15 key nodes and SOFR has 23; XCCY has the complete selected helper
    set for the same date.
 3. For every quote-backed key node, resolve `source_reference.identifier` at
-   the curve date and compare canonical value, unit, source quote, source unit,
-   and raw vendor identifier.
+   the curve date and compare canonical value, metadata `quote_unit`, source
+   quote, source unit, and raw vendor identifier.
 4. Every source date equals the stored observation date; no latest-value
    fallback is allowed.
-5. A second normal run inserts no duplicate Index or curve keys.
-6. The government curve is repopulated after the earlier exact-scope curve-data
+5. The government curve is repopulated after the earlier exact-scope curve-data
    deletion.
-7. Schedule the batch, inspect each run and its logs, and confirm that no curve
+6. Schedule the batch, inspect each run and its logs, and confirm that no curve
    job executes before its dependencies are available.
-
-## Current Live Blocker
-
-The canonical migration and row reconciliation completed. During the subsequent
-live launcher run, the local `tsorm_web_local` backend auto-reloaded and failed
-its Django system check because `pod_manager.DeploymentRun` is missing. Port
-8000 now resets SDK requests, so the producer/curve run and catalog-only cleanup
-cannot be truthfully marked complete until that unrelated backend checkout is
-restored. The repository must not bypass this by writing curve rows directly.
 
 ## Completion Checklist
 
 - [x] Canonical daily storage implemented and migration-managed.
 - [x] FRED and Banxico code writes only canonical rows.
-- [x] All 8,637 historical rows reconciled after migration.
-- [x] Obsolete physical reference-rate table dropped.
+- [x] Current-only MetaTables recreated from clean migration baselines.
+- [x] FRED, Banxico policy, and Banxico fixing histories repopulated from source.
 - [x] Obsolete runtime storage code removed.
 - [x] Complete MXN and USD quote nodes implemented.
+- [x] Complete MXN and USD quote snapshots repopulated after recreation.
 - [x] TIIE/SOFR/XCCY nodes declare and consume persisted dependencies.
 - [x] Key nodes use typed Index source references.
 - [x] CLI, scripts, launch configurations, schedules, and tests updated.
-- [ ] Remove the stale protected catalog row through the supported provider
-  retirement operation.
-- [ ] Restore the local Main Sequence backend and run the eight live launchers
-  in the stated order.
-- [ ] Verify exact live Index/key-node reconciliation and immediate no-op reruns.
+- [x] Complete all curve and vector launchers in dependency order.
+- [x] Verify exact live Index/key-node reconciliation.
+- [ ] Run and record immediate no-op reruns for each scheduled producer.
 - [ ] Schedule and inspect the platform jobs and logs.

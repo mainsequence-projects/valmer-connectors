@@ -53,13 +53,17 @@ class MexicanReferenceIndexDefinition:
     def to_index_payload(self) -> dict[str, Any]:
         from msm.constants import INDEX_TYPE_INTEREST_RATE
 
+        metadata_json = dict(self.metadata_json)
+        if self.provider is not None:
+            metadata_json["provider"] = self.provider
         return {
             "unique_identifier": self.unique_identifier,
             "index_type": INDEX_TYPE_INTEREST_RATE,
             "display_name": self.display_name,
             "description": self.description,
-            "provider": self.provider,
-            "metadata_json": dict(self.metadata_json) or None,
+            "calculation_method": "custom",
+            "value_format": "percent",
+            "metadata_json": metadata_json or None,
         }
 
 
@@ -78,13 +82,17 @@ class UsdReferenceIndexDefinition:
     def to_index_payload(self) -> dict[str, Any]:
         from msm.constants import INDEX_TYPE_INTEREST_RATE
 
+        metadata_json = dict(self.metadata_json)
+        if self.provider is not None:
+            metadata_json["provider"] = self.provider
         return {
             "unique_identifier": self.unique_identifier,
             "index_type": INDEX_TYPE_INTEREST_RATE,
             "display_name": self.display_name,
             "description": self.description,
-            "provider": self.provider,
-            "metadata_json": dict(self.metadata_json) or None,
+            "calculation_method": "custom",
+            "value_format": "percent",
+            "metadata_json": metadata_json or None,
         }
 
 

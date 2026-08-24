@@ -31,7 +31,7 @@ must follow when registering assets from different vector sources.
 - [Valmer Query Helper Promotion Plan](implementation/valmer-query-helper-promotion-plan.md)
 - [ms-markets Curve Reconstruction Refactor](implementation/ms-markets-curve-reconstruction-refactor.md)
 - [Canonical Daily Index Values and Persisted Valmer Curve Pipeline](implementation/valmer-curve-quote-index-pipeline-refactor.md)
-- [Python 3.13 And Main Sequence 5 Upgrade](implementation/python-3-13-mainsequence-5-upgrade-plan.md)
+- [Python 3.13 And Main Sequence 6 Upgrade](implementation/python-3-13-mainsequence-6-upgrade.md)
 
 ## Workflow Boundaries
 

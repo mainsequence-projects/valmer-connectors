@@ -170,7 +170,7 @@ from msm.constants import ASSET_TYPE_BOND
 
 
 def classify_asset_type(row):
-    if (row["tipovalor"], row["emisora"]) in {("M", "BONOS"), ("BI", "CETE")}:
+    if (row["tipovalor"], row["emisora"]) in {("M", "BONOS"), ("BI", "CETES")}:
         return ASSET_TYPE_BOND
     return None
 
