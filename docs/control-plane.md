@@ -133,8 +133,8 @@ switches only when the desired revision becomes the ready `active_revision`.
 
 Open the backend repository in VS Code and run the compound launch
 `Control Plane: API + Vite (local review)`. It starts the development-only API
-wrapper on `127.0.0.1:8000`, starts the sibling Vite repository on
-`127.0.0.1:5187`, and opens `http://127.0.0.1:5187/dev-host.html`.
+wrapper on `127.0.0.1:8017`, starts the sibling Vite repository on
+`127.0.0.1:5187`, and opens `http://127.0.0.1:5187/`.
 
 The review host uses the installed Command Center SDK host and child protocol.
 Its short-lived local capability is accepted only by the development wrapper;

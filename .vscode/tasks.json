@@ -32,7 +32,7 @@
         "command": "${workspaceFolder}/.venv/bin/python",
         "args": [
           "${workspaceFolder}/.vscode/wait_for_http.py",
-          "http://127.0.0.1:8000/health",
+          "http://127.0.0.1:8017/health",
           "30"
         ],
         "problemMatcher": [],

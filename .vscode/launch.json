@@ -398,7 +398,7 @@
         "--host",
         "127.0.0.1",
         "--port",
-        "8000"
+        "8017"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -428,14 +428,14 @@
       "env": {
         "VITE_COMMAND_CENTER_ORIGIN": "http://127.0.0.1:5187",
         "VITE_FASTAPI_RESOURCE_RELEASE_UID": "22222222-2222-4222-8222-222222222222",
-        "VITE_LOCAL_FASTAPI_URL": "http://127.0.0.1:8000",
+        "VITE_LOCAL_FASTAPI_URL": "http://127.0.0.1:8017",
         "VITE_LOCAL_FASTAPI_TOKEN": "valmer-local-review",
         "VITE_LOCAL_REVIEW_USER_UID": "11111111-1111-4111-8111-111111111111"
       },
       "serverReadyAction": {
         "action": "openExternally",
         "pattern": "Local:\\s+(https?://[^\\s]+)",
-        "uriFormat": "%sdev-host.html"
+        "uriFormat": "%s"
       },
       "presentation": {
         "group": "control-plane",
