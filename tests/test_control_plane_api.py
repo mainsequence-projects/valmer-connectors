@@ -637,7 +637,7 @@ def test_pipeline_reconciles_declared_actions_with_registered_jobs() -> None:
     assert {action.key for action in actions} == {action.key for action in JOB_ACTIONS}
 
 
-def test_launch_rejects_platform_response_without_run_status() -> None:
+def test_launch_accepts_platform_response_without_run_status() -> None:
     class IncompleteLaunchGateway(FakeControlPlaneGateway):
         def run_job(self, job_uid: str):
             return SimpleNamespace(name="Valmer Vector Refresh"), {"uid": "run-2"}
@@ -650,12 +650,10 @@ def test_launch_rejects_platform_response_without_run_status() -> None:
         {"selection": {"mode": "explicit", "uids": ["job-1"]}, "options": {}}
     )
 
-    try:
-        service.launch("operator-user", request)
-    except ControlPlaneError as exc:
-        assert "without returning its run status" in str(exc)
-    else:
-        raise AssertionError("A Job launch without platform status must be rejected.")
+    result = service.launch("operator-user", request)
+
+    assert result.job_run_uid == "run-2"
+    assert result.status == "ACCEPTED"
 
 
 def test_operator_cannot_launch_an_already_running_job() -> None:

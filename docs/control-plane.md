@@ -65,6 +65,12 @@ The execution endpoint does not accept arbitrary execution paths or command argu
 launches produce a structured application log containing the human UID, request UID, Job UID,
 Job name, and returned JobRun UID.
 
+The VS Code local-review compound binds its fixed review user UID as an operator so the SDK action
+can exercise discovery and preflight locally. Production authorization remains controlled only by
+the FastAPI release environment. After the platform accepts a launch, the Jobs view links the
+returned JobRun UID to the existing Job runs resource filtered to that exact execution; it does not
+create a second JobRun presentation or polling implementation.
+
 ## Jobs And Scheduling
 
 `.mainsequence/workflows/valmer-control-plane-jobs.yaml` declares the approved source, fixing,

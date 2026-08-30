@@ -113,7 +113,7 @@ class LaunchResponse(StrictModel):
     request_uid: str
     requested_by_user_uid: str
     job_uid: str
-    job_run_uid: str | None
+    job_run_uid: str
     status: str
     requested_at: dt.datetime
 

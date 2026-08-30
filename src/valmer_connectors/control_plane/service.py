@@ -1098,11 +1098,7 @@ class ControlPlaneService:
             raise ControlPlaneError(
                 "The platform accepted the Job launch without returning a Job run UID."
             )
-        launch_status = result.get("status")
-        if not launch_status:
-            raise ControlPlaneError(
-                "The platform accepted the Job launch without returning its run status."
-            )
+        launch_status = result.get("status") or "ACCEPTED"
         logger.info(
             "control_plane_job_launch",
             extra={
