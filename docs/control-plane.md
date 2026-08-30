@@ -14,7 +14,7 @@ The legacy Streamlit dashboard is not part of this control-plane surface.
 
 ## Backend Surface
 
-`src/apis/valmer_control_plane/app.py` exports the FastAPI application. Business logic is reusable
+`src/apis/valmer_control_plane/main.py` exports the FastAPI application. Business logic is reusable
 under `src/valmer_connectors/control_plane/`; route handlers remain thin.
 
 The API publishes:
@@ -109,7 +109,7 @@ The platform injects the reserved exact `VITE_COMMAND_CENTER_ORIGIN`. The static
 
 The two repositories must be released in dependency order:
 
-1. sync `valmer-connectors` so the platform indexes `src/apis/valmer_control_plane/app.py` as a FastAPI
+1. sync `valmer-connectors` so the platform indexes `src/apis/valmer_control_plane/main.py` as a FastAPI
    CodeRepositoryResource;
 2. resolve that resource's public UID and add a backend API 2.1.0 workflow declaration using the
    real UID, every-commit automatic redeployment, three retained revisions, and the platform's
