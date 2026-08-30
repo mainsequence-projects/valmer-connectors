@@ -176,19 +176,6 @@ def test_health_is_available_for_release_checks() -> None:
     assert response.json() == {"status": "ok", "service": "valmer-control-plane"}
 
 
-def test_platform_job_projection_accepts_current_script_discriminator() -> None:
-    job = Job.model_validate(
-        {
-            "name": "Valmer Vector Refresh",
-            "related_image_uid": "11111111-1111-4111-8111-111111111111",
-            "image_status": "ready",
-            "type": "script",
-        }
-    )
-
-    assert job.type == "script"
-
-
 def test_registry_reads_use_scoped_compiled_metatable_operations(monkeypatch) -> None:
     table = SimpleNamespace(
         uid="table-1",

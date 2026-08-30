@@ -22,8 +22,7 @@ from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 from sqlalchemy import func, select
 
 from mainsequence.client.metatables import MetaTable, TimeIndexMetaTable
-from mainsequence.client.models_helpers import Job as MainSequenceJob
-from mainsequence.client.models_helpers import JobRun
+from mainsequence.client.models_helpers import Job, JobRun
 from mainsequence.meta_tables import TimeIndexTableRef
 from valmer_connectors.control_plane.catalog import (
     DATA_PRODUCTS,
@@ -55,12 +54,6 @@ DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 250
 MAX_ASSET_DETAIL_ROWS = 100_000
 SAFE_SQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
-class Job(MainSequenceJob):
-    """Current platform Job projection including its additive target discriminator."""
-
-    type: str | None = None
 
 
 class ControlPlaneError(RuntimeError):
