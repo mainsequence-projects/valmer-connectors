@@ -40,8 +40,8 @@ Decision Checklist are approved, including:
   their selected physical DataSource;
 - Secrets and Constants belong to exactly one Organization Environment, with
   no Organization-global lookup, shadowing, or effective-union fallback;
-- `CodeRepositorySecret` accepts only Secrets from the CodeRepositoryBranch's exact
-  Environment;
+- Secrets are discovered directly in their exact Environment; there is no
+  CodeRepositoryBranch assignment or allowlist;
 - authorized humans retain Organization-wide multi-environment discovery and
   explicit environment filters, while Organization-admin permission controls
   environment mutations;
@@ -240,9 +240,11 @@ environment's required repository branch is fixed to exact `main`.
 
 ## Preserve The Branch Compatibility Rule
 
-CodeRepository creation establishes `main`. After bootstrap, the provider supplies an
-exact branch through a signed push; a human caller chooses neither the branch
-creation operation nor the environment foreign key.
+CodeRepository creation always establishes production `main`. It may accept a visible
+`bootstrap_organization_environment_uid` as creation context. The backend derives that
+Environment's exact required branch and, when non-main, creates its provider ref from
+the initialized main commit. The caller never chooses a branch or branch foreign key.
+After this bootstrap, the provider supplies any missing branch through a signed push.
 
 The target backend resolution is:
 
@@ -266,7 +268,8 @@ CodeRepositoryBranch.repository_branch == Environment.required_repository_branch
 ```
 
 `CodeRepositoryBranch.organization_environment` is persisted but read-only
-and backend-controlled. Reject a caller-supplied environment UID. Do not fall
+and backend-controlled. Reject a caller-supplied Environment UID on branch create or
+update; the distinct CodeRepository-create bootstrap context remains allowed. Do not fall
 back to production when the exact non-production branch has no configured
 environment.
 
@@ -391,9 +394,8 @@ Resources from another Environment are not eligible. Same-Environment logical
 duplicates remain conflicts. Public-UID lookup remains exact and never
 substitutes a same-name row.
 
-Availability is not Secret injection. Secret value access keeps its stronger
-authorization, and `CodeRepositorySecret` remains the explicit branch assignment and
-alias used by injection workflows.
+Environment membership is not Secret injection. Secret value access keeps its
+stronger authorization, and no branch assignment or alias layer grants runtime access.
 
 ### CodeRepository Coding Agents
 
@@ -483,9 +485,10 @@ a CodeRepository, provider branch, DataSource, table, Secret, release, or deploy
 ### 3. CodeRepository And Initial Branch Creation
 
 Canonical CodeRepository creation creates the logical CodeRepository and initial exact
-`main` CodeRepositoryBranch. The backend resolves that branch to the Organization's
-production environment. The code-repository creation caller does
-not submit an environment UID.
+production `main` CodeRepositoryBranch. Optional
+`bootstrap_organization_environment_uid` selects one visible Environment context; a
+non-main Environment causes the backend to create its derived branch from main. A
+caller without Production visibility does not receive a Production grant.
 
 ### 4. Signed Provider Branch Push
 
@@ -564,7 +567,7 @@ Deploying code does not copy or move:
 - physical schemas or tables;
 - MetaTable registrations;
 - history, TimeIndexTableUpdater progress, or checkpoints;
-- Secrets, Constants, or CodeRepositorySecret assignments;
+- Secrets or Constants;
 - Jobs, schedules, releases, or deployment provenance; or
 - DataSource or Alembic ownership.
 

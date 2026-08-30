@@ -48,9 +48,11 @@ complete provider attempt. Provider request/operation state and image
 UID/URI/digest/readiness are never owned by generic run JSON or duplicated on
 `CodeRepositoryJobImage`. Preparation commits before provider submission; database
 due-action state recovers lost Celery wake-ups. An ambiguous submission is
-reconciled on the same attempt and must not be retried through another create
-call. Runtime admission requires the verified dependency's digest-pinned
-output and never selects `latest`.
+reconciled on the same attempt during a bounded resolution window and must not
+be retried through another create call. If no provider handle or output can be
+adopted by the deadline, that attempt and its awaiting dependencies fail; a
+delayed observation cannot rewind it. Runtime admission requires the verified
+dependency's digest-pinned output and never selects `latest`.
 
 The persisted image model is ownership-typed. Public catalog inputs use
 `PublicCatalogImage`; deployable code-repository outputs use the Organization-owned
@@ -220,7 +222,7 @@ direct `resource_release.create` or `resource_release.update` field.
 Static sites reject `env_vars` and continue to use `build_environment`.
 Widget extensions reject both `env_vars` and `build_environment`.
 Workflow environment values never create, resolve, or mutate platform Secrets,
-Constants, CodeRepositorySecrets, or Organization Environments, and never enter the
+Constants, or Organization Environments, and never enter the
 code-repository-image build. Deployment context contains only names, count, and a keyed
 HMAC digest; it never exposes values. Read the `code-repository-workflows` skill and
 use the backend-provided API `2.1.0` template for the exact YAML shape.

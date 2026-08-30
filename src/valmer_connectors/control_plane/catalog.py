@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from msm.models import AssetTable
 from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
@@ -26,12 +27,67 @@ class DataProductDefinition:
 
 
 @dataclass(frozen=True)
+class JobParameterDefinition:
+    key: str
+    input_type: Literal["boolean", "date", "text"]
+    label: str
+    description: str
+    command_flag: str
+    required: bool = False
+    default: bool | str | None = None
+    false_command_flag: str | None = None
+
+
+@dataclass(frozen=True)
 class JobActionDefinition:
     key: str
     job_name: str
     description: str
     execution_path: str
     dependencies: tuple[str, ...] = ()
+    parameters: tuple[JobParameterDefinition, ...] = ()
+
+
+FORCE_PRICING_DETAILS_PARAMETER = JobParameterDefinition(
+    key="force_pricing_details_patch",
+    input_type="boolean",
+    label="Refresh pricing details",
+    description=(
+        "Rehydrate current pricing details for every selected Valmer pricing target."
+    ),
+    command_flag="--force-pricing-details-patch",
+    false_command_flag="--no-force-pricing-details-patch",
+    default=True,
+)
+
+BYPASS_VECTOR_CURSOR_PARAMETER = JobParameterDefinition(
+    key="bypass_vector_cursor_filter",
+    input_type="boolean",
+    label="Reprocess current observations",
+    description=(
+        "Keep source observations even when vector storage already contains an equal "
+        "or newer observation."
+    ),
+    command_flag="--bypass-vector-cursor-filter",
+    false_command_flag="--no-bypass-vector-cursor-filter",
+    default=False,
+)
+
+END_DATE_PARAMETER = JobParameterDefinition(
+    key="end_date",
+    input_type="date",
+    label="Inclusive end date",
+    description=(
+        "Optional final provider date in YYYY-MM-DD form. Leave empty to use the "
+        "normal production cutoff."
+    ),
+    command_flag="--end-date",
+)
+
+VECTOR_PARAMETERS = (
+    FORCE_PRICING_DETAILS_PARAMETER,
+    BYPASS_VECTOR_CURSOR_PARAMETER,
+)
 
 
 DISCOUNT_CURVE_TABLE_IDENTIFIER = DiscountCurvesStorage.__table__.name
@@ -150,18 +206,21 @@ JOB_ACTIONS: tuple[JobActionDefinition, ...] = (
         job_name="Valmer Vector Refresh",
         description="Import the configured Main Sequence Artifact source and publish vector observations.",
         execution_path="scripts/update_vector_valmer.py",
+        parameters=VECTOR_PARAMETERS,
     ),
     JobActionDefinition(
         key="vector-onedrive-refresh",
         job_name="Valmer Vector Refresh — OneDrive Graph",
         description="Import Valmer files from the configured Microsoft Graph drive.",
         execution_path="scripts/update_vector_valmer_onedrive.py",
+        parameters=VECTOR_PARAMETERS,
     ),
     JobActionDefinition(
         key="vector-metatable-refresh",
         job_name="Valmer Vector Refresh — MetaTable",
         description="Import Valmer rows from the repository-declared MetaTable source.",
         execution_path="scripts/update_vector_valmer_metatable.py",
+        parameters=VECTOR_PARAMETERS,
     ),
     JobActionDefinition(
         key="irs-mxn-quotes-refresh",
@@ -180,24 +239,28 @@ JOB_ACTIONS: tuple[JobActionDefinition, ...] = (
         job_name="Banxico Fixings Refresh",
         description="Refresh supported Banxico TIIE and CETE fixings.",
         execution_path="scripts/update_banxico_fixings.py",
+        parameters=(END_DATE_PARAMETER,),
     ),
     JobActionDefinition(
         key="banxico-tiie-fixings-refresh",
         job_name="Banxico TIIE Fixings Refresh",
         description="Refresh only the overnight, 28-day, 91-day, and 182-day TIIE fixings.",
         execution_path="scripts/update_banxico_tiie_fixings.py",
+        parameters=(END_DATE_PARAMETER,),
     ),
     JobActionDefinition(
         key="fred-reference-rates-refresh",
         job_name="FRED Reference Rates Refresh",
         description="Refresh configured FRED reference-rate observations.",
         execution_path="scripts/update_fred_reference_rates.py",
+        parameters=(END_DATE_PARAMETER,),
     ),
     JobActionDefinition(
         key="banxico-policy-refresh",
         job_name="Banxico Policy Target Refresh",
         description="Refresh the Banco de Mexico policy target series.",
         execution_path="scripts/update_banxico_policy_rates.py",
+        parameters=(END_DATE_PARAMETER,),
     ),
     JobActionDefinition(
         key="tiie-curve-refresh",
@@ -318,4 +381,5 @@ __all__ = [
     "PIPELINE_STAGES",
     "DataProductDefinition",
     "JobActionDefinition",
+    "JobParameterDefinition",
 ]

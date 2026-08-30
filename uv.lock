@@ -414,7 +414,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "8.0.4"
+version = "8.0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -440,9 +440,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/12/e4/17f0f1dfc032b472d17b5e012938531732528e23071fc9022b2db7631856/mainsequence-8.0.4.tar.gz", hash = "sha256:fc630eaf1febd27a8da3b9d8b7c9b590a756f2fd629d86c50049c54778bad90a", size = 539211, upload-time = "2026-08-29T15:35:35.112Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/ee/1fbf8a960932b8f842094d01c12a940a432b223cead0cefcf092101f19ec/mainsequence-8.0.6.tar.gz", hash = "sha256:29c97c56d5ec8193852da0d3326c37edc6fd7a7848eee9cdeb91d7cb16070d82", size = 539091, upload-time = "2026-08-30T21:28:31.653Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/1e/1b15c3cf8029655f81d35202f076d44ac6c179d550f6d4d1b1ca59093ca8/mainsequence-8.0.4-py3-none-any.whl", hash = "sha256:66102c7e05ec0d20458186c3db3f730f436e2b1a97cca846345151b60e7edeb2", size = 414929, upload-time = "2026-08-29T15:35:32.951Z" },
+    { url = "https://files.pythonhosted.org/packages/51/59/8453c4fa3bb4e8ed02d55eea9753ff4a742a3db509a8089b0e78ec635bc1/mainsequence-8.0.6-py3-none-any.whl", hash = "sha256:abff0b9591758d801eae0daa06fe86240c4cb061512e50f7cfcaa43aae7b7800", size = 414575, upload-time = "2026-08-30T21:28:29.769Z" },
 ]
 
 [[package]]
@@ -1338,7 +1338,7 @@ wheels = [
 
 [[package]]
 name = "valmer-connectors"
-version = "0.1.35"
+version = "0.1.36"
 source = { editable = "." }
 dependencies = [
     { name = "arch" },

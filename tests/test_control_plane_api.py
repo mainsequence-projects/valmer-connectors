@@ -41,7 +41,9 @@ from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetail
 class FakeControlPlaneGateway:
     def __init__(self) -> None:
         self.launched_job_uids: list[str] = []
+        self.launched_command_args: list[list[str]] = []
         self.job_status = "succeeded"
+        self.validated_metatable_sources = 0
 
     def data_products(self) -> list[dict[str, object]]:
         base = {
@@ -124,6 +126,7 @@ class FakeControlPlaneGateway:
                 "automatic_deployment": True,
                 "dependencies": list(action.dependencies),
                 "approved_action": True,
+                "parameter_count": len(action.parameters),
             }
             for index, action in enumerate(JOB_ACTIONS, start=1)
         ]
@@ -147,8 +150,21 @@ class FakeControlPlaneGateway:
             }
         ]
 
-    def run_job(self, job_uid: str) -> tuple[SimpleNamespace, dict[str, str]]:
+    def validate_configured_vector_source(self) -> dict[str, object]:
+        self.validated_metatable_sources += 1
+        return {
+            "uid": "metatable-1",
+            "identifier": "ValmerSource",
+            "physical_table_name": "vector_precios_gubernamental",
+        }
+
+    def run_job(
+        self,
+        job_uid: str,
+        command_args: list[str],
+    ) -> tuple[SimpleNamespace, dict[str, str]]:
         self.launched_job_uids.append(job_uid)
+        self.launched_command_args.append(command_args)
         return SimpleNamespace(name="Valmer Vector Refresh"), {
             "uid": "run-2",
             "status": "PENDING",
@@ -349,6 +365,13 @@ def test_environment_name_comes_from_registered_time_index_tables() -> None:
 
 def test_platform_gateway_reads_current_pricing_details() -> None:
     class StubbedPlatformGateway(PlatformControlPlaneGateway):
+        def _time_index_tables(self):
+            return {
+                definition.table_identifier: SimpleNamespace(cadence="1d")
+                for definition in DATA_PRODUCTS
+                if definition.time_indexed
+            }
+
         def _registered_valmer_asset_count(self) -> int:
             return 12
 
@@ -614,6 +637,57 @@ def test_operator_preflights_and_launches_one_approved_job() -> None:
     assert execution.json()["job_run_uid"] == "run-2"
     assert execution.json()["requested_by_user_uid"] == "operator-user"
     assert gateway.launched_job_uids == ["job-1"]
+    assert gateway.launched_command_args == [
+        ["--force-pricing-details-patch", "--no-bypass-vector-cursor-filter"]
+    ]
+
+
+def test_job_run_parameters_expose_runtime_controls_not_metatable_selection() -> None:
+    with _client("operator-user") as client:
+        response = client.get("/api/v1/control-plane/jobs/job-3/run-parameters")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_key"] == "vector-metatable-refresh"
+    assert {parameter["key"] for parameter in payload["parameters"]} == {
+        "force_pricing_details_patch",
+        "bypass_vector_cursor_filter",
+    }
+    assert "source_metatable_uid" not in str(payload)
+    assert "fixed by the repository configuration" in payload["configuration_summary"]
+
+
+def test_metatable_job_preflight_validates_the_repository_configured_source() -> None:
+    gateway = FakeControlPlaneGateway()
+    payload = {"selection": {"mode": "explicit", "uids": ["job-3"]}, "options": {}}
+
+    with _client("operator-user", gateway=gateway) as client:
+        response = client.post(
+            "/api/v1/control-plane/jobs/actions/run/preflight", json=payload
+        )
+
+    assert response.status_code == 200
+    assert response.json()["allowed"] is True
+    assert gateway.validated_metatable_sources == 1
+
+
+def test_job_launch_forwards_only_catalogued_command_arguments() -> None:
+    gateway = FakeControlPlaneGateway()
+    payload = {
+        "selection": {"mode": "explicit", "uids": ["job-1"]},
+        "options": {
+            "force_pricing_details_patch": False,
+            "bypass_vector_cursor_filter": True,
+        },
+    }
+
+    with _client("operator-user", gateway=gateway) as client:
+        response = client.post("/api/v1/control-plane/jobs/actions/run", json=payload)
+
+    assert response.status_code == 202
+    assert gateway.launched_command_args == [
+        ["--no-force-pricing-details-patch", "--bypass-vector-cursor-filter"]
+    ]
 
 
 def test_pipeline_reconciles_declared_actions_with_registered_jobs() -> None:
@@ -639,7 +713,7 @@ def test_pipeline_reconciles_declared_actions_with_registered_jobs() -> None:
 
 def test_launch_accepts_platform_response_without_run_status() -> None:
     class IncompleteLaunchGateway(FakeControlPlaneGateway):
-        def run_job(self, job_uid: str):
+        def run_job(self, job_uid: str, command_args: list[str]):
             return SimpleNamespace(name="Valmer Vector Refresh"), {"uid": "run-2"}
 
     service = ControlPlaneService(

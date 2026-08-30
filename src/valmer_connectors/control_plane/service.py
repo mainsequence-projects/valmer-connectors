@@ -33,11 +33,14 @@ from valmer_connectors.control_plane.catalog import (
     VALMER_ASSET_DETAILS_TABLE_IDENTIFIER,
     DataProductDefinition,
     JobActionDefinition,
+    JobParameterDefinition,
 )
 from valmer_connectors.control_plane.models import (
     BulkActionExecution,
     BulkActionPreflight,
     CurrentUserResponse,
+    JobParameter,
+    JobRunParametersResponse,
     LaunchResponse,
     Metric,
     OverviewResponse,
@@ -45,6 +48,10 @@ from valmer_connectors.control_plane.models import (
     PipelineResponse,
     ResourceCollection,
 )
+from valmer_connectors.services.vector_update import (
+    preflight_metatable_source,
+)
+from valmer_connectors.settings import VALMER_METATABLE_SOURCE_CONFIG_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +61,6 @@ DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 250
 MAX_ASSET_DETAIL_ROWS = 100_000
 SAFE_SQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
 class ControlPlaneError(RuntimeError):
     """Base error for user-safe control-plane failures."""
 
@@ -150,6 +155,58 @@ def _approved_job_definition(job: Job) -> JobActionDefinition | None:
     if definition is None or job.execution_path != definition.execution_path:
         return None
     return definition
+
+
+def _job_parameter_value(
+    parameter: JobParameterDefinition,
+    options: dict[str, Any],
+) -> bool | str | None:
+    value = options.get(parameter.key, parameter.default)
+    if parameter.input_type == "boolean":
+        if not isinstance(value, bool):
+            raise ValueError(f"{parameter.label} must be true or false.")
+        return value
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{parameter.label} must be text.")
+    value = value.strip()
+    if not value:
+        return None
+    if parameter.input_type == "date":
+        try:
+            dt.date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError(f"{parameter.label} must use YYYY-MM-DD format.") from exc
+    return value
+
+
+def _job_command_args(
+    definition: JobActionDefinition,
+    options: dict[str, Any],
+) -> list[str]:
+    parameter_by_key = {parameter.key: parameter for parameter in definition.parameters}
+    unknown = sorted(set(options) - set(parameter_by_key))
+    if unknown:
+        raise ValueError(
+            f"Unsupported parameter(s) for {definition.job_name}: {', '.join(unknown)}."
+        )
+
+    command_args: list[str] = []
+    for parameter in definition.parameters:
+        value = _job_parameter_value(parameter, options)
+        if parameter.required and value is None:
+            raise ValueError(f"{parameter.label} is required.")
+        if parameter.input_type == "boolean":
+            assert isinstance(value, bool)
+            if value:
+                command_args.append(parameter.command_flag)
+            elif parameter.false_command_flag:
+                command_args.append(parameter.false_command_flag)
+            continue
+        if value is not None:
+            command_args.extend((parameter.command_flag, value))
+    return command_args
 
 
 def _optional_registered_meta_table(identifier: str) -> MetaTable | None:
@@ -257,6 +314,12 @@ class PlatformControlPlaneGateway:
 
     def __init__(self) -> None:
         self._cache = _TimedCache()
+
+    def validate_configured_vector_source(self) -> dict[str, object]:
+        return self._cache.get_or_load(
+            "configured-source-metatable-preflight",
+            lambda: preflight_metatable_source(VALMER_METATABLE_SOURCE_CONFIG_PATH),
+        )
 
     def _latest_observation(self, definition: DataProductDefinition) -> pd.DataFrame:
         def load() -> pd.DataFrame:
@@ -626,6 +689,7 @@ class PlatformControlPlaneGateway:
                     "automatic_deployment": job.automatic_deployment,
                     "dependencies": list(definition.dependencies) if definition else [],
                     "approved_action": definition is not None,
+                    "parameter_count": len(definition.parameters) if definition else 0,
                 }
             )
         return result
@@ -708,7 +772,11 @@ class PlatformControlPlaneGateway:
                 )
         return sorted(result, key=lambda item: item.get("execution_start") or "", reverse=True)
 
-    def run_job(self, job_uid: str) -> tuple[Job, dict[str, Any]]:
+    def run_job(
+        self,
+        job_uid: str,
+        command_args: list[str],
+    ) -> tuple[Job, dict[str, Any]]:
         matches = list(Job.filter(uid=job_uid, timeout=60))
         if len(matches) != 1:
             raise ControlPlaneConflict("The selected Job is no longer available in this branch.")
@@ -724,7 +792,7 @@ class PlatformControlPlaneGateway:
             )
         if job.image_status.lower() != "ready":
             raise ControlPlaneConflict("The selected Job image is not ready.")
-        result = job.run_job(timeout=60)
+        result = job.run_job(timeout=60, command_args=command_args)
         self._cache.clear()
         return job, result
 
@@ -983,6 +1051,47 @@ class ControlPlaneService:
         items = _sort(items, ordering, {"name", "status", "last_run_at"})
         return _page(items, page_index, page_size)
 
+    def job_run_parameters(
+        self,
+        user_uid: str,
+        job_uid: str,
+    ) -> JobRunParametersResponse:
+        if not self.is_operator(user_uid):
+            raise ControlPlaneForbidden(
+                "Your account has viewer access and cannot launch production Jobs."
+            )
+        selected = next(
+            (item for item in self.gateway.jobs() if item["uid"] == job_uid),
+            None,
+        )
+        if selected is None or not selected["approved_action"] or not selected.get("key"):
+            raise ControlPlaneConflict(
+                "The selected Job is not available in the approved control-plane catalog."
+            )
+        definition = JOB_ACTIONS_BY_KEY[str(selected["key"])]
+        parameters = [
+            JobParameter(
+                key=parameter.key,
+                input_type=parameter.input_type,
+                label=parameter.label,
+                description=parameter.description,
+                required=parameter.required,
+                default=parameter.default,
+            )
+            for parameter in definition.parameters
+        ]
+        return JobRunParametersResponse(
+            job_uid=job_uid,
+            job_key=definition.key,
+            parameters=parameters,
+            configuration_summary=(
+                "The vector source is fixed by the repository configuration and "
+                "validated with a one-row read probe before launch."
+                if definition.key == "vector-metatable-refresh"
+                else None
+            ),
+        )
+
     def job_runs(
         self,
         *,
@@ -1027,6 +1136,7 @@ class ControlPlaneService:
                         "automatic_deployment": (
                             job["automatic_deployment"] if job else None
                         ),
+                        "parameter_count": len(definition.parameters),
                     }
                 )
             stages.append(
@@ -1045,6 +1155,7 @@ class ControlPlaneService:
     def preflight(self, user_uid: str, request: BulkActionExecution) -> BulkActionPreflight:
         blockers: list[str] = []
         warnings: list[str] = []
+        validated_source: dict[str, object] | None = None
         if not self.is_operator(user_uid):
             blockers.append("Your account has viewer access and cannot launch production Jobs.")
         if request.selection.mode != "explicit":
@@ -1066,11 +1177,35 @@ class ControlPlaneService:
                 blockers.append("The selected Job already has a pending or running execution.")
             elif selected["image_status"] not in {"ready", "READY"}:
                 blockers.append("The selected Job image is not ready.")
+            if selected and selected.get("key"):
+                definition = JOB_ACTIONS_BY_KEY[str(selected["key"])]
+                try:
+                    _job_command_args(definition, request.options)
+                except ValueError as exc:
+                    blockers.append(str(exc))
+                if definition.key == "vector-metatable-refresh":
+                    try:
+                        validated_source = (
+                            self.gateway.validate_configured_vector_source()
+                        )
+                    except Exception as exc:
+                        blockers.append(
+                            "Configured vector source validation failed: "
+                            f"{_operational_error_message(exc)}"
+                        )
             if selected and selected["dependencies"]:
                 warnings.append(
                     "This Job depends on: " + ", ".join(selected["dependencies"]) + "."
                 )
-        detail = "The Job can be launched." if not blockers else "The Job launch is blocked."
+        if blockers:
+            detail = "The Job launch is blocked."
+        elif validated_source is not None:
+            detail = (
+                "The repository-configured vector source, column mapping, and one-row "
+                "read probe passed validation."
+            )
+        else:
+            detail = "The Job can be launched."
         return BulkActionPreflight(
             allowed=not blockers,
             detail=detail,
@@ -1090,9 +1225,22 @@ class ControlPlaneService:
         if request.selection.mode != "explicit":
             raise ControlPlaneConflict("Job launch supports explicit selection only.")
         job_uid = request.selection.uids[0]
+        selected = next(
+            (item for item in self.gateway.jobs() if item["uid"] == job_uid),
+            None,
+        )
+        if selected is None or not selected.get("key"):
+            raise ControlPlaneConflict(
+                "The selected Job is not available in the approved control-plane catalog."
+            )
+        definition = JOB_ACTIONS_BY_KEY[str(selected["key"])]
+        try:
+            command_args = _job_command_args(definition, request.options)
+        except ValueError as exc:
+            raise ControlPlaneConflict(str(exc)) from exc
         request_uid = str(uuid.uuid4())
         requested_at = self.now()
-        job, result = self.gateway.run_job(job_uid)
+        job, result = self.gateway.run_job(job_uid, command_args)
         run_uid = result.get("uid") or result.get("job_run_uid")
         if not run_uid:
             raise ControlPlaneError(
@@ -1107,6 +1255,7 @@ class ControlPlaneService:
                 "job_uid": job_uid,
                 "job_name": job.name,
                 "job_run_uid": run_uid,
+                "command_arg_count": len(command_args),
             },
         )
         return LaunchResponse(

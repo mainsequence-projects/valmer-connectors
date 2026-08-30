@@ -10,6 +10,43 @@ from valmer_connectors.services import vector_update
 
 
 class ValmerVectorUpdateServiceTests(unittest.TestCase):
+    def test_metatable_preflight_probes_the_fixed_direct_database_source(self):
+        with TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "sources.json"
+            config_path.write_text(
+                """
+                {
+                  "sources": [
+                    {
+                      "source_name": "government",
+                      "direct_mssql_table": "dbo.vector_precios_gubernamental",
+                      "column_map": {
+                        "Fecha": "fecha",
+                        "TV": "tipovalor",
+                        "Emisora": "emisora",
+                        "Serie": "serie"
+                      }
+                    }
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            frame = Mock(index=[0])
+            with patch.object(
+                vector_update.ImportValmer,
+                "_read_metatable_source_frame",
+                return_value=frame,
+            ) as read_source:
+                result = vector_update.preflight_metatable_source(config_path)
+
+            probe_source = read_source.call_args.args[0]
+            self.assertEqual(probe_source.direct_mssql_table, "dbo.vector_precios_gubernamental")
+            self.assertEqual(probe_source.max_rows, 1)
+            self.assertEqual(result["source_kind"], "direct_mssql")
+            self.assertEqual(result["sample_row_count"], 1)
+
     def test_vector_update_forces_current_pricing_hydration_without_global_daily_gate(self):
         updater = Mock()
         updater.get_update_statistics.return_value = object()

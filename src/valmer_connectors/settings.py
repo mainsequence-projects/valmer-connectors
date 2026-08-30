@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from valmer_connectors.instruments.curve_bootstrap import (
     CETE_28_INDEX_UNIQUE_IDENTIFIER,
@@ -44,6 +45,15 @@ DEFAULT_VALMER_ONEDRIVE_FOLDER_PATH = "clients/actinver/vector_de_precios_upload
 DEFAULT_VALMER_ONEDRIVE_CACHE_PATH = "/tmp/valmer-vector-cache"
 VALMER_ONEDRIVE_GRAPH_PAGE_SIZE_ENV = "VALMER_ONEDRIVE_GRAPH_PAGE_SIZE"
 DEFAULT_VALMER_ONEDRIVE_GRAPH_PAGE_SIZE = 999
+
+# Repository-owned source setting for the MetaTable vector Job.  The control-plane
+# preflight and the Job entrypoint import this same value; it is intentionally not
+# accepted from a launch request.
+VALMER_METATABLE_SOURCE_CONFIG_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "configs"
+    / "valmer-metatable-sources.json"
+)
 
 
 def _resolve_bool_env(

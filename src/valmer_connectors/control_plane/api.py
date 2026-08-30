@@ -9,6 +9,7 @@ from valmer_connectors.control_plane.models import (
     BulkActionExecution,
     BulkActionPreflight,
     CurrentUserResponse,
+    JobRunParametersResponse,
     LaunchResponse,
     OverviewResponse,
     PipelineResponse,
@@ -192,6 +193,18 @@ def create_app(
             status=status_filter,
             ordering=ordering,
         )
+
+    @app.get(
+        "/api/v1/control-plane/jobs/{job_uid}/run-parameters",
+        response_model=JobRunParametersResponse,
+        operation_id="getValmerJobRunParameters",
+    )
+    def get_job_run_parameters(
+        job_uid: str,
+        service: Service,
+        user_uid: RequestUserUid,
+    ) -> JobRunParametersResponse:
+        return service.job_run_parameters(user_uid, job_uid)
 
     @app.get(
         "/api/v1/control-plane/job-runs/discovery/",

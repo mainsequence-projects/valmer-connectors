@@ -76,15 +76,18 @@ Keep these distinctions:
   and never ask. Same-environment delegation additionally requires persisted
   parent-session provenance; environment membership is not blanket session or
   task authorization.
-- `code_repository.create` establishes the logical CodeRepository and its initial `main`
-  CodeRepositoryBranch and never accepts a branch name. After bootstrap, a signed
+- `code_repository.create` establishes the logical CodeRepository and canonical
+  production `main` CodeRepositoryBranch and never accepts a branch name. It may accept
+  one visible `bootstrap_organization_environment_uid`; the backend derives that
+  Environment's required branch and, when non-main, creates it from the exact
+  initialized main commit without a second scaffold. The UID is creation context,
+  not CodeRepository or Blueprint ownership. After bootstrap, a signed
   provider push links an existing branch automatically only when the
   Organization administrator has already created the exact matching
   environment; do not create a second logical CodeRepository for it. Git never creates
   the environment, and no manual branch-import workflow is accepted. The
   backend assigns each branch to the same-Organization environment whose
-  immutable required branch exactly matches; the caller never supplies an
-  environment UID.
+  immutable required branch exactly matches.
 - `OrganizationEnvironment` is shared by exact compatible
   CodeRepositoryBranches from one or several CodeRepositories. Its DataSource is routing
   configuration, not environment identity.
@@ -105,8 +108,8 @@ Keep these distinctions:
 - `TimeIndexTableUpdater` is deterministic update logic that produces or maintains
   `TimeIndexMetaTable` data; its database identities are derived from its
   input and output MetaTables.
-- `Job` is a CodeRepository-bound execution definition with a repository execution
-  path or app target, runtime resources, exactly one ownership-typed image
+- `Job` is a CodeRepository-bound execution definition with a repository-relative
+  `.py` or `.yaml` execution path, runtime resources, exactly one ownership-typed image
   identity through the exclusive public/Organization relation pair, an exact
   full commit for CodeRepository code, optional future exact-event image promotion,
   and an optional schedule. `JobRun` is one execution and freezes that image,
@@ -136,8 +139,11 @@ Keep these distinctions:
   digests, provider handles, or readiness.
 - Concurrent target services requesting the same exact image build converge on
   one canonical attempt and attach independent parent dependencies. Ambiguous
-  submission remains on that attempt and is never blindly retried. Execution
-  accepts only verified digest-pinned dependencies and never a `latest` tag.
+  submission remains on that attempt during a bounded reconciliation window
+  and is never blindly retried. If no provider handle or output can be adopted
+  by the deadline, that attempt and its awaiting dependencies fail; a delayed
+  observation cannot rewind it. Execution accepts only verified digest-pinned
+  dependencies and never a `latest` tag.
 - When a runtime ResourceRelease is declared in `.mainsequence/workflows` with
   automatic deployment enabled, CodeRepository design does not select or require an
   image. The workflow ignores any image UID and validation accepts the
@@ -162,6 +168,10 @@ Keep these distinctions:
   its backing Job: they do not create or resolve platform Secrets/Constants,
   select an Organization Environment, write branch-wide configuration, or
   enter code-repository-image builds.
+- Do not design branch-wide `env_vars`. CodeRepository create rejects that retired
+  input, CodeRepositoryBranch stores no arbitrary environment mapping, and Jobs do
+  not inherit one. Environment Constants and Secrets require explicit resolution and
+  are not automatic process injection.
 - A deployed branch-owned runtime receives a backend-derived public context
   containing logical CodeRepository UID, exact CodeRepositoryBranch UID, descriptive branch
   name, and Organization Environment UID. That authenticated target chain is
@@ -452,10 +462,8 @@ production or a request-time API.
 Record:
 
 - `name`;
-- exactly one execution target:
-  - repository-relative `execution_path` for a `.py` or `.yaml`
-    CodeRepository file; or
-  - `app_name` for the existing app target;
+- one repository-relative `execution_path` for a `.py` or `.yaml`
+  CodeRepository file;
 - image ownership intent: a caller-selected exact ready image for manual
   pinning, or backend-derived exact image for automatic deployment;
 - whether future qualifying repository events may promote the Job to another
@@ -467,11 +475,12 @@ Record:
 - optional `task_schedule` using the existing interval or crontab schedule
   shape, including start-time or one-off intent when needed.
 
-The canonical creation flow infers the Job type from `execution_path` or
-`app_name`. Do not declare an independent type or command contract in the
-Blueprint. A `.ipynb` file may remain a browsable CodeRepository resource, but
-it is not an executable Job target and must not be converted or declared with
-a retired `notebook` discriminator.
+The canonical creation flow infers the Job type from `execution_path`. Do not
+declare an independent type or command contract in the Blueprint. A `.ipynb`
+file may remain a browsable CodeRepository resource, but it is not an
+executable Job target and must not be converted or declared with a retired
+`notebook` discriminator. The retired app target and `app` discriminator must
+not be used.
 
 The lean-Python ABI migration is backend-owned and may place Python image
 builds and deployments under a temporary maintenance lock. A Blueprint must
@@ -786,11 +795,12 @@ CodeRepository creation means `python`. Do not invent separate language, framewo
 profile, or scaffold version fields. The canonical CodeRepository response exposes the derived technology, the
 mandatory pinned framework image, and repository/commit-scoped SDK
 observations. A Vite CodeRepository keeps browser build variables on its
-StaticSiteRelease rather than CodeRepositoryBranch `env_vars`; its environment owns
+StaticSiteRelease; its environment owns
 MetaTable DataSource routing like every other CodeRepositoryBranch. CodeRepository creation
-does not accept a DataSource selector. The backend resolves the Organization's
-canonical production environment and assigns the initial `main` CodeRepositoryBranch
-to it. The CodeRepository stores and exposes no default MetaTables DataSource; managed
+does not accept a DataSource selector. The backend always resolves the Organization's
+canonical production environment for `main` and may additionally derive the submitted
+bootstrap Environment's non-main branch. The CodeRepository stores and exposes no
+default MetaTables DataSource; managed
 MetaTable routing resolves only through the exact CodeRepositoryBranch's persisted
 Organization Environment. The read-only CodeRepositoryBranch
 `metatables_data_source` and `metatables_data_source_uid` projections stay in

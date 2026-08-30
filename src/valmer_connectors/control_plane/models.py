@@ -65,6 +65,22 @@ class BulkActionPreflight(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class JobParameter(StrictModel):
+    key: str
+    input_type: Literal["boolean", "date", "text"]
+    label: str
+    description: str
+    required: bool
+    default: bool | str | None
+
+
+class JobRunParametersResponse(StrictModel):
+    job_uid: str
+    job_key: str
+    parameters: list[JobParameter]
+    configuration_summary: str | None = None
+
+
 class Metric(StrictModel):
     id: str
     label: str
@@ -95,6 +111,7 @@ class PipelineAction(StrictModel):
     last_run_at: str | None
     image_status: str | None
     automatic_deployment: bool | None
+    parameter_count: int
 
 
 class PipelineStage(StrictModel):
@@ -128,6 +145,8 @@ __all__ = [
     "BulkActionPreflight",
     "CurrentUserResponse",
     "HealthStatus",
+    "JobParameter",
+    "JobRunParametersResponse",
     "LaunchResponse",
     "Metric",
     "OverviewResponse",

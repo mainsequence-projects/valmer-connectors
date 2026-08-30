@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import runpy
+import sys
 from pathlib import Path
 
 from banxico import fixings
@@ -15,11 +16,14 @@ from valmer_connectors.services import curve_update, vector_update
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run_script(script_name: str) -> None:
-    runpy.run_path(
-        str(REPOSITORY_ROOT / "scripts" / script_name),
-        run_name="__main__",
-    )
+def _run_script(script_name: str, *arguments: str) -> None:
+    script_path = str(REPOSITORY_ROOT / "scripts" / script_name)
+    previous_argv = sys.argv
+    sys.argv = [script_path, *arguments]
+    try:
+        runpy.run_path(script_path, run_name="__main__")
+    finally:
+        sys.argv = previous_argv
 
 
 def test_onedrive_vector_job_encodes_its_source(monkeypatch) -> None:
@@ -28,7 +32,13 @@ def test_onedrive_vector_job_encodes_its_source(monkeypatch) -> None:
 
     _run_script("update_vector_valmer_onedrive.py")
 
-    assert calls == [{"source_kind": "onedrive-graph"}]
+    assert calls == [
+        {
+            "source_kind": "onedrive-graph",
+            "force_pricing_details_patch": None,
+            "bypass_vector_cursor_filter": None,
+        }
+    ]
 
 
 def test_metatable_vector_job_encodes_its_source_and_repository_config(monkeypatch) -> None:
@@ -43,8 +53,27 @@ def test_metatable_vector_job_encodes_its_source_and_repository_config(monkeypat
             "source_metatables_config_path": str(
                 REPOSITORY_ROOT / "configs" / "valmer-metatable-sources.json"
             ),
+            "force_pricing_details_patch": None,
+            "bypass_vector_cursor_filter": None,
         }
     ]
+
+
+def test_metatable_vector_job_forwards_runtime_flags_without_a_source_override(
+    monkeypatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(vector_update, "run_vector_update", lambda **kwargs: calls.append(kwargs))
+
+    _run_script(
+        "update_vector_valmer_metatable.py",
+        "--no-force-pricing-details-patch",
+        "--bypass-vector-cursor-filter",
+    )
+
+    assert calls[0]["force_pricing_details_patch"] is False
+    assert calls[0]["bypass_vector_cursor_filter"] is True
+    assert "source_metatable_uid" not in calls[0]
 
 
 def test_tiie_fixings_job_encodes_the_four_vscode_indices(monkeypatch) -> None:
@@ -64,7 +93,8 @@ def test_tiie_fixings_job_encodes_the_four_vscode_indices(monkeypatch) -> None:
                 TIIE_28_INDEX_IDENTIFIER,
                 TIIE_91_INDEX_IDENTIFIER,
                 TIIE_182_INDEX_IDENTIFIER,
-            )
+            ),
+            "end_date": None,
         }
     ]
 

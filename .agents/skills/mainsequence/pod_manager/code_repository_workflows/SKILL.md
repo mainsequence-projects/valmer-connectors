@@ -136,9 +136,11 @@ names and warns about suspicious names without echoing values.
 
 The mapping belongs only to the declared Job or to the ResourceRelease/Code
 Repository Coding Agent backing Job. Workflow application does not create, resolve,
-shadow, update, or delete platform Secrets, Constants, CodeRepositorySecrets, or
-Organization Environments, and it does not write CodeRepositoryBranch-wide
+shadow, update, or delete platform Secrets, Constants, or Organization Environments,
+and it does not write CodeRepositoryBranch-wide
 configuration. Runtime values never become code-repository-image build inputs.
+The former CodeRepository-create and CodeRepositoryBranch-wide `env_vars` contract is
+retired; this exact target-owned workflow contract is intentionally unchanged.
 
 ## Static Site Navigation Placement
 
@@ -204,6 +206,7 @@ Every workflow Job declaration must include explicit future-promotion intent:
   kind: job
   spec:
     name: Daily Prices
+    description: Refresh the daily prices dataset.
     execution_path: jobs/daily_prices.py
     cpu_request: "1"
     memory_request: "2"
@@ -216,6 +219,10 @@ Every workflow Job declaration must include explicit future-promotion intent:
 `execution_path` must be repository-relative and end in `.py` or `.yaml`.
 Notebook files may remain CodeRepository resources, but `.ipynb` is not a Job
 launch format and workflow validation rejects it without conversion.
+
+`description` is optional human-readable metadata. Omission preserves an
+existing Job description during reconciliation, and an explicit empty string
+clears it. It never affects runtime or deployment identity.
 
 During the one-way lean-Python ABI cutover, the backend maintenance lock may
 temporarily reject workflow-owned Python image preparation or deployment. Do

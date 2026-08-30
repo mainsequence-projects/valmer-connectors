@@ -61,9 +61,11 @@ no operator access. Job launch behavior is fail-closed:
 6. the latest run cannot already be pending or running; and
 7. the Job image must be ready.
 
-The execution endpoint does not accept arbitrary execution paths or command arguments. Successful
-launches produce a structured application log containing the human UID, request UID, Job UID,
-Job name, and returned JobRun UID.
+The execution endpoint does not accept arbitrary execution paths or command arguments. Each
+approved Job has an explicit typed parameter allowlist. The API validates those values, converts
+them to fixed command flags, and appends only those flags to the registered Job entrypoint.
+Successful launches produce a structured application log containing the human UID, request UID,
+Job UID, Job name, returned JobRun UID, and command-argument count.
 
 The VS Code local-review compound binds its fixed review user UID as an operator so the SDK action
 can exercise discovery and preflight locally. Production authorization remains controlled only by
@@ -80,6 +82,21 @@ the four-series TIIE-only fixing refresh; and the forced current XCCY rebuild. O
 dependency-ordered standard pipeline is scheduled (`0 13 * * 1-5`). Individual Jobs remain
 unscheduled recovery operations that an authorized operator can launch from the static site.
 
+`GET /api/v1/control-plane/jobs/{job_uid}/run-parameters` returns the application-owned runtime
+controls for one approved Job. Vector Jobs expose pricing-detail refresh and cursor-reprocessing
+booleans. Provider Jobs that support a cutoff expose an optional inclusive end date. The static
+site renders these controls inside the SDK confirmation dialog and sends their values through the
+normal SDK preflight and execution payload.
+
+The MetaTable source itself is not a runtime control. Both
+`scripts/update_vector_valmer_metatable.py` and the control-plane preflight import
+`VALMER_METATABLE_SOURCE_CONFIG_PATH` from `valmer_connectors.settings`. For a governed MetaTable,
+preflight verifies active provisioning and physical binding, compares its registered column
+contract with the Valmer mapping, and performs a one-row governed read probe. For the explicit
+direct-MSSQL compatibility setting, it performs a one-row read through the same compatibility
+reader used by the Job and verifies every mapped source column. Neither path accepts a source
+override from the launch request.
+
 The local upload-folder vector launch is intentionally not a platform Job because its configured
 path exists only on the developer workstation. Migration inspection/revision/upgrade, Streamlit,
 the example script, and the local API/Vite host are development or administration launchers, not
@@ -88,8 +105,8 @@ production workload Jobs.
 The workflow declaration is desired repository state, not proof that the Jobs exist. Overview and
 Pipeline responses reconcile all sixteen approved declarations with live branch Jobs. Missing Jobs
 are reported as configuration failures, and an existing Job without a run is reported as
-`not-run`. Launch responses must contain both the platform JobRun UID and platform status; the API
-does not manufacture a pending state when either field is absent.
+`not-run`. Launch responses must contain the platform JobRun UID. When the platform omits a status,
+the control plane reports the accepted launch as `ACCEPTED` and links to that returned JobRun.
 
 The Jobs collection is one frontend collection request. Its backend adapter performs one bulk
 Job query restricted to the sixteen approved names and one bulk JobRun query for those Job UIDs;
