@@ -17,7 +17,7 @@ The approved control-plane Jobs are declared in
 `.mainsequence/workflows/valmer-control-plane-jobs.yaml`. The standard pipeline
 is the only scheduled Job; leaf Jobs are manual recovery operations.
 
-The first backend sync indexes `src/apis/valmer_control_plane/main.py`. Resolve that
+The first backend sync indexes `api/valmer_control_plane/main.py`. Resolve that
 FastAPI resource's public UID, add the API `resource_release` declaration using
 that real UID, validate it through the branch workflow endpoint, and run a
 second canonical sync. The declaration must enable every-commit automatic

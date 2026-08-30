@@ -34,7 +34,7 @@ Vector Analitico CETES and M Bonos rows.
 - Includes a project-specific multipage Streamlit dashboard under
   `dashboards/valmer_monitor/`.
 - Serves the backend half of the Valmer Command Center control plane through
-  `src/apis/valmer_control_plane/main.py`; the separate `ValmerConnectorsMonitor`
+  `api/valmer_control_plane/main.py`; the separate `ValmerConnectorsMonitor`
   Vite repository owns the SDK-native user interface.
 
 ## Workflow Boundaries
