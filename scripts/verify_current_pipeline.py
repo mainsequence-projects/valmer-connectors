@@ -41,12 +41,6 @@ CURVE_IDENTIFIERS = (
     VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
 )
-EXPECTED_CURVE_ROWS = {
-    VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER: 1,
-    VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER: 1,
-    VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER: 1,
-    VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER: 248,
-}
 KEY_NODE_VALIDATORS = {
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER: validate_tiie_ois_key_nodes,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER: validate_usd_sofr_key_nodes,
@@ -86,6 +80,92 @@ def _utc(value: Any) -> pd.Timestamp:
     )
 
 
+def _validate_government_source(
+    government_source: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    required_columns = {
+        "time_index",
+        "unique_identifier",
+        "tipovalor",
+        "emisora",
+    }
+    missing_columns = required_columns.difference(government_source.columns)
+    if missing_columns:
+        raise RuntimeError(
+            "Government vector source is missing required columns: "
+            + ", ".join(sorted(missing_columns))
+            + "."
+        )
+    if government_source.empty:
+        raise RuntimeError("Government vector source contains no observations.")
+    duplicate_count = int(
+        government_source.duplicated(
+            subset=["time_index", "unique_identifier"],
+            keep=False,
+        ).sum()
+    )
+    if duplicate_count:
+        raise RuntimeError(
+            "Government vector source contains "
+            f"{duplicate_count} duplicate date/asset observations."
+        )
+    cetes = government_source.loc[
+        (government_source["tipovalor"] == "BI")
+        & (government_source["emisora"] == "CETES")
+    ]
+    bonos = government_source.loc[
+        (government_source["tipovalor"] == "M")
+        & (government_source["emisora"] == "BONOS")
+    ]
+    if cetes.empty or bonos.empty:
+        raise RuntimeError(
+            "Government vector source must contain both CETES and M Bonos observations."
+        )
+    return cetes, bonos
+
+
+def _validate_curve_coverage(
+    government_source: pd.DataFrame,
+    curve_rows: list[dict[str, Any]],
+) -> Counter[str]:
+    curve_counts = Counter(str(row["curve_identifier"]) for row in curve_rows)
+    missing_identifiers = [
+        identifier for identifier in CURVE_IDENTIFIERS if curve_counts[identifier] == 0
+    ]
+    if missing_identifiers:
+        raise RuntimeError(
+            "Persisted curve storage is missing required curves: "
+            + ", ".join(missing_identifiers)
+            + "."
+        )
+
+    source_dates = {_utc(value) for value in government_source["time_index"]}
+    government_curve_dates = {
+        _utc(row["time_index"])
+        for row in curve_rows
+        if str(row["curve_identifier"])
+        == VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER
+    }
+    missing_dates = source_dates.difference(government_curve_dates)
+    extra_dates = government_curve_dates.difference(source_dates)
+    if missing_dates or extra_dates:
+        source_latest = max(source_dates).isoformat() if source_dates else "none"
+        curve_latest = (
+            max(government_curve_dates).isoformat()
+            if government_curve_dates
+            else "none"
+        )
+        raise RuntimeError(
+            "Government curve coverage does not match vector source dates: "
+            f"source_dates={len(source_dates)}, "
+            f"curve_dates={len(government_curve_dates)}, "
+            f"missing_dates={len(missing_dates)}, "
+            f"extra_dates={len(extra_dates)}, "
+            f"source_latest={source_latest}, curve_latest={curve_latest}."
+        )
+    return curve_counts
+
+
 def main() -> None:
     bootstrap_runtime(seed_static_rows=False)
 
@@ -116,9 +196,11 @@ def main() -> None:
         for row in quote_rows
     }
     quote_identifiers = {str(row["index_identifier"]) for row in quote_rows}
-    if len(quote_rows) != 81 or len(quote_identifiers) != 81:
+    if not quote_rows:
+        raise RuntimeError("No current Valmer curve-quote Index observations were found.")
+    if len(quote_lookup) != len(quote_rows):
         raise RuntimeError(
-            "Expected 81 current Valmer curve-quote Index observations and identities."
+            "Valmer curve-quote Index observations contain duplicate date/identity rows."
         )
 
     non_quote_observations = sum(
@@ -126,10 +208,8 @@ def main() -> None:
         for row in daily_stats
         if not str(row["index_identifier"]).startswith("VALMER_CURVE_QUOTE.")
     )
-    if non_quote_observations != 8_633:
-        raise RuntimeError(
-            f"Expected 8,633 reference-rate observations; got {non_quote_observations}."
-        )
+    if non_quote_observations == 0:
+        raise RuntimeError("No persisted reference-rate observations were found.")
 
     fixing_table = IndexFixingsStorage.__table__
     fixing_stats = _rows(
@@ -144,31 +224,14 @@ def main() -> None:
         models=[IndexFixingsStorage],
     )
     fixing_observations = sum(int(row["row_count"]) for row in fixing_stats)
-    if fixing_observations != 26_430:
-        raise RuntimeError(
-            f"Expected 26,430 Banxico fixing observations; got {fixing_observations}."
-        )
+    if fixing_observations == 0:
+        raise RuntimeError("No persisted Banxico fixing observations were found.")
 
     government_source = load_mxn_government_curve_source_from_vector_storage(
         start_time_index="2024-08-30T23:59:59Z",
         timeout=180,
     )
-    cetes = government_source.loc[
-        (government_source["tipovalor"] == "BI")
-        & (government_source["emisora"] == "CETES")
-    ]
-    bonos = government_source.loc[
-        (government_source["tipovalor"] == "M")
-        & (government_source["emisora"] == "BONOS")
-    ]
-    if (
-        len(government_source) != 13_083
-        or government_source["time_index"].nunique() != 248
-        or len(cetes) != 9_029
-        or cetes["unique_identifier"].nunique() != 87
-        or len(bonos) != 4_054
-    ):
-        raise RuntimeError("Government vector history does not match the rebuilt source.")
+    cetes, bonos = _validate_government_source(government_source)
     government_observations = {
         (_utc(row.time_index), str(row.unique_identifier))
         for row in government_source.itertuples(index=False)
@@ -185,11 +248,7 @@ def main() -> None:
         .order_by(curve_table.c.time_index, curve_table.c.curve_identifier),
         models=[DiscountCurvesStorage],
     )
-    curve_counts = Counter(str(row["curve_identifier"]) for row in curve_rows)
-    if dict(curve_counts) != EXPECTED_CURVE_ROWS:
-        raise RuntimeError(
-            f"Unexpected persisted curve counts: {dict(curve_counts)!r}."
-        )
+    curve_counts = _validate_curve_coverage(government_source, curve_rows)
 
     source_reference_counts: Counter[str] = Counter()
     key_node_counts: Counter[str] = Counter()

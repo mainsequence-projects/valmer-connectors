@@ -66,7 +66,7 @@ Last complete backend lifecycle verification: 2026-08-21
 - `valmer-connectors runtime validate` resolves the four current curve
   definitions and eight current Index/convention definitions.
 
-## Completed Updates
+## Completed Updates (2026-08-21 Snapshot)
 
 All current producers and curves were executed after schema recreation:
 
@@ -85,7 +85,7 @@ The government source loader now permits the required governed-query volume,
 uses SDK pagination, and rejects truncated results. This fixed the earlier
 1,000-row read ceiling before the final government rebuild.
 
-## Persisted-Data Audit
+## Persisted-Data Audit (2026-08-21 Snapshot)
 
 `scripts/verify_current_pipeline.py` passed against the local platform data:
 
@@ -100,6 +100,13 @@ uses SDK pagination, and rejects truncated results. This fixed the earlier
   exact-date persisted Index value;
 - all 12,761 government source references are typed `asset` and resolve to the
   exact-date persisted vector observation.
+
+The 2026-08-30 verification found that the vector source has since advanced to
+16,099 rows across 489 dates through 2026-08-20, while government-curve storage
+still covers 248 dates through 2025-08-27. The repeatable verifier now derives
+coverage from the governed source dates instead of freezing the 2026-08-21 row
+counts. It reports 241 missing government-curve dates until the government
+curve refresh catches up.
 
 ## Strict Failure Behavior
 

@@ -102,5 +102,13 @@ The final governed-storage audit on 2026-08-21 verified:
 - all 12,761 government key nodes resolve to exact-date Asset observations.
 
 `scripts/verify_current_pipeline.py` is the repeatable verification command. It
-fails on missing rows, unexpected counts, truncated governed queries, invalid
-key-node schemas, or unresolved source references.
+derives expected government-curve coverage from the current governed vector
+dates and fails on missing required products, duplicate source observations,
+coverage gaps, truncated governed queries, invalid key-node schemas, or
+unresolved source references. It does not freeze historical row counts.
+
+The 2026-08-30 run found 489 government-vector dates through 2026-08-20 but
+only 248 government-curve dates through 2025-08-27. The resulting 241-date
+coverage gap is a real pipeline readiness failure; run the approved
+`Valmer MXN Government Curve Refresh` Job before expecting verification to
+succeed.
