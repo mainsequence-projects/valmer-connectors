@@ -1,5 +1,5 @@
 {
-  "version": "0.0.1",
+  "version": "0.2.0",
   "configurations": [
     {
       "name": "Valmer Dashboard",
@@ -384,6 +384,77 @@
         "PYTHONPATH": "${workspaceFolder}"
       },
       "justMyCode": true
+    },
+    {
+      "name": "Control Plane: Local API",
+      "type": "python",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "uvicorn",
+      "args": [
+        "control_plane_dev:app",
+        "--app-dir",
+        "${workspaceFolder}/.vscode",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}",
+        "PYTHONUNBUFFERED": "1",
+        "VALMER_CONTROL_PLANE_OPERATOR_UIDS": "",
+        "VALMER_LOCAL_REVIEW_ORIGIN": "http://127.0.0.1:5187",
+        "VALMER_LOCAL_REVIEW_FASTAPI_UID": "22222222-2222-4222-8222-222222222222",
+        "VALMER_LOCAL_REVIEW_TOKEN": "valmer-local-review",
+        "VALMER_LOCAL_REVIEW_USER_UID": "11111111-1111-4111-8111-111111111111"
+      },
+      "justMyCode": true,
+      "presentation": {
+        "group": "control-plane",
+        "order": 1
+      }
+    },
+    {
+      "name": "Control Plane: Vite Review Host",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev:review",
+      "cwd": "${workspaceFolder}/../valmerconnectorsmonitor-ad5c6c37-ba4e-414b-8ad4-1253074b8bc1",
+      "preLaunchTask": "Control Plane: Wait for local API",
+      "env": {
+        "VITE_COMMAND_CENTER_ORIGIN": "http://127.0.0.1:5187",
+        "VITE_FASTAPI_RESOURCE_RELEASE_UID": "22222222-2222-4222-8222-222222222222",
+        "VITE_LOCAL_FASTAPI_URL": "http://127.0.0.1:8000",
+        "VITE_LOCAL_FASTAPI_TOKEN": "valmer-local-review",
+        "VITE_LOCAL_REVIEW_USER_UID": "11111111-1111-4111-8111-111111111111"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "Local:\\s+(https?://[^\\s]+)",
+        "uriFormat": "%sdev-host.html"
+      },
+      "presentation": {
+        "group": "control-plane",
+        "order": 2
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Control Plane: API + Vite (local review)",
+      "configurations": [
+        "Control Plane: Local API",
+        "Control Plane: Vite Review Host"
+      ],
+      "stopAll": true,
+      "presentation": {
+        "group": "control-plane",
+        "order": 1
+      }
     }
   ]
 }

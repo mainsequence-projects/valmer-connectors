@@ -309,7 +309,7 @@ Target fields:
 The MXN F-TIIE side must use the 28D payment convention and 0D fixing offset.
 This is separate from the domestic OIS helper's overnight construction.
 
-## DataNode Output
+## TimeIndexTableUpdater Output
 
 The implementation should publish through the same storage class used by the
 other Valmer curves:

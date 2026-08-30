@@ -42,7 +42,7 @@ After the refactor:
   `msm_pricing.scenarios.curves` APIs directly and pass the Valmer
   overnight-index resolver when the shocked curve is helper based.
 
-Success means the Valmer curve DataNode still publishes the same storage shape:
+Success means the Valmer curve TimeIndexTableUpdater still publishes the same storage shape:
 
 ```text
 time_index
@@ -376,7 +376,7 @@ Required changes:
   listed above;
 - add assertions that USD SOFR future key nodes include `future_family="sofr"`
   and `convexity_adjustment=0.0`;
-- keep shape tests for the published DataNode frame.
+- keep shape tests for the published updater frame.
 
 Modify:
 
@@ -401,7 +401,7 @@ Modify:
 
 ```text
 docs/pricing.md
-docs/data-nodes.md
+docs/time-index-table-updates.md
 docs/SUMMARY.md
 docs/index.md
 mkdocs.yml

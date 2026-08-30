@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valmer-connectors"
-version = "0.1.25"
+version = "0.1.26"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "arch>=8.0.0",
+    "fastapi>=0.141.1",
     "mainsequence",
-    "ms-markets==0.0.110",
+    "ms-markets==1.0.2",
     "pandas-market-calendars>=5.4.0",
     "plotly>=6.8.0",
     "pymssql>=2.3.13",
@@ -86,5 +87,6 @@ known-first-party = ["mainsequence","valmer_connectors","banxico","fred","migrat
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
 ]

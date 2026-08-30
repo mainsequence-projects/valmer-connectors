@@ -18,9 +18,9 @@ import valmer_dashboard
 
 class ValmerMonitorDashboardTest(unittest.TestCase):
     def test_vector_snapshot_uses_backend_latest_observation(self):
-        node = Mock()
-        node.get_df_between_dates.side_effect = AssertionError("must not fetch history")
-        node.get_last_observation.return_value = pd.DataFrame(
+        table_ref = Mock()
+        table_ref.get_df_between_dates.side_effect = AssertionError("must not fetch history")
+        table_ref.get_last_observation.return_value = pd.DataFrame(
             [
                 {
                     "time_index": pd.Timestamp("2024-01-03T00:00:00Z"),
@@ -31,27 +31,27 @@ class ValmerMonitorDashboardTest(unittest.TestCase):
         ).set_index(["time_index", ASSET_IDENTIFIER_DIMENSION])
 
         with patch.object(
-            valmer_dashboard.APIDataNode,
-            "build_from_identifier",
-            return_value=node,
+            valmer_dashboard.TimeIndexTableRef,
+            "from_identifier",
+            return_value=table_ref,
         ):
-            result = valmer_dashboard._query_latest_node_observations(
-                valmer_dashboard.VECTOR_NODE_IDENTIFIER,
+            result = valmer_dashboard._query_latest_table_observations(
+                valmer_dashboard.VECTOR_TABLE_IDENTIFIER,
                 unique_identifier_list=["M_BONOS_241205"],
             )
 
-        node.get_last_observation.assert_called_once_with(
+        table_ref.get_last_observation.assert_called_once_with(
             dimension_filters={ASSET_IDENTIFIER_DIMENSION: ["M_BONOS_241205"]}
         )
-        node.get_df_between_dates.assert_not_called()
+        table_ref.get_df_between_dates.assert_not_called()
         self.assertIsNone(result.error)
         self.assertEqual(result.data["unique_identifier"].tolist(), ["M_BONOS_241205"])
         self.assertEqual(result.data["dirty_price"].iloc[0], 101.25)
 
     def test_curve_health_uses_backend_latest_observation(self):
-        node = Mock()
-        node.get_df_between_dates.side_effect = AssertionError("must not fetch history")
-        node.get_last_observation.return_value = pd.DataFrame(
+        table_ref = Mock()
+        table_ref.get_df_between_dates.side_effect = AssertionError("must not fetch history")
+        table_ref.get_last_observation.return_value = pd.DataFrame(
             [
                 {
                     "time_index": pd.Timestamp("2024-01-03T00:00:00Z"),
@@ -62,15 +62,15 @@ class ValmerMonitorDashboardTest(unittest.TestCase):
         ).set_index("time_index")
 
         with patch.object(
-            valmer_dashboard.APIDataNode,
-            "build_from_identifier",
-            return_value=node,
+            valmer_dashboard.TimeIndexTableRef,
+            "from_identifier",
+            return_value=table_ref,
         ):
             result = valmer_dashboard._load_latest_discount_curve()
 
-        node.get_last_observation.assert_called_once()
-        self.assertIn("dimension_range_map", node.get_last_observation.call_args.kwargs)
-        node.get_df_between_dates.assert_not_called()
+        table_ref.get_last_observation.assert_called_once()
+        self.assertIn("dimension_range_map", table_ref.get_last_observation.call_args.kwargs)
+        table_ref.get_df_between_dates.assert_not_called()
         self.assertIsNone(result.error)
         self.assertEqual(len(result.data.index), 1)
 

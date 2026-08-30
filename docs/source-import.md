@@ -1,7 +1,7 @@
 # Source Import
 
 This page documents where Valmer source rows come from. It is separate from
-DataNode publication, AssetTable registration, and pricing hydration.
+time-index table publication, AssetTable registration, and pricing hydration.
 
 ## Constructor Versus Import
 
@@ -38,7 +38,7 @@ keep row when asset_identifier has no stored vector observation
 This is the same asset-indexed update rule regardless of source type. There is
 no global latest-date source skip.
 
-Repair runs can bypass this row-level cursor so the normal DataNode path still
+Repair runs can bypass this row-level cursor so the normal updater path still
 revisits rows whose vector observations already exist:
 
 ```bash
@@ -54,7 +54,7 @@ VALMER_VECTOR_BYPASS_CURSOR_FILTER=1
 Use this only for repair workflows such as patching pricing details or
 rebuilding static asset metadata. It keeps source rows available for
 pre-update hydration; vector publication still writes through the normal
-DataNode update path.
+updater path.
 
 ## Source Selection
 
@@ -110,7 +110,7 @@ AssetSnapshot publication
 optional pricing-details hydration for supported pricing targets
     |
     v
-Valmer vector DataNode publication
+Valmer vector time-index table publication
 ```
 
 Supported source hydration paths:
@@ -201,7 +201,7 @@ Before any Excel file is opened, the service parses the Valmer valuation date
 from filenames such as `VectorAnalitico24h_2024-12-03.xls` and compares it
 with the latest persisted vector `time_index`. Files whose date is not newer
 than storage are not staged or read. Files without a parseable date remain
-selected and are still checked by the row-level DataNode cursor filter.
+selected and are still checked by the row-level TimeIndexTableUpdater cursor filter.
 
 For repair runs, `--bypass-vector-cursor-filter` also bypasses this local
 filename-date prefilter so older files can be staged and passed to
@@ -503,7 +503,7 @@ valmer-connectors vector update
 
 The force flag only controls pricing-detail hydration during a source import.
 Use it when new source rows should rebuild pricing details while the vector
-DataNode is already running.
+TimeIndexTableUpdater is already running.
 
 For already-persisted bad pricing-detail payloads, use the targeted repair
 script instead of replaying vector files:
@@ -537,7 +537,7 @@ The source import step produces:
 Those frames are the input to:
 
 - asset/detail/pricing preparation in `prepare_for_update()`
-- vector DataNode publication in `update()`
+- vector time-index table publication in `update()`
 
 ## What Source Import Does Not Do
 
@@ -546,7 +546,7 @@ Source import does not:
 - register AssetTable rows
 - upsert ValmerAssetDetailsTable
 - build bond pricing instruments
-- publish DataNode rows
+- publish TimeIndexTableUpdater rows
 - publish curves
 
 Those happen in later explicit steps.

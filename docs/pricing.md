@@ -1,7 +1,7 @@
 # Pricing
 
 This page documents pricing hydration and curve/index runtime behavior. It is
-separate from source import, DataNode publication, and static asset details.
+separate from source import, time-index table publication, and static asset details.
 
 ## Runtime Bootstrap
 
@@ -116,7 +116,7 @@ cross-currency basis helpers.
 
 For repeated local launcher runs of the USD/MXN cross-currency builder, use
 `valmer-connectors curves update-usd-mxn-xccy --rebuild-current`. This rebuilds
-the current Valmer source date instead of letting the DataNode incremental
+the current Valmer source date instead of letting the TimeIndexTableUpdater incremental
 filter return no rows for a date that is already published.
 
 All seeded Valmer curves use:
@@ -290,7 +290,7 @@ isolated validation run before publishing into the shared production namespace.
 ## Bond Pricing Hydration
 
 Bond pricing hydration runs during `ImportValmer.prepare_for_update()`, before
-the DataNode run.
+the updater run.
 
 ```text
 prepare_for_update()
@@ -401,7 +401,7 @@ quote/unit, source date, conventions, and raw source identity before core
 `DiscountCurvesNode` compression.
 
 Run the quote producers before curves when invoking the launchers manually;
-the named curve DataNodes declare the same ordering through `dependencies()`.
+the named curve TimeIndexTableUpdaters declare the same ordering through `dependencies()`.
 The output remains canonical `DiscountCurvesStorage`, and the implied curve
 points are distinct from the persisted input observations and key-node audit
 provenance.
@@ -409,7 +409,7 @@ provenance.
 ## MXN Government Bond Curve Publication
 
 The Valmer Mexican government bond curve consumes the persisted market snapshot
-owned by the vector DataNode. It does not re-read a separate raw Vector
+owned by the vector TimeIndexTableUpdater. It does not re-read a separate raw Vector
 Analitico file during curve publication.
 
 The curve source is:
@@ -454,7 +454,7 @@ ValmerMxnGovernmentBondDiscountCurvesNode(
 run(force_update=True)
 ```
 
-On first publication the DataNode offset boundary starts at June 1, 2026. The
+On first publication the TimeIndexTableUpdater offset boundary starts at June 1, 2026. The
 builder queries vector-storage snapshots at or after that timestamp and emits
 one curve row per available snapshot. On later runs it queries rows after the
 last stored curve observation for `VALMER_MXN_GOVERNMENT_BOND`.

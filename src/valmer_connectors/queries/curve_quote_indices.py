@@ -39,7 +39,7 @@ class ValmerCurveQuoteSnapshotError(RuntimeError):
 
 def load_valmer_curve_quote_snapshot(
     *,
-    storage_table=DailyIndexValuesStorage,
+    output_table=DailyIndexValuesStorage,
     time_index: Any,
     source_families: Iterable[str],
     timeout: int | float | tuple[float, float] | None = None,
@@ -48,7 +48,7 @@ def load_valmer_curve_quote_snapshot(
 
     target = _utc_midnight(time_index)
     frame = _read_quote_rows(
-        storage_table=storage_table,
+        output_table=output_table,
         time_index=target,
         timeout=timeout,
     )
@@ -61,7 +61,7 @@ def load_valmer_curve_quote_snapshot(
 
 def load_valmer_curve_quote_snapshots(
     *,
-    storage_table=DailyIndexValuesStorage,
+    output_table=DailyIndexValuesStorage,
     source_families: Iterable[str],
     after_time_index: Any | None = None,
     timeout: int | float | tuple[float, float] | None = None,
@@ -69,7 +69,7 @@ def load_valmer_curve_quote_snapshots(
     """Read every complete requested Valmer snapshot after an optional cutoff."""
 
     frame = _read_quote_rows(
-        storage_table=storage_table,
+        output_table=output_table,
         after_time_index=(
             None if after_time_index is None else _utc_midnight(after_time_index)
         ),
@@ -165,7 +165,7 @@ def validate_valmer_curve_quote_snapshot(
 
 def load_discount_curve_key_nodes(
     *,
-    storage_table=DiscountCurvesStorage,
+    output_table=DiscountCurvesStorage,
     time_index: Any,
     curve_identifiers: Iterable[str],
     timeout: int | float | tuple[float, float] | None = None,
@@ -174,7 +174,7 @@ def load_discount_curve_key_nodes(
 
     target = _utc_midnight(time_index)
     identifiers = tuple(str(value) for value in curve_identifiers)
-    table = storage_table.__table__
+    table = output_table.__table__
     context = MarketsRepositoryContext(timeout=timeout)
     statement = (
         select(
@@ -194,7 +194,7 @@ def load_discount_curve_key_nodes(
         statement,
         context=context,
         operation="select",
-        models=[storage_table],
+        models=[output_table],
         access="read",
     )
     result = execute_markets_operation(operation, context=context)
@@ -216,12 +216,12 @@ def load_discount_curve_key_nodes(
 
 def _read_quote_rows(
     *,
-    storage_table,
+    output_table,
     time_index: pd.Timestamp | None = None,
     after_time_index: pd.Timestamp | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> pd.DataFrame:
-    table = storage_table.__table__
+    table = output_table.__table__
     filters = [table.c.index_identifier.like("VALMER_CURVE_QUOTE.%")]
     if time_index is not None:
         filters.append(table.c.time_index == time_index)
@@ -237,7 +237,7 @@ def _read_quote_rows(
         statement,
         context=context,
         operation="select",
-        models=[storage_table],
+        models=[output_table],
         access="read",
     )
     result = execute_markets_operation(operation, context=context)

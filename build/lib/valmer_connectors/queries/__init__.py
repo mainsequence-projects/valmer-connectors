@@ -22,8 +22,8 @@ from valmer_connectors.queries.vector_quotes import (
     read_valmer_history,
     read_valmer_last_observation,
     read_valmer_yield_history,
-    valmer_vector_node,
-    valmer_vector_node_identifier,
+    valmer_vector_table_identifier,
+    valmer_vector_table_ref,
     valmer_vector_storage_columns,
 )
 
@@ -43,7 +43,7 @@ __all__ = [
     "read_valmer_yield_history",
     "resolve_valmer_detail_identifier_aliases",
     "to_utc_datetime",
-    "valmer_vector_node",
-    "valmer_vector_node_identifier",
+    "valmer_vector_table_identifier",
+    "valmer_vector_table_ref",
     "valmer_vector_storage_columns",
 ]

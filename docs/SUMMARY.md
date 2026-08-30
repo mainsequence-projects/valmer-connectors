@@ -6,7 +6,7 @@
 - `docs/introduction.md`: project overview and current operational surface.
 - `docs/source-import.md`: Valmer source hydration paths for Artifact buckets,
   local folders, OneDrive Graph, MetaTable sources, and debug files.
-- `docs/data-nodes.md`: DataNode output boundary,
+- `docs/time-index-table-updates.md`: TimeIndexTableUpdater output boundary,
   `ValmerVectorPricesStorage` contract, public vector query helpers, and spread
   analytics helpers.
 - `docs/markets.md`: AssetTable registration, Valmer asset identity,
@@ -22,6 +22,8 @@
 - `docs/agent-skills.md`: copying bundled Valmer Codex skills into downstream
   host projects.
 - `docs/dashboards.md`: Streamlit dashboard pages and monitoring purpose.
+- `docs/control-plane.md`: two-repository Command Center control-plane architecture, FastAPI
+  contracts, Job authorization, static-site integration, release order, and verification.
 - `docs/deployment.md`: deployment and verification commands.
 - `docs/new-version-migration.md`: migration status against current SDK and
   `ms-markets` architecture.
@@ -33,7 +35,7 @@
   Artifact buckets.
 - `docs/implementation/curve-resolution-and-asset-patching-plan.md`: plan for
   migrating Valmer curve/index resolution to market-data-set curve bindings and
-  patching existing asset pricing details through the normal vector DataNode.
+  patching existing asset pricing details through the normal vector TimeIndexTableUpdater.
 - `docs/implementation/valmer-query-helper-promotion-plan.md`: plan for
   promoting generic Valmer vector read helpers, asset-detail identifier lookup,
   and spread-analysis helpers from the fund competition project into canonical

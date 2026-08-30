@@ -14,7 +14,7 @@ from msm_pricing.data_interface.data_interface import dimension_range_for_identi
 from msm_pricing.data_nodes.curve_codec import decompress_string_to_curve
 from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER_DIMENSION
 
-from mainsequence.meta_tables import APIDataNode
+from mainsequence.meta_tables import TimeIndexTableRef
 from valmer_connectors.data_nodes.nodes import ImportValmer
 from valmer_connectors.instruments.asset_identity import resolve_valmer_assets
 from valmer_connectors.instruments.curve_bootstrap import (
@@ -22,8 +22,8 @@ from valmer_connectors.instruments.curve_bootstrap import (
 )
 from valmer_connectors.meta_tables.valmer_asset_details import resolve_valmer_asset_details
 
-VECTOR_NODE_IDENTIFIER = "vector_de_precios_valmer"
-DISCOUNT_CURVE_NODE_IDENTIFIER = markets_data_node_identifier("DiscountCurvesTS")
+VECTOR_TABLE_IDENTIFIER = "vector_de_precios_valmer"
+DISCOUNT_CURVE_TABLE_IDENTIFIER = markets_data_node_identifier("DiscountCurvesTS")
 
 NUMERIC_VECTOR_COLUMNS = (
     "open",
@@ -220,8 +220,8 @@ def _prepare_vector_frame(frame: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def _query_node_by_identifier(
-    node_identifier: str,
+def _query_table_by_identifier(
+    table_identifier: str,
     *,
     lookback_days: int,
     unique_identifier_list: list[str] | None = None,
@@ -229,11 +229,11 @@ def _query_node_by_identifier(
 ) -> QueryResult:
     start_date = utc_now() - timedelta(days=lookback_days)
     try:
-        node = APIDataNode.build_from_identifier(identifier=node_identifier)
+        table_ref = TimeIndexTableRef.from_identifier(table_identifier)
         dimension_filters = None
         if unique_identifier_list:
             dimension_filters = {ASSET_IDENTIFIER_DIMENSION: unique_identifier_list}
-        frame = node.get_df_between_dates(
+        frame = table_ref.get_df_between_dates(
             start_date=start_date,
             end_date=utc_now(),
             great_or_equal=True,
@@ -243,26 +243,26 @@ def _query_node_by_identifier(
         )
         return QueryResult(
             data=_prepare_vector_frame(frame),
-            source_label=f"DataNode: {node_identifier}",
+            source_label=f"Time-index table: {table_identifier}",
         )
     except Exception as exc:
         return QueryResult(data=pd.DataFrame(), error=str(exc))
 
 
-def _query_latest_node_observations(
-    node_identifier: str,
+def _query_latest_table_observations(
+    table_identifier: str,
     *,
     unique_identifier_list: list[str] | None = None,
 ) -> QueryResult:
     try:
-        node = APIDataNode.build_from_identifier(identifier=node_identifier)
+        table_ref = TimeIndexTableRef.from_identifier(table_identifier)
         dimension_filters = None
         if unique_identifier_list:
             dimension_filters = {ASSET_IDENTIFIER_DIMENSION: unique_identifier_list}
-        frame = node.get_last_observation(dimension_filters=dimension_filters)
+        frame = table_ref.get_last_observation(dimension_filters=dimension_filters)
         return QueryResult(
             data=_prepare_vector_frame(frame),
-            source_label=f"DataNode: {node_identifier}",
+            source_label=f"Time-index table: {table_identifier}",
         )
     except Exception as exc:
         return QueryResult(data=pd.DataFrame(), error=str(exc))
@@ -270,7 +270,7 @@ def _query_latest_node_observations(
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_vector_history(lookback_days: int = 14) -> QueryResult:
-    result = _query_node_by_identifier(VECTOR_NODE_IDENTIFIER, lookback_days=lookback_days)
+    result = _query_table_by_identifier(VECTOR_TABLE_IDENTIFIER, lookback_days=lookback_days)
     if result.error or result.data.empty:
         return result
     return QueryResult(
@@ -282,7 +282,7 @@ def load_vector_history(lookback_days: int = 14) -> QueryResult:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_vector_snapshot() -> QueryResult:
-    result = _query_latest_node_observations(VECTOR_NODE_IDENTIFIER)
+    result = _query_latest_table_observations(VECTOR_TABLE_IDENTIFIER)
     if result.error or result.data.empty:
         return result
     return QueryResult(
@@ -477,8 +477,8 @@ def load_pricing_health() -> dict[str, object]:
 
 def _load_latest_discount_curve() -> QueryResult:
     try:
-        node = APIDataNode.build_from_identifier(identifier=DISCOUNT_CURVE_NODE_IDENTIFIER)
-        frame = node.get_last_observation(
+        table_ref = TimeIndexTableRef.from_identifier(DISCOUNT_CURVE_TABLE_IDENTIFIER)
+        frame = table_ref.get_last_observation(
             dimension_range_map=dimension_range_for_identity(
                 identity_dimension=CURVE_IDENTIFIER_DIMENSION,
                 identity=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
@@ -490,7 +490,10 @@ def _load_latest_discount_curve() -> QueryResult:
         ).reset_index()
         if "time_index" in frame.columns:
             frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True, errors="coerce")
-        return QueryResult(data=frame, source_label=f"DataNode: {DISCOUNT_CURVE_NODE_IDENTIFIER}")
+        return QueryResult(
+            data=frame,
+            source_label=f"Time-index table: {DISCOUNT_CURVE_TABLE_IDENTIFIER}",
+        )
     except Exception as exc:
         return QueryResult(data=pd.DataFrame(), error=str(exc))
 
@@ -592,7 +595,7 @@ def selected_asset_snapshot(frame: pd.DataFrame, unique_identifier: str | None) 
 
 def runtime_notes() -> list[str]:
     return [
-        f"Discount curve DataNode identifier: `{DISCOUNT_CURVE_NODE_IDENTIFIER}`.",
+        f"Discount curve time-index table identifier: `{DISCOUNT_CURVE_TABLE_IDENTIFIER}`.",
         f"Valmer curve unique identifier: `{VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER}`.",
         "TIIE and CETE identities are core `Index` rows with `index_type=interest_rate`.",
     ]

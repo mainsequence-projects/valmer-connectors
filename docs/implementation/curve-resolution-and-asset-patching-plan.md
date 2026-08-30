@@ -26,7 +26,7 @@ The implementation must:
   `PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)`
 - create `CurveBuildingDetails` rows for every Valmer curve
 - patch existing asset pricing details through the normal Valmer vector
-  DataNode path, with explicit repair controls
+  updater path, with explicit repair controls
 
 ## Sources Checked
 
@@ -150,7 +150,7 @@ Rows created before the fix may contain stale benchmark/floating index UID
 choices or may rely on missing curve bindings.
 
 The patch should not be a custom direct write. It should run through the normal
-Valmer vector DataNode workflow:
+Valmer vector updater workflow:
 
 ```text
 valmer-connectors vector update
@@ -336,13 +336,13 @@ the target project.
 - [x] Correct and verify instrument index mapping: `SUBYACENTE_TO_INDEX_MAP`
       never maps to `MXN_GOVERNMENT_BOND`; M Bono benchmark selectors remain
       real CETE index UIDs; TIIE floaters remain real TIIE index UIDs.
-- [x] Add normal DataNode repair controls:
+- [x] Add normal TimeIndexTableUpdater repair controls:
       `VALMER_FORCE_PRICING_DETAILS_PATCH`,
       `VALMER_VECTOR_BYPASS_CURSOR_FILTER`,
       `--force-pricing-details-patch`, and `--bypass-vector-cursor-filter`.
 - [x] Add focused local tests for no synthetic index, no curve `index_uid`,
       `CurveBuildingDetails`, source bindings, explicit `mid` curve bindings,
-      real instrument index selectors, and DataNode repair controls.
+      real instrument index selectors, and TimeIndexTableUpdater repair controls.
 - [x] Attach Valmer source-specific `key_nodes` semantic validators for
       `VALMER_TIIE_OVERNIGHT`, `VALMER_USD_SOFR_OVERNIGHT`, and
       `VALMER_MXN_GOVERNMENT_BOND` before core `DiscountCurvesNode`
@@ -382,7 +382,7 @@ the target project.
 
 Before code changes:
 
-1. Run `mainsequence project update-sdk --path .`.
+1. Run `mainsequence code-repository update-sdk --path .`.
 2. Compare `mainsequence --version` with
    `.agents/skills/mainsequence/PINNED_FROM.txt`.
 3. Refresh `AGENTS.md` and `.agents/skills/mainsequence/` if the pin differs.
@@ -492,7 +492,7 @@ Acceptance checks:
 - z-spread tests pass `benchmark_curve_quote_side="mid"` when resolving Valmer
   mid bindings
 
-### Phase 4: Add Explicit Repair Controls To The Normal DataNode Path
+### Phase 4: Add Explicit Repair Controls To The Normal TimeIndexTableUpdater Path
 
 Files:
 
@@ -576,7 +576,7 @@ Acceptance checks:
 - `_persist_valmer_pricing_details_batch(...)` writes timestamped rows through
   `add_many_pricing_details(...)`
 - current pricing details are verified by readback after persist
-- the DataNode still runs through `ImportValmer.run(force_update=True)`
+- the TimeIndexTableUpdater still runs through `ImportValmer.run(force_update=True)`
 
 ### Phase 5: Backend Cleanup Of Old Static Rows
 
@@ -667,7 +667,7 @@ Specific assertions to add:
 - curve bootstrap seeds default market-data source bindings
 - curve bootstrap seeds mid projection bindings for `TIIE_28` and `TIIE_182`
 - curve bootstrap seeds mid z-spread-base bindings for `CETE_28` and `CETE_182`
-- force-patch env vars reach the normal DataNode workflow
+- force-patch env vars reach the normal updater workflow
 - bypass-cursor repair mode keeps otherwise-filtered source rows
 
 ## Live Verification Plan
@@ -675,8 +675,8 @@ Specific assertions to add:
 Before live checks:
 
 ```bash
-mainsequence project current --debug
-mainsequence project refresh_token --path .
+mainsequence code-repository current --debug
+mainsequence code-repository refresh-token --path .
 valmer-connectors runtime validate
 ```
 
@@ -747,7 +747,7 @@ Success requires:
 
 This plan does not:
 
-- create new DataNode storage tables
+- create new updater output tables
 - change Valmer vector storage row grain
 - create a project-specific direct pricing-details patch script
 - register `MXN_GOVERNMENT_BOND` as an index under another name

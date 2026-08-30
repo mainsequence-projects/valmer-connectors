@@ -52,7 +52,7 @@ time-varying observations:
   attaches the explicit already-migrated pricing MetaTable dependency graph:
   `AssetTable`, `IndexTypeTable`, `IndexTable`,
   `IndexConventionDetailsTable`, `CurveTable`,
-  `AssetCurrentPricingDetailsTable`, and pricing DataNode storage tables.
+  `AssetCurrentPricingDetailsTable`, and pricing updater output tables.
 - `msm.data_nodes.indices.IndexTimestampedDataNode`
   is the base for timestamped index facts keyed by
   `INDEX_UNIQUE_IDENTIFIER_DIMENSION`.
@@ -158,7 +158,7 @@ Do not put `index_uid` on the curve row. TIIE selector indexes resolve to
 The static curve identity and interpolation policy belong in `CurveTable`. The
 daily curve points belong in `DiscountCurvesNode`.
 
-## Target DataNodes
+## Target TimeIndexTableUpdaters
 
 ### Discount Curves
 
@@ -254,7 +254,7 @@ It does not:
 ## Dashboard Reads
 
 `dashboards/valmer_monitor/valmer_dashboard.py` reads the canonical
-discount-curve DataNode and decodes through the core curve codec. It does not
+discount-curve TimeIndexTableUpdater and decodes through the core curve codec. It does not
 read a standalone Valmer TIIE curve table.
 
 ## Implementation Tasks
@@ -278,10 +278,10 @@ read a standalone Valmer TIIE curve table.
   runtime-bootstrap entry point delegating pricing setup to `curve_bootstrap.py`.
 - [x] Remove the standalone asset-indexed TIIE curve path from active writes.
 - [x] Update dashboard curve health to read the canonical discount-curve
-  DataNode and decode through core `curve_codec`.
+  TimeIndexTableUpdater and decode through core `curve_codec`.
 - [x] Do not add a `FixingRatesNode` builder because this repository still has
   no source of actual fixing observations.
-- [x] Update documentation in `docs/data-nodes.md`, `docs/instruments.md`, and
+- [x] Update documentation in `docs/time-index-table-updates.md`, `docs/instruments.md`, and
   dashboard docs to describe Curve and Index MetaTable identities instead of
   constants and asset-indexed curve rows.
 
@@ -302,7 +302,7 @@ Do not mark the implementation complete until these checks pass:
 
 - pricing schemas register or attach with `IndexTypeTable`, `IndexTable`,
   `IndexConventionDetailsTable`, `CurveTable`, current pricing detail tables,
-  and pricing DataNode storage tables
+  and pricing updater output tables
 - `IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())`
   returns or preserves an `interest_rate` row
 - `Index` rows exist for supported TIIE and CETE reference indexes

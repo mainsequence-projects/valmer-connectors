@@ -387,7 +387,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vector_update_parser = vector_subcommands.add_parser(
         "update",
-        help="Run the Valmer vector import, asset/detail sync, pricing hydration, and DataNode update.",
+        help=(
+            "Run the Valmer vector import, asset/detail sync, pricing hydration, "
+            "and time-index table update."
+        ),
     )
     vector_update_parser.add_argument(
         "--bucket-name",
@@ -562,7 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
     curves_usd_mxn_xccy_parser.add_argument(
         "--hash-namespace",
         default=None,
-        help="Optional DataNode hash namespace for isolated USD/MXN XCCY curve runs.",
+        help="Optional updater hash namespace for isolated USD/MXN XCCY curve runs.",
     )
     curves_usd_mxn_xccy_parser.add_argument(
         "--rebuild-current",
@@ -595,7 +598,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug-artifact-path",
         default=None,
         help=(
-            "Deprecated; ignored. Run the vector DataNode with a debug artifact "
+            "Deprecated; ignored. Run the vector updater with a debug artifact "
             "first, then build this curve from persisted vector storage."
         ),
     )
@@ -638,7 +641,7 @@ def build_parser() -> argparse.ArgumentParser:
     banxico_fixings_parser.add_argument(
         "--hash-namespace",
         default=None,
-        help="Optional DataNode hash namespace for isolated validation runs.",
+        help="Optional updater hash namespace for isolated validation runs.",
     )
     banxico_fixings_parser.set_defaults(func=_fixings_update_banxico_command)
 
@@ -715,7 +718,7 @@ def _add_reference_rate_window_arguments(parser: argparse.ArgumentParser) -> Non
     parser.add_argument(
         "--hash-namespace",
         default=None,
-        help="DataNode hash namespace for an isolated shared-backend validation run.",
+        help="Updater hash namespace for an isolated shared-backend validation run.",
     )
     parser.add_argument(
         "--skip-metadata-validation",

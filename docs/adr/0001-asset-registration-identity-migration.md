@@ -17,7 +17,7 @@ details inside `ImportValmer` in `src/valmer_connectors/data_nodes/nodes.py`.
 Current Main Sequence and `ms-markets` behavior makes those boundaries explicit:
 
 - `unique_identifier` is the stable platform identity for asset-indexed
-  DataNodes, pricing details, dashboards, portfolios, and downstream analytics.
+  TimeIndexTableUpdaters, pricing details, dashboards, portfolios, and downstream analytics.
 - Valmer source rows are organization-owned custom market instruments, not
   public-master assets such as FIGI-backed equities.
 - Core bond pricing instruments in `msm_pricing` require the attached asset to
@@ -100,7 +100,7 @@ Asset detail persistence is also separate from price-vector publishing:
 
 - `ValmerAssetDetailsTable.asset_uid` is a 1:1 foreign key to `AssetTable.uid`
 - the table stores static Valmer descriptive/vendor fields for the asset
-- the DataNode stores the daily price, analytics observation, ratings, and other
+- the TimeIndexTableUpdater stores the daily price, analytics observation, ratings, and other
   fields that can change over time
 
 ## Implementation Tasks
@@ -126,7 +126,7 @@ Asset detail persistence is also separate from price-vector publishing:
 - [x] Persist repeated Valmer asset descriptors into
   `ValmerAssetDetailsTable` after Asset registration.
 - [x] Remove static repeated asset-descriptor columns from the Valmer
-  price-vector DataNode output.
+  price-vector TimeIndexTableUpdater output.
 - [x] Re-enrich dashboard reads from `ValmerAssetDetailsTable` when descriptor
   fields are needed for display or target-bond checks.
 - [x] Move AssetTable and pricing side effects out of

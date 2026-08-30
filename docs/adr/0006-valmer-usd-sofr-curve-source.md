@@ -294,7 +294,7 @@ The builder payload should document:
 - output quote type: zero rate
 - output quote unit: decimal
 
-## DataNode Output
+## TimeIndexTableUpdater Output
 
 The curve must be published through `DiscountCurvesNode`:
 
@@ -372,7 +372,7 @@ Example SOFR OIS swap key node:
 }
 ```
 
-The Valmer USD SOFR curve DataNode attaches a source-specific key-node validator
+The Valmer USD SOFR curve TimeIndexTableUpdater attaches a source-specific key-node validator
 before the core `DiscountCurvesNode` compresses provenance. The validator
 enforces SR1/SR3 SOFR futures, USD SOFR OIS helpers, `mid` quote side, decimal
 par-swap quotes, futures-price quotes, and exclusion of Fed Funds OIS and
@@ -462,7 +462,7 @@ Unit tests must cover:
   `VALMER_USD_SOFR_OVERNIGHT`
 
 Operational validation, when implementation is ready, must run the normal curve
-DataNode update with an explicit namespace or debug mode first, then verify:
+updater update with an explicit namespace or debug mode first, then verify:
 
 - one `DiscountCurvesStorage` row exists for the Valmer source date
 - `curve_identifier` is `VALMER_USD_SOFR_OVERNIGHT`

@@ -32,7 +32,7 @@ ValmerVectorPricesStorage
 ```
 
 The MetaTable source is only a new source adapter. It must not create a new
-DataNode storage table or change `ValmerVectorPricesStorage`.
+updater output table or change `ValmerVectorPricesStorage`.
 
 ## Current Sources
 
@@ -62,7 +62,7 @@ The MetaTable source must participate in the same per-asset cursor model.
 
 ## Proposed Source Architecture
 
-Introduce an internal source-provider boundary. The DataNode continues to own
+Introduce an internal source-provider boundary. The TimeIndexTableUpdater continues to own
 the update process, but source acquisition moves behind provider objects.
 
 ```text
@@ -83,14 +83,14 @@ Provider responsibilities:
 - expose cheap source-date metadata for diagnostics and empty-run checks
 - read rows needed for the run
 - return a pandas DataFrame with normalized Valmer source names
-- never register assets, hydrate pricing details, or publish DataNode rows
+- never register assets, hydrate pricing details, or publish TimeIndexTableUpdater rows
 
 `ImportValmer` remains responsible for:
 
 - asset-indexed freshness orchestration
 - target-bond selection
 - asset/detail/pricing orchestration
-- DataNode frame construction
+- updater frame construction
 - update-statistics filtering
 
 ## MetaTable Source Contract
@@ -141,7 +141,7 @@ join_keys = ["fecha", "tipovalor", "emisora", "serie"]  # only for column_join
 ```
 
 Configuration fields that select source identity or row scope must participate
-in the DataNode update hash.
+in the updater update hash.
 
 ## Multi-MetaTable Partition Modes
 
@@ -247,7 +247,7 @@ Serie   -> serie
 All other fields are optional for source ingestion. Missing optional fields must
 not fail source reads. The adapter should materialize missing optional target
 columns as nulls before handing rows to the existing Valmer transformation path.
-This keeps the DataNode frame shape stable while preserving the real source
+This keeps the updater frame shape stable while preserving the real source
 semantics.
 
 Optional time-series Valmer fields currently understood by this project:
@@ -354,7 +354,7 @@ mapped. Adding new target columns to `ValmerVectorPricesStorage` is out of scope
 for this plan.
 
 Pricing and static-detail hydration have stricter practical requirements than
-DataNode publication. For example, target-bond pricing currently needs enough
+time-index table publication. For example, target-bond pricing currently needs enough
 descriptor fields to classify supported bonds and build instruments. A MetaTable
 source with only `Fecha`, `TV`, `Emisora`, and `Serie` can publish sparse vector
 rows, but it cannot hydrate full Valmer asset details or pricing details unless
@@ -389,7 +389,7 @@ source time_index = Fecha normalized to Valmer vector close timestamp
 read row when source time_index > stored_latest_by_asset[source asset_identifier]
 ```
 
-This preserves the normal DataNode idea: each asset updates from its own last
+This preserves the normal TimeIndexTableUpdater idea: each asset updates from its own last
 stored value. It does not invent a separate `latest` or `range` source mode.
 
 ## Incremental Read Strategy
@@ -415,7 +415,7 @@ asset-indexed latest-value machinery
 ```
 
 For example, a fallback may read rows after the minimum stored cursor across the
-requested asset scope and then rely on the DataNode/latest-value filter to drop
+requested asset scope and then rely on the TimeIndexTableUpdater/latest-value filter to drop
 already-current asset rows. That fallback must be logged as less efficient, and
 large-source deployments should implement the preferred per-asset pushdown.
 
@@ -448,7 +448,7 @@ normalized Valmer columns
 unique_identifier = tipovalor_emisora_serie
 ```
 
-No new output storage table is needed. The same DataNode storage contract
+No new output storage table is needed. The same updater output table contract
 continues:
 
 ```text
@@ -467,7 +467,7 @@ changed. This plan does not propose a storage change.
 - [ ] Add `MetaTableValmerSource` for one configured MetaTable.
 - [ ] Add `MetaTableValmerSourceSet` to loop through the configured
   `source_metatables[]` list.
-- [ ] Add a typed DataNode configuration field for source mode.
+- [ ] Add a typed TimeIndexTableUpdater configuration field for source mode.
 - [ ] Add typed MetaTable source configuration:
   `source_metatables[]`, per-source `metatable_identifier` or
   `metatable_uid`, and per-source `column_map`.
@@ -511,10 +511,10 @@ changed. This plan does not propose a storage change.
   optional pricing fields are absent.
 - [x] Add tests that each MetaTable source is filtered from the target vector
   cursor per `asset_identifier` before concatenation.
-- [ ] Add tests that DataNode output still validates against
+- [ ] Add tests that TimeIndexTableUpdater output still validates against
   `ValmerVectorPricesStorage`.
 - [ ] Update `docs/source-import.md` after implementation.
-- [ ] Update `docs/data-nodes.md` after implementation.
+- [ ] Update `docs/time-index-table-updates.md` after implementation.
 - [ ] Update CLI docs after implementation.
 
 ## CLI Shape
@@ -604,7 +604,7 @@ semantics:
   present
 - pricing details are persisted through the batch API, not one-by-one, only
   when the optional pricing fields needed to build instruments are present
-- `ValmerVectorPricesStorage` rows pass the DataNode runtime validation
+- `ValmerVectorPricesStorage` rows pass the updater runtime validation
 
 ## Open Questions
 

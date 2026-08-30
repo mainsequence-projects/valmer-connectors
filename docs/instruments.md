@@ -1,7 +1,7 @@
 # Instrument Mapping
 
 This page documents the Valmer row-to-instrument adapter. It does not document
-DataNode storage, AssetTable registration, or curve publication.
+updater output table, AssetTable registration, or curve publication.
 
 ## Owner File
 

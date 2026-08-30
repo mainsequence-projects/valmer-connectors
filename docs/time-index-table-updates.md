@@ -1,10 +1,10 @@
-# DataNodes
+# TimeIndexTableUpdaters
 
-This page documents the DataNode publication boundary only. Asset registration,
+This page documents the time-index table publication boundary only. Asset registration,
 static asset details, and pricing hydration are separate workflows documented in
 `markets.md` and `pricing.md`.
 
-## Current DataNode
+## Current TimeIndexTableUpdater
 
 `ImportValmer` in `src/valmer_connectors/data_nodes/nodes.py` publishes Valmer
 vector observations into the storage class:
@@ -74,13 +74,13 @@ date. `asset_identifier` stores the Valmer asset key built as:
 tipovalor_emisora_serie
 ```
 
-`asset_identifier` is the canonical `ms-markets` asset-indexed DataNode
-dimension. Its value is still `AssetTable.unique_identifier`; only the DataNode
+`asset_identifier` is the canonical `ms-markets` asset-indexed time-index table
+dimension. Its value is still `AssetTable.unique_identifier`; only the time-index table
 dimension name follows the current `ms-markets` contract.
 
-## What The DataNode Publishes
+## What The TimeIndexTableUpdater Publishes
 
-The DataNode stores fields that can change from one Valmer vector date to the
+The updater output table stores fields that can change from one Valmer vector date to the
 next:
 
 - valuation fields: `valuation_date`, `clean_price`, `dirty_price`,
@@ -107,8 +107,8 @@ from valmer_connectors.queries import (
     read_valmer_history,
     read_valmer_last_observation,
     read_valmer_yield_history,
-    valmer_vector_node,
-    valmer_vector_node_identifier,
+    valmer_vector_table_ref,
+    valmer_vector_table_identifier,
     valmer_vector_storage_columns,
 )
 ```
@@ -119,9 +119,9 @@ project-local vector identifier setting.
 
 Core helpers:
 
-- `valmer_vector_node_identifier()`: returns the canonical published identifier
+- `valmer_vector_table_identifier()`: returns the canonical published identifier
   for the Valmer vector storage.
-- `valmer_vector_node()`: builds an `APIDataNode` from the runtime-bound
+- `valmer_vector_table_ref()`: builds an `TimeIndexTableRef` from the runtime-bound
   Valmer vector storage MetaTable.
 - `valmer_vector_storage_columns()`: returns the registered storage columns from
   `ValmerVectorPricesStorage.__table__`.
@@ -154,7 +154,7 @@ latest = read_valmer_last_observation(
 )
 ```
 
-This helper layer does not change the DataNode update process and does not
+This helper layer does not change the updater process and does not
 modify `ValmerVectorPricesStorage`.
 
 ## Public Spread Analytics Helpers
@@ -171,7 +171,7 @@ from valmer_connectors.analytics import (
 ```
 
 These helpers are convenience wrappers over `valmer_connectors.queries`. They do
-not read the vector DataNode directly, do not define storage identifiers, and do
+not read the vector time-index table directly, do not define storage identifiers, and do
 not duplicate identifier cleanup.
 
 Core helpers:
@@ -200,7 +200,7 @@ This analytics layer is intentionally separate from the storage query API. It
 can be used by spread models, notebooks, dashboards, or downstream projects
 without making spread analysis part of the core Valmer vector storage contract.
 
-## What The DataNode Does Not Own
+## What The TimeIndexTableUpdater Does Not Own
 
 These concerns are intentionally outside `ImportValmer.update()`:
 
@@ -211,7 +211,7 @@ These concerns are intentionally outside `ImportValmer.update()`:
 - curve publication
 - index/fixing reference-data bootstrap
 
-The vector update service performs those steps before the DataNode run through
+The vector update service performs those steps before the updater run through
 `ImportValmer.prepare_for_update()`.
 
 ## Update Flow
@@ -258,7 +258,7 @@ keep row when asset_identifier has no stored vector observation
 ```
 
 `update()` still applies `filter_df_by_latest_value(...)` as the final
-DataNode-level row filter when a run executes.
+TimeIndexTableUpdater-level row filter when a run executes.
 
 `valmer-connectors vector update` registers and publishes only the assets that
 pass the pricing-detail target filter. This keeps the
@@ -272,7 +272,7 @@ requires a separate asset-type classifier before rows can be safely written to
 `AssetTable`.
 
 Other extension libraries should not use `ImportValmer` as a generic vector
-registration pipeline. A different vector DataNode should first normalize its
+registration pipeline. A different vector TimeIndexTableUpdater should first normalize its
 own source rows, classify each row into an explicit `asset_type`, upsert the
 canonical `AssetTable` rows, write any static fields to that extension's own
 detail table, and only then publish time-varying observations keyed by
@@ -282,7 +282,7 @@ detail table, and only then publish time-varying observations keyed by
 
 Source import behavior is documented separately in `source-import.md`.
 
-At the DataNode boundary, `ImportValmer.update()` expects `self.source_data` to
+At the updater boundary, `ImportValmer.update()` expects `self.source_data` to
 already contain normalized Valmer rows with a valid `unique_identifier`. It then
 coerces fields according to `VALMER_TIMESERIES_SOURCE_COLUMN_SPECS`, builds the
 time-series frame, indexes it by `(time_index, asset_identifier)`, filters it

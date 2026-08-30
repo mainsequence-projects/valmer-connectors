@@ -1,8 +1,8 @@
 # Markets And Asset Details
 
 This page documents market identity and project-local MetaTables. Pricing
-hydration and curve publication are documented in `pricing.md`. DataNode
-publication is documented in `data-nodes.md`.
+hydration and curve publication are documented in `pricing.md`. TimeIndexTableUpdater
+publication is documented in `time-index-table-updates.md`.
 
 ## Asset Identity
 
@@ -20,7 +20,7 @@ The same value is used as:
 - Valmer vector storage `asset_identifier`
 - `ValmerAssetDetailsTable.valmer_unique_identifier`
 
-`asset_identifier` is the `ms-markets` DataNode dimension name. Its value is the
+`asset_identifier` is the `ms-markets` time-index table dimension name. Its value is the
 same string as `AssetTable.unique_identifier`.
 
 Valmer bond assets are registered with:
@@ -45,7 +45,7 @@ It does not expose a public helper that fully registers arbitrary Valmer assets.
 The internal `_upsert_asset_table_rows(...)` helper writes only minimal
 `AssetTable` rows and is not a Valmer registration API.
 
-`ImportValmer.prepare_for_update()` calls those helpers before the DataNode run.
+`ImportValmer.prepare_for_update()` calls those helpers before the updater run.
 `ImportValmer.get_asset_list()` only returns the prepared scope.
 
 Asset registration is not the same as current pricing-detail hydration.
@@ -267,7 +267,7 @@ upsert AssetTable rows with explicit asset_type
 upsert extension-owned detail table rows keyed by AssetTable.uid
     |
     v
-publish time-varying rows through that extension's DataNode
+publish time-varying rows through that extension's TimeIndexTableUpdater
 ```
 
 Extension libraries should not import this package's private
@@ -305,7 +305,7 @@ after the instrument-specific pricing adapter has built a valid pricing payload.
 
 ## ValmerAssetDetailsTable
 
-Static Valmer descriptors do not belong in the time-indexed DataNode. They live
+Static Valmer descriptors do not belong in the time-index table. They live
 in the project-local MetaTable:
 
 - `ValmerAssetDetailsTable`
@@ -467,7 +467,7 @@ mainsequence migrations upgrade --provider migrations:migration head
 ## What This Page Does Not Own
 
 - Valmer source file import: `source-import.md`
-- Valmer vector time-series output: `data-nodes.md`
+- Valmer vector time-series output: `time-index-table-updates.md`
 - bond instrument pricing hydration: `pricing.md`
 - row-to-instrument mapping rules: `instruments.md`
 - dashboard behavior: `dashboards.md`

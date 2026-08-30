@@ -13,13 +13,14 @@ must follow when registering assets from different vector sources.
 
 - [Introduction](introduction.md)
 - [Source Import](source-import.md)
-- [DataNodes](data-nodes.md)
+- [TimeIndexTableUpdaters](time-index-table-updates.md)
 - [Markets And Asset Details](markets.md)
 - [Pricing](pricing.md)
 - [External Reference-Rate Observations](reference-rate-observations.md)
 - [Instrument Mapping](instruments.md)
 - [MetaTable Query Optimization](metatable-query-optimization.md)
 - [Agent Skills](agent-skills.md)
+- [Command Center Control Plane](control-plane.md)
 - [Dashboards](dashboards.md)
 - [Deployment](deployment.md)
 - [New Version Migration](new-version-migration.md)
@@ -47,7 +48,7 @@ Asset and Detail Sync
     +------------------------+
     |                        |
     v                        v
-DataNode Publication      Pricing Hydration
+TimeIndexTableUpdater Publication      Pricing Hydration
     |                        |
     v                        v
 vector_de_precios_valmer  current pricing details

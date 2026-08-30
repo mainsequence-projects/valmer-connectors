@@ -53,7 +53,7 @@ valmer-connectors curves update-usd-sofr
 valmer-connectors curves update-usd-mxn-xccy
 ```
 
-The curve DataNodes also declare these relationships through
+The curve TimeIndexTableUpdaters also declare these relationships through
 `dependencies()`. Builders query exact persisted dates and never download raw
 Valmer files.
 

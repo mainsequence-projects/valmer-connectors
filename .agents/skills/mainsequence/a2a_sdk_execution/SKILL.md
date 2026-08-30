@@ -49,7 +49,7 @@ mainsequence agent search "<discoveryPrompt>" \
 ```
 
 Use the canonical Organization Environment UID associated with the target
-ProjectBranch. It scopes discovery only; it does not create, assign, or override an
+CodeRepositoryBranch. It scopes discovery only; it does not create, assign, or override an
 Agent's environment.
 
 4. Treat the CLI output as authoritative.
@@ -71,6 +71,9 @@ mainsequence agent session get_or_create \
 ```
 
 Use the returned session `uid` as the target `AgentSession` UID.
+The returned `runtime_capabilities` map is a read-only advertisement from the
+session harness. Inspect it when capability-aware behavior is required; never
+construct, send, or override it from client code.
 
 If this A2A request originates from an existing caller session, include the
 parent session UID:
@@ -338,7 +341,7 @@ handle for a different task or conversation.
 ### Runtime-Owned Child Or Executor Agent
 
 - May use bounded A2A within the active task scope without separate user confirmation.
-- Should keep the request tightly scoped to the current project or active task.
+- Should keep the request tightly scoped to the current CodeRepository or active task.
 
 ## A2A Response Behavior
 

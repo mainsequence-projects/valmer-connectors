@@ -18,13 +18,13 @@ The old pattern in this project was effectively:
 - import project and ms-markets models,
 - call bootstrap helpers such as `register_all()` or pricing schema helpers,
 - let runtime startup resolve, register, or repair tables as needed,
-- then seed assets, indexes, curves, pricing bindings, and publish DataNodes.
+- then seed assets, indexes, curves, pricing bindings, and publish TimeIndexTableUpdaters.
 
 That is no longer the correct lifecycle. The current architecture separates:
 
 1. Alembic migration and platform MetaTable catalog registration.
 2. Runtime attachment to already migrated and registered tables.
-3. Static domain row seeding and DataNode update execution.
+3. Static domain row seeding and updater update execution.
 
 The relevant Main Sequence SDK contract is now:
 
@@ -32,7 +32,7 @@ The relevant Main Sequence SDK contract is now:
   through `AlembicMetaTableMigration`.
 - Direct `Model.register()` calls are internal migration plumbing and should fail
   in normal runtime code.
-- DataNode storage is not registered by constructing or updating a DataNode.
+- updater output table is not registered by constructing or updating a TimeIndexTableUpdater.
 - Runtime code must attach to already registered MetaTables and fail if the
   platform catalog is missing or stale.
 
@@ -73,7 +73,7 @@ Reviewed contracts:
 - `msm.migrations:migration`
 - `msm.migrations.registry`
 - `msm.bootstrap.start_engine`
-- refreshed project skills for Main Sequence DataNodes, MetaTables,
+- refreshed project skills for Main Sequence TimeIndexTableUpdaters, MetaTables,
   ms-markets bootstrap registration, and ms-markets MetaTable migrations
 
 The important behavior confirmed from those sources is that the migration
@@ -83,7 +83,7 @@ that finalized state.
 
 ## Decision
 
-Adopt a migration-first lifecycle for Valmer project MetaTables and DataNode
+Adopt a migration-first lifecycle for Valmer project MetaTables and TimeIndexTableUpdater
 storage.
 
 The runtime bootstrap API in this project must stop claiming that it registers
@@ -272,7 +272,7 @@ explicit DDL only when a later in-place Valmer schema evolution requires it.
 The project provider must not include:
 
 - built-in ms-markets asset, index, curve, pricing, or portfolio tables;
-- built-in ms-markets DataNode storage;
+- built-in ms-markets updater output table;
 - any table already owned by `msm.migrations:migration`.
 
 ## Project Catalog Refresh
@@ -324,26 +324,26 @@ behavior still needs `msm_pricing.bootstrap.attach_pricing_schemas(...)`.
 
 That call is valid only after both migration providers have been applied.
 
-## DataNode Storage Implications
+## TimeIndexTableUpdater Storage Implications
 
 `ValmerVectorPricesStorage` is a time-indexed storage table. Under the new
 Main Sequence architecture, it must be migrated and registered before any
-DataNode writes occur.
+TimeIndexTableUpdater writes occur.
 
 `ValmerVectorPricesStorage.asset_identifier` must remain a foreign key to
 `AssetTable.unique_identifier`. The value is the Asset unique identifier, but
-the DataNode dimension name must be the `ms-markets` canonical
+the TimeIndexTableUpdater dimension name must be the `ms-markets` canonical
 `asset_identifier`.
 
-DataNode validation must verify:
+TimeIndexTableUpdater validation must verify:
 
 - rows use `time_index` with dtype `datetime64[ns, UTC]`;
 - rows include the correct `asset_identifier`;
-- static asset details do not remain duplicated in the DataNode storage;
+- static asset details do not remain duplicated in the updater output table;
 - storage identity and hash namespace are explicit enough for shared backend
   validation.
 
-DataNode construction or first update must not be treated as a registration
+TimeIndexTableUpdater construction or first update must not be treated as a registration
 step.
 
 ## Asset Details Implications
@@ -358,7 +358,7 @@ The project migration must preserve the one-to-one asset detail contract:
 - Valmer vector price storage stores time-varying market data only.
 
 This avoids reintroducing static issuer, series, maturity, issue, currency, or
-instrument metadata into DataNode storage.
+instrument metadata into updater output table.
 
 ## Migration Workflow
 
@@ -388,7 +388,7 @@ The correct migration and runtime workflow is:
 
 4. Start or run project code that attaches runtime tables.
 5. Seed static rows such as reference indexes and Valmer asset details.
-6. Execute DataNode updates.
+6. Execute updater updates.
 7. Verify rows and catalog state through platform CLI or governed table APIs.
 
 ## Implementation Tasks
@@ -417,7 +417,7 @@ The correct migration and runtime workflow is:
   used in runtime paths.
 - [ ] Validate both migration providers with `current`, `render`, `dry-run`, and
   `upgrade` in a real platform context.
-- [ ] Validate a Valmer vector DataNode update after migrations and confirm rows
+- [ ] Validate a Valmer vector updater update after migrations and confirm rows
   land in migrated storage keyed by `time_index` and `asset_identifier`.
 
 ## Validation Evidence Required
@@ -457,7 +457,7 @@ This ADR supersedes any earlier project documentation that says:
 
 - `register_all()` creates or registers schemas;
 - pricing bootstrap creates schemas at runtime;
-- DataNode construction registers storage;
+- TimeIndexTableUpdater construction registers storage;
 - project MetaTables can be registered directly outside a migration provider.
 
 It does not change prior ADR decisions about:
@@ -465,4 +465,4 @@ It does not change prior ADR decisions about:
 - separating asset registration from pricing hydration;
 - moving core pricing logic into ms-markets;
 - keeping Valmer source parsing and vendor semantics in this project;
-- separating static Valmer asset details from time-varying DataNode rows.
+- separating static Valmer asset details from time-varying TimeIndexTableUpdater rows.

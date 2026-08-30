@@ -1058,9 +1058,9 @@ def configure_valmer_discount_curves_cadence(
 
     from msm_pricing.data_nodes import DiscountCurvesNode
 
-    storage_table = DiscountCurvesNode._required_storage_table()
-    storage_table.__cadence__ = cadence
-    return storage_table
+    output_table = DiscountCurvesNode._required_output_table()
+    output_table.__cadence__ = cadence
+    return output_table
 
 
 def create_valmer_curve_pricing_schemas(

@@ -15,7 +15,7 @@ from msm.models.assets import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION, markets_auto_register_namespace
 from sqlalchemy import Float
 
-from mainsequence.meta_tables.data_nodes.run_operations import UpdateRunner
+from mainsequence.meta_tables.time_index_table_updates.runner import UpdateRunner
 from valmer_connectors.data_nodes.nodes import (
     VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
     VALMER_SOURCE_COLUMN_SPECS,
@@ -539,7 +539,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             asset_type=ASSET_TYPE_BOND,
         )
         snapshot_node = Mock()
-        snapshot_node.data_node_update = None
+        snapshot_node.table_update = None
         snapshot_node.get_df_between_dates.return_value = pd.DataFrame()
         snapshot_node.set_snapshots.return_value = snapshot_node
         snapshot_node.run.return_value = (False, pd.DataFrame([{"name": "BONOS 241205 FULL NAME"}]))
@@ -584,7 +584,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             asset_type=ASSET_TYPE_BOND,
         )
         snapshot_node = Mock()
-        snapshot_node.data_node_update = None
+        snapshot_node.table_update = None
         snapshot_node.set_snapshots.return_value = snapshot_node
         snapshot_node.run.return_value = (False, pd.DataFrame([{"name": "BONOS 241205 FULL NAME"}]))
 

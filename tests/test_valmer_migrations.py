@@ -1,7 +1,7 @@
 import unittest
 
 from msm.base import markets_table_name
-from msm.data_nodes.indices import index_values_storage_table_name
+from msm.data_nodes.indices import index_values_output_table_name
 from msm.models.assets import AssetTable
 from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
@@ -100,7 +100,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
         )
         self.assertEqual(
             DailyIndexValuesStorage.__table__.name,
-            index_values_storage_table_name(cadence="1d"),
+            index_values_output_table_name(cadence="1d"),
         )
         self.assertEqual(
             ValmerAssetDetailsTable.__metatable_identifier__,

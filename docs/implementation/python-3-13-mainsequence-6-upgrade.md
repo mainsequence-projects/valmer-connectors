@@ -221,7 +221,7 @@ After `mainsequence login`:
    dependency order;
 7. run each producer a second time to prove stable updater identity and no
    duplicate keys;
-8. configure the backend-owned ProjectBranch workflow and jobs against the
+8. configure the backend-owned CodeRepositoryBranch workflow and jobs against the
    verified image;
 9. inspect job configurations, runs, logs, and published rows.
 

@@ -1,4 +1,4 @@
-"""Dependency-backed Valmer curve DataNodes consuming persisted Index quotes."""
+"""Dependency-backed Valmer curve updaters consuming persisted Index quotes."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ class ValmerTiieDiscountCurveNode(DiscountCurvesNode):
         snapshots = _new_quote_snapshots(
             update_statistics=update_statistics,
             curve_identifier=curve_identifier,
-            storage_table=self.curve_config.quote_storage_table,
+            output_table=self.curve_config.quote_storage_table,
             source_families=self.curve_config.source_families,
         )
         frames = [
@@ -119,7 +119,7 @@ class ValmerUsdSofrDiscountCurveNode(DiscountCurvesNode):
         snapshots = _new_quote_snapshots(
             update_statistics=update_statistics,
             curve_identifier=curve_identifier,
-            storage_table=self.curve_config.quote_storage_table,
+            output_table=self.curve_config.quote_storage_table,
             source_families=self.curve_config.source_families,
         )
         frames = [
@@ -155,13 +155,13 @@ class ValmerUsdMxnCollateralDiscountCurveNode(DiscountCurvesNode):
         snapshots = _new_quote_snapshots(
             update_statistics=update_statistics,
             curve_identifier=curve_identifier,
-            storage_table=self.curve_config.quote_storage_table,
+            output_table=self.curve_config.quote_storage_table,
             source_families=self.curve_config.source_families,
         )
         frames = []
         for time_index, snapshot in snapshots.groupby("time_index", sort=True):
             upstream = load_discount_curve_key_nodes(
-                storage_table=self.curve_config.curve_storage_table,
+                output_table=self.curve_config.curve_storage_table,
                 time_index=time_index,
                 curve_identifiers=(
                     self.curve_config.tiie_curve_identifier,
@@ -215,13 +215,13 @@ def _new_quote_snapshots(
     *,
     update_statistics,
     curve_identifier: str,
-    storage_table,
+    output_table,
     source_families: tuple[str, ...],
 ) -> pd.DataFrame:
     getter = getattr(update_statistics, "get_last_update_for_identity", None)
     last_update = getter(curve_identifier) if callable(getter) else None
     return load_valmer_curve_quote_snapshots(
-        storage_table=storage_table,
+        output_table=output_table,
         source_families=source_families,
         after_time_index=last_update,
     )

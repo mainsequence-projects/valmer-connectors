@@ -6,14 +6,14 @@ You are working on this project and must always follow these instructions as per
 
 - Keep all documentation clear, concise, and accurate.
 - Correct inconsistencies as soon as you find them.
-- Use strict code. Avoid defensive guards on the hot path. Fail fast, especially when updating `DataNodes`.
+- Use strict code. Avoid defensive guards on the hot path. Fail fast, especially when updating `TimeIndexTableUpdaters`.
 - Do not hide failures. Record them clearly and explain the cause.
 - If a failure may be caused by the MainSequence library or SDK, state that explicitly and suggest a concrete improvement to the SDK.
 - Before starting any work, upgrade to the latest MainSequence SDK version using the CLI.
 - Always compare the implementation against the latest MainSequence SDK behavior and public documentation.
-- Before running validations, run `mainsequence project refresh_token`.
-- Verify all relevant resources using the CLI: `DataNodes`, updates, stored data, jobs, dashboards, assets, portfolios, and related platform objects.
-- For `DataNodes` that may contain a large amount of data, always test first in a test namespace and with a smaller time range before running a full update or backfill.
+- Before running validations, run `mainsequence code-repository refresh-token`.
+- Verify all relevant resources using the CLI: `TimeIndexTableUpdaters`, updates, stored data, jobs, dashboards, assets, portfolios, and related platform objects.
+- For `TimeIndexTableUpdaters` that may contain a large amount of data, always test first in a test namespace and with a smaller time range before running a full update or backfill.
 - Any new implementation must be compared against the documentation and verified to ensure nothing breaks.
 - When an error appears, check the current tasks, code, documentation, git history, and available validation evidence before deciding whether it is a repeated issue.
 
@@ -102,11 +102,11 @@ All documentation must be written under `docs/` and organized for `MkDocs`.
 ### 1. Introduction
 Explain what the library does. This section should closely follow the main project README and summarize the purpose of the library clearly.
 
-### 2. DataNodes
+### 2. TimeIndexTableUpdaters
 Explain:
 
-- which `DataNodes` are created
-- what each `DataNode` stores
+- which `TimeIndexTableUpdaters` are created
+- what each `TimeIndexTableUpdater` stores
 - the type of data each one contains
 - how updates are performed
 - any important constraints, namespaces, or validation rules
@@ -169,8 +169,8 @@ only when further work is still required.
 
 Use the CLI to verify the actual state of the project, including at minimum:
 
-- `DataNodes`
-- `DataNode` updates
+- `TimeIndexTableUpdaters`
+- `TimeIndexTableUpdater` updates
 - data availability
 - jobs
 - dashboards
@@ -181,7 +181,7 @@ Use the CLI to verify the actual state of the project, including at minimum:
 Before verification:
 
 1. Upgrade to the latest MainSequence SDK with the CLI.
-2. Run `mainsequence project refresh_token`.
+2. Run `mainsequence code-repository refresh-token`.
 
 If live verification is not possible, state that clearly and provide the exact CLI commands that must be run.
 

@@ -1063,10 +1063,10 @@ class ImportValmerConfig(AssetIndexedDataNodeConfiguration):
 class ImportValmer(AssetIndexedDataNode):
     def __init__(self, config: ImportValmerConfig, **kwargs):
         """
-        Initializes the ImportValmer DataNode.
+        Initialize the ImportValmer time-index table updater.
 
         Args:
-            config: DataNode configuration including the source artifact bucket.
+            config: Updater configuration including the source artifact bucket.
         """
         self.bucket_name = config.bucket_name
         self.source_kind = config.source_kind
@@ -1078,7 +1078,7 @@ class ImportValmer(AssetIndexedDataNode):
         super().__init__(config=config, **kwargs)
 
     @classmethod
-    def _required_storage_table(cls):
+    def _required_output_table(cls):
         return ValmerVectorPricesStorage
 
     def maximum_forward_fill(self):
@@ -1219,7 +1219,7 @@ class ImportValmer(AssetIndexedDataNode):
 
     def _latest_vector_cursor_by_asset(self) -> dict[str, pd.Timestamp]:
         try:
-            update_statistics = self.local_persist_manager.get_update_statistics_for_table()
+            update_statistics = self.update_manager.get_update_statistics_for_table()
         except AttributeError:
             return {}
         cursor_map = _asset_cursor_map_from_update_statistics(update_statistics)
@@ -2453,7 +2453,7 @@ class ImportValmer(AssetIndexedDataNode):
         *,
         bypass_vector_cursor_filter: bool | None = None,
     ) -> pd.DataFrame:
-        """Load Valmer artifact rows for the current DataNode update."""
+        """Load Valmer artifact rows for the current time-index table update."""
         resolved_bypass_vector_cursor_filter = resolve_valmer_vector_bypass_cursor_filter(
             bypass_vector_cursor_filter,
         )
@@ -2488,7 +2488,7 @@ class ImportValmer(AssetIndexedDataNode):
         bypass_vector_cursor_filter: bool | None = None,
     ) -> list:
         """
-        Prepare the Valmer update explicitly before the DataNode run.
+        Prepare the Valmer update explicitly before the updater run.
 
         This registers AssetTable rows, upserts static Valmer asset details,
         hydrates current pricing details for target bonds, and stores the
@@ -2532,7 +2532,7 @@ class ImportValmer(AssetIndexedDataNode):
         return self.asset_list
 
     def get_asset_list(self) -> Union[None, list]:
-        """Return the already-prepared asset scope for this DataNode run."""
+        """Return the already-prepared asset scope for this updater run."""
         return super().get_asset_list()
 
     def update(self):

@@ -33,6 +33,9 @@ Vector Analitico CETES and M Bonos rows.
   `DiscountCurvesNode` path from CETES and M Bonos Vector Analitico rows.
 - Includes a project-specific multipage Streamlit dashboard under
   `dashboards/valmer_monitor/`.
+- Serves the backend half of the Valmer Command Center control plane through
+  `apis/valmer_control_plane/app.py`; the separate `ValmerConnectorsMonitor`
+  Vite repository owns the SDK-native user interface.
 
 ## Workflow Boundaries
 
@@ -61,7 +64,7 @@ ValmerVectorPricesStorage
 ```
 
 `ImportValmer.get_asset_list()` is only the prepared asset-scope handoff for
-the asset-indexed DataNode lifecycle. It does not own registration or pricing
+the asset-indexed updater lifecycle. It does not own registration or pricing
 hydration.
 
 The vector update uses the target vector table as the cursor. For every source
@@ -103,11 +106,13 @@ Detailed guides:
 
 - `docs/source-import.md`: source hydration paths for Artifact buckets, local
   folders, OneDrive Graph, MetaTable sources, and debug files
-- `docs/data-nodes.md`: Valmer vector DataNode publication
+- `docs/time-index-table-updates.md`: Valmer vector time-index table publication
 - `docs/markets.md`: AssetTable, ValmerAssetDetailsTable, and
   extension-library asset registration boundaries
 - `docs/pricing.md`: pricing hydration and curve publication
 - `docs/instruments.md`: Valmer row-to-instrument mapping
+- `docs/control-plane.md`: two-repository Command Center control-plane architecture,
+  Job authorization, contracts, release order, and verification
 
 ## Quickstart
 
@@ -220,7 +225,7 @@ for MkDocs through `mkdocs.yml`.
 - `docs/introduction.md`: project overview and runtime flow
 - `docs/source-import.md`: source hydration paths and examples for Artifact
   buckets, local folders, OneDrive Graph, MetaTable sources, and debug files
-- `docs/data-nodes.md`: Valmer vector DataNode publication boundary
+- `docs/time-index-table-updates.md`: Valmer vector time-index table publication boundary
 - `docs/markets.md`: AssetTable, ValmerAssetDetailsTable, and
   extension-library asset registration boundaries
 - `docs/pricing.md`: pricing hydration, reference indexes, and curve publication
@@ -242,6 +247,7 @@ for MkDocs through `mkdocs.yml`.
   projects
 - `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up
 - `docs/dashboards.md`: dashboards currently shipped by the project
+- `docs/control-plane.md`: FastAPI and Vite/Command Center control-plane boundary
 - `docs/SUMMARY.md`: documentation map required by the project instructions
 - `.agents/tasks.md`: current open tasks, when that file exists in the checkout
 - `.agents/record.md`: durable verified project references and decisions, when
@@ -256,10 +262,12 @@ This repository currently does not create:
 
 The repository now includes:
 
-- `scheduled_jobs.yaml` for repo-managed ETL scheduling
+- `.mainsequence/workflows/valmer-control-plane-jobs.yaml` for approved manual
+  Jobs and the scheduled dependency-ordered standard pipeline
 - independent FRED and Banxico analytical reference-rate producers
 - `valmer-connectors runtime validate` for runtime validation
 - a project-specific dashboard overview plus source, pricing, and curve pages
+- the FastAPI backend for the separate SDK-native Vite control-plane application
 
 For deployment verification and current backend follow-up, see
 `docs/deployment.md`.

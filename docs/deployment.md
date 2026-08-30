@@ -6,23 +6,41 @@ Run these commands in a networked, authenticated shell before backend
 verification:
 
 ```bash
-mainsequence project update-sdk --path .
-mainsequence project refresh_token --path .
-mainsequence project sync --path . -m "Sync valmer connector runtime and dashboard"
-mainsequence project images create 113 --path .
-mainsequence project schedule_batch_jobs scheduled_jobs.yaml 113 --path .
+mainsequence code-repository update-sdk --path .
+mainsequence code-repository refresh-token --path .
+mainsequence code-repository update-agent-skills --path .
+mainsequence code-repository update AGENTS.md --path .
+mainsequence code-repository sync --path . -m "Sync Valmer control-plane backend"
 ```
+
+The approved control-plane Jobs are declared in
+`.mainsequence/workflows/valmer-control-plane-jobs.yaml`. The standard pipeline
+is the only scheduled Job; leaf Jobs are manual recovery operations.
+
+The first backend sync indexes `apis/valmer_control_plane/app.py`. Resolve that
+FastAPI resource's public UID, add the API `resource_release` declaration using
+that real UID, validate it through the branch workflow endpoint, and run a
+second canonical sync. The declaration must enable every-commit automatic
+redeployment and retain three immutable revisions. The backend then owns exact
+image creation; do not select a caller image for this workflow-owned release.
+
+The Vite repository contains
+`.mainsequence/workflows/valmer-control-plane-static-site.yaml`. It uses the
+same every-commit promotion policy and retains three revisions. Synchronize the
+static repository only after the FastAPI release exists and the installed
+Command Center SDK's exact stable release target has been configured. See
+`docs/control-plane.md` for the two-repository release order.
 
 ## Verification Commands
 
 After sync and image creation, verify the deployed state with:
 
 ```bash
-mainsequence project current --debug
-mainsequence project jobs list 113 --timeout 60
-mainsequence project data-node-updates list 113 --timeout 60
-mainsequence project project_resource list 113 --path . --timeout 60
-mainsequence project images list 113 --timeout 60
+mainsequence code-repository current --debug
+mainsequence code-repository jobs list --path . --timeout 60
+mainsequence code-repository time-index-table-updates list --timeout 60
+mainsequence code-repository resources list --path . --timeout 60
+mainsequence code-repository images list --path . --timeout 60
 mainsequence markets portfolios list --timeout 60
 valmer-connectors runtime validate
 valmer-connectors reference-rates update-fred
@@ -42,6 +60,20 @@ Use the dashboard after deployment to confirm:
 - pricing hydration
 - curve publication health
 - external reference-rate coverage and freshness
+
+Use the Vite control plane after both ResourceReleases are ready to confirm:
+
+- SDK iframe initialization and host theme propagation;
+- data-product and asset resource pagination;
+- viewer read access and viewer launch denial;
+- operator Job discovery, preflight, typed confirmation, and execution; and
+- JobRun polling after a launch.
+
+For both releases, verify that `automatic_deployment` is enabled, the nested
+tag policy is null (every synchronized commit), `revision_retention_count` is
+three, and `active_revision` advances only after the desired revision is ready.
+Inspect the correlated DeploymentRun; a successful Git push is not deployment
+evidence.
 
 ## Current Platform Verification
 

@@ -28,7 +28,7 @@ fixings. The future implementation must:
   windows, and the exact `index_identifier` storage contract
 
 The local implementation adds the Banxico source package, fixing builder,
-DataNode runner, CLI command, schedule entry, documentation, and unit tests.
+updater runner, CLI command, schedule entry, documentation, and unit tests.
 Live Banxico metadata validation remains pending until a readable
 `BANXICO_TOKEN` secret is available in this project context.
 
@@ -126,7 +126,7 @@ Add a Banxico-owned fixing producer in a later implementation. The
 target should be:
 
 ```text
-Banxico-backed TIIE/CETE fixing DataNode producing current IndexFixingsStorage
+Banxico-backed TIIE/CETE fixing TimeIndexTableUpdater producing current IndexFixingsStorage
 rows, validated against Banxico SIE, scheduled ahead of valuation/curve refresh
 jobs.
 ```
@@ -191,7 +191,7 @@ operations chooses a different organization-wide naming policy.
 Rules:
 
 - do not hardcode the token
-- do not put the token in DataNode hashed configuration
+- do not put the token in TimeIndexTableUpdater hashed configuration
 - do not log the token
 - fail explicitly when the secret is missing or unreadable
 - use the `Bmx-Token` header by default
@@ -200,11 +200,11 @@ Rules:
 
 ## Update Window
 
-The Banxico fixing DataNode should be incremental by default, following the
-Main Sequence DataNode guidance:
+The Banxico fixing TimeIndexTableUpdater should be incremental by default, following the
+Main Sequence TimeIndexTableUpdater guidance:
 
 ```text
-https://mainsequence-sdk.github.io/mainsequence-sdk/knowledge/data_nodes/
+https://mainsequence-sdk.github.io/mainsequence-sdk/knowledge/time_index_table_updates/
 ```
 
 Target behavior:

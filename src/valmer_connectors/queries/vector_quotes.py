@@ -29,25 +29,25 @@ DEFAULT_VALMER_VECTOR_COLUMNS = (
 VALMER_VECTOR_INDEX_COLUMNS = ("time_index", ASSET_IDENTIFIER_DIMENSION)
 
 
-def valmer_vector_node_identifier() -> str:
-    """Return the published Valmer vector DataNode identifier."""
+def valmer_vector_table_identifier() -> str:
+    """Return the published Valmer vector time-index table identifier."""
 
     return str(ValmerVectorPricesStorage.__metatable_identifier__)
 
 
-def valmer_vector_node() -> Any:
-    """Return a read-only APIDataNode for Valmer vector storage."""
+def valmer_vector_table_ref() -> Any:
+    """Return a read-only reference to the Valmer vector time-index table."""
 
-    from mainsequence.meta_tables import APIDataNode
+    from mainsequence.meta_tables import TimeIndexTableRef
 
-    meta_table = ValmerVectorPricesStorage.get_meta_table()
+    meta_table = ValmerVectorPricesStorage.get_time_index_meta_table()
     if meta_table is None:
         raise RuntimeError(
             "Valmer vector storage is not bound in the active runtime. "
             "Bootstrap the runtime with ValmerVectorPricesStorage before reading "
             "Valmer vector observations."
         )
-    return APIDataNode.build_from_meta_table(
+    return TimeIndexTableRef.from_meta_table(
         meta_table,
     )
 
@@ -93,7 +93,7 @@ def read_valmer_history(
     start = to_utc_datetime(start_date)
     if start is None:
         raise ValueError("start_date is required for Valmer vector history reads.")
-    frame = valmer_vector_node().get_df_between_dates(
+    frame = valmer_vector_table_ref().get_df_between_dates(
         start_date=start,
         end_date=to_utc_datetime(end_date),
         dimension_filters={ASSET_IDENTIFIER_DIMENSION: identifiers},
@@ -125,7 +125,7 @@ def read_valmer_last_observation(
             descriptor["start_date"] = start
         dimension_range_map.append(descriptor)
 
-    frame = valmer_vector_node().get_last_observation(
+    frame = valmer_vector_table_ref().get_last_observation(
         dimension_range_map=dimension_range_map,
     )
     if frame.empty:

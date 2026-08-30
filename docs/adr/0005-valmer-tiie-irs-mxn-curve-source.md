@@ -293,7 +293,7 @@ Target shape:
 The builder payload should document the source grammar, output type, and helper
 rules. It should not move per-observation facts into row `metadata_json`.
 
-## DataNode Output
+## TimeIndexTableUpdater Output
 
 The curve remains a `DiscountCurvesNode` output:
 
@@ -345,7 +345,7 @@ Example shape:
 ]
 ```
 
-The Valmer TIIE curve DataNode attaches a source-specific key-node validator
+The Valmer TIIE curve TimeIndexTableUpdater attaches a source-specific key-node validator
 before the core `DiscountCurvesNode` compresses provenance. The validator
 enforces the domestic `MXN.FTIIE.1D/28D.BANXICO` OIS family, decimal par-swap
 quotes, `mid` quote side, FTIIE overnight floating index, and Actual/360
@@ -419,7 +419,7 @@ Unit tests must cover:
 - emitted frame has no row-level `metadata_json`
 - existing TIIE selector bindings still resolve to `VALMER_TIIE_OVERNIGHT`
 
-Operational validation must run the normal TIIE curve DataNode update with an
+Operational validation must run the normal TIIE curve updater update with an
 explicit namespace or debug mode first, then verify:
 
 - one `DiscountCurvesStorage` row exists for the Valmer source date

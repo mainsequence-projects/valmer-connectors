@@ -21,7 +21,7 @@ The implemented boundary is:
   behavior from the core `ms-markets` / `msm_pricing` pricing libraries
 - define which static pricing objects should become MetaTables with foreign
   keys to `msm.models.assets.core.AssetTable`
-- keep time-varying prices, curves, and fixings as DataNode output unless a
+- keep time-varying prices, curves, and fixings as TimeIndexTableUpdater output unless a
   separate platform design explicitly moves them
 - leave asset identity and registration to ADR 0001
 
@@ -150,7 +150,7 @@ Valmer-specific handling that should stay here:
   business-day convention, settlement days, day count, reference-index family,
   and tenor defaults
 - preserving Valmer raw clean price, dirty price, accrued interest, current
-  coupon, and vendor yield in the Valmer vector DataNode
+  coupon, and vendor yield in the Valmer vector TimeIndexTableUpdater
 - deciding which Valmer instruments are supported by this connector today
 
 The local core pricing package already owns bond model classes:
@@ -170,7 +170,7 @@ Current locations:
 - Duplicate curve compression and decompression:
   removed from `src/valmer_connectors/data_nodes/nodes.py`; the project uses
   the core curve codec
-- Valmer standalone TIIE curve DataNode:
+- Valmer standalone TIIE curve TimeIndexTableUpdater:
   removed from the active publication path
 - Valmer curve builder:
   `src/valmer_connectors/instruments/rates_curves.py::build_tiie_irs_mxn_valmer(...)`
@@ -183,7 +183,7 @@ Current locations:
 - Dashboard curve decoding:
   `dashboards/valmer_monitor/valmer_dashboard.py`
 
-Core already has the generic curve codec and curve DataNode surface:
+Core already has the generic curve codec and curve TimeIndexTableUpdater surface:
 
 - `msm_pricing.data_nodes.curve_codec.compress_curve_to_string` and
   `decompress_string_to_curve`:
@@ -198,7 +198,7 @@ Core already has the generic curve codec and curve DataNode surface:
 Target core responsibility:
 
 - own curve payload encoding and decoding
-- own discount-curve and fixing-rate DataNode base behavior
+- own discount-curve and fixing-rate TimeIndexTableUpdater base behavior
 - own curve interpolation, compounding, day-count, and extrapolation choices
   needed by pricing engines
 - own reference-index definition shape, while this connector keeps
@@ -284,7 +284,7 @@ use those surfaces instead of adding duplicate Valmer-local models.
 Covered package boundary:
 
 - `src/msm_pricing/README.md` documents `msm_pricing` as the public package for
-  pricing services, instruments, static pricing MetaTables, and DataNodes.
+  pricing services, instruments, static pricing MetaTables, and TimeIndexTableUpdaters.
 - `src/msm_pricing/meta_tables.py` exposes
   `pricing_sqlalchemy_models()` and `register_pricing_meta_tables(...)`.
 - `pricing_sqlalchemy_models()` returns `AssetTable`, `IndexTable`,
@@ -332,7 +332,7 @@ MetaTable.
 
 ### Curve Definitions And Curve Time Series
 
-Covered by `CurveTable` and the pricing curve DataNodes:
+Covered by `CurveTable` and the pricing curve TimeIndexTableUpdaters:
 
 - `src/msm_pricing/models/curves.py` defines `CurveTable` with
   `unique_identifier`, `curve_type`, `index_uid`, `interpolation_method`,
@@ -342,7 +342,7 @@ Covered by `CurveTable` and the pricing curve DataNodes:
   values.
 
 This covers the originally proposed `DiscountCurveDefinitionTable`. Curve
-points remain DataNode output; static curve identity and interpolation policy
+points remain TimeIndexTableUpdater output; static curve identity and interpolation policy
 belong to `CurveTable`.
 
 ### Instrument Dependencies On Indexes And Curves
@@ -438,7 +438,7 @@ is not required for moving Valmer pricing behavior out of this connector.
   reference-index alias mapping, or supported-instrument taxonomy into core.
 - Do not change asset identity or asset registration in this ADR; that is ADR
   0001.
-- Do not replace price history DataNodes with MetaTables.
+- Do not replace price history TimeIndexTableUpdaters with MetaTables.
 - Do not claim all Valmer instruments are supported. The existing supported
   target universe remains explicit until core pricing expands.
 - Do not create portfolio construction behavior in this migration.

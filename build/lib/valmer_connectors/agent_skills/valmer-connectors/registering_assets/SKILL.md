@@ -106,7 +106,7 @@ Do not reintroduce per-row writes.
 - Keep `AssetTable` small: only canonical `unique_identifier` and explicit
   `asset_type` belong there.
 - Keep static Valmer vendor descriptors in `ValmerAssetDetailsTable`.
-- Keep time-varying vector values in the Valmer vector storage DataNode.
+- Keep time-varying vector values in the Valmer vector updater output table.
 - Keep pricing payload construction in the pricing adapter path.
 - Keep extension-specific classifiers in the extension service layer.
 

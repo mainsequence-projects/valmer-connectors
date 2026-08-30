@@ -1,12 +1,58 @@
 # Project Status
 
-Last verified: 2026-08-21
+Last local verification: 2026-08-30
+Last complete backend lifecycle verification: 2026-08-21
 
-## Runtime and Schema
+## SDK 8 Migration Status
 
-- Local runtime: CPython `3.13.11`, Main Sequence `6.0.27`, ms-markets
-  `0.0.104`.
-- Main Sequence and the copied managed skills pin are aligned.
+- Local runtime: CPython `3.13.11`, Main Sequence `8.0.4`, ms-markets
+  `1.0.2`.
+- The dependency lock, synchronized virtual environment, exported
+  `requirements.txt`, SDK imports, removed legacy SDK module check, Ruff, wheel
+  and source builds, and `git diff --check` all pass.
+- The project-owned updater surface uses the SDK 7+ time-index-table names and
+  the current `_required_output_table` hook expected by the latest ms-markets
+  source.
+- The published `ms-markets==1.0.2` metadata declares `mainsequence>=8.0.4`.
+  The normally resolved environment imports the Valmer updater modules, and
+  the suite excluding `tests/test_valmer_migrations.py` passes: 254 tests and
+  36 subtests.
+- Full collection is now blocked only because the project-owned `migrations`
+  package expected by `tests/test_valmer_migrations.py` is absent; Python resolves
+  an unrelated installed package named `migrations` instead.
+- Managed Main Sequence skills and `AGENTS.md` were refreshed on 2026-08-30 and
+  are pinned to SDK `8.0.4` plus the authenticated platform manifest. The local
+  CLI authentication and exact Git-derived CodeRepositoryBranch context now
+  resolve successfully.
+- No SDK 8 commit, tag, push, ResourceRelease, or backend updater-lifecycle
+  success is claimed; the backend worktree still contains extensive unreviewed
+  changes and canonical sync would stage all of them.
+
+## Command Center Control Plane
+
+- `valmer-connectors` now contains the request-authenticated FastAPI backend,
+  operational resource contracts, fail-closed approved-Job actions, and the
+  backend-managed Job workflow.
+- The separate `ValmerConnectorsMonitor` repository contains the Vite/React UI
+  built on Command Center SDK 0.1.15 navigation, layout, resource, action,
+  iframe transport, and theme contracts.
+- Focused backend validation passes with 11 tests. The static site passes its
+  SDK theme audit, five Vitest tests, TypeScript build, and production Vite build.
+- The Vite repository now has a live-backend-validated API 2.1.0 static-site
+  workflow configured for every synchronized commit and three retained
+  revisions. It remains local and has not created a release.
+- The backend VS Code compound `Control Plane: API + Vite (local review)`
+  starts the development-only API capability wrapper and the sibling Vite SDK
+  host. Browser verification passed for the iframe handshake, authenticated
+  viewer projection, API CORS boundary, overview, nine-row data-product page,
+  and dark/light theme propagation. The production apps remain unchanged.
+- Platform inspection currently returns zero indexed backend FastAPI resources
+  and zero releases in either repository. A valid backend FastAPI workflow
+  cannot be authored until the first reviewed backend sync indexes the resource
+  and returns its real public UID, so no deployment is claimed.
+
+## Backend Runtime and Schema Last Verified on 2026-08-21
+
 - MetaTable data source: `3bde59a2-af55-439f-9584-a954b165324c`.
 - ms-markets migration provider is current at revision `0015`, with 55 active
   application tables and no failed definitions.
@@ -67,7 +113,7 @@ maturity). It is not part of the CETES/M Bonos government curve universe. A
 strict broad vector replay now stops on this row until its source schedule is
 corrected; no identifier-specific bypass was added.
 
-## Repository Validation
+## Repository Validation Recorded on 2026-08-21
 
 - Focused strict-pricing and government-query tests pass.
 - The repeatable persisted-data verification passes.

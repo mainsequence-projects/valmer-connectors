@@ -1,5 +1,5 @@
 {
-  "version": "0.0.1",
+  "version": "2.0.0",
   "tasks": [
       {
         "label": "Create .venv (Python 3.13)",
@@ -25,6 +25,22 @@
         "type": "shell",
         "command": "${workspaceFolder}/.venv/bin/python ${workspaceFolder}/scripts/test_script.py",
         "problemMatcher": []
+      },
+      {
+        "label": "Control Plane: Wait for local API",
+        "type": "process",
+        "command": "${workspaceFolder}/.venv/bin/python",
+        "args": [
+          "${workspaceFolder}/.vscode/wait_for_http.py",
+          "http://127.0.0.1:8000/health",
+          "30"
+        ],
+        "problemMatcher": [],
+        "presentation": {
+          "reveal": "silent",
+          "panel": "dedicated",
+          "group": "control-plane"
+        }
       },
       {
         "label": "Setup environment",

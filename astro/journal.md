@@ -33,7 +33,7 @@
 - Expanded `ImportValmer.update()` so it persists the full 60-column sample
   workbook schema with translated English output columns plus derived OHLC
   fields.
-- Updated `docs/data-nodes.md` so the documented bucket name and stored schema
+- Updated `docs/time-index-table-updates.md` so the documented bucket name and stored schema
   match the code.
 - Reverted `BUCKET_NAME_HISTORICAL_VECTORS` and the docs back to
   `Hitorical Valmer Vector Analytico` to match the backend resource name
@@ -53,7 +53,7 @@
 ### 2026-03-16
 
 - `.venv/bin/mainsequence --help`
-- `.venv/bin/mainsequence project sdk-status --path .`
+- `.venv/bin/mainsequence code-repository sdk-status --path .`
 - `.venv/bin/mainsequence sdk latest`
 
 All three commands failed before argument parsing because the installed

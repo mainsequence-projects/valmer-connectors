@@ -8,18 +8,18 @@ The architecture now has four separate boundaries:
 ```text
 Source Import
     -> Asset And Detail Sync
-    -> DataNode Publication
+    -> TimeIndexTableUpdater Publication
     -> Pricing Hydration / Curve Publication
 ```
 
-Do not collapse those responsibilities back into one DataNode hook.
+Do not collapse those responsibilities back into one TimeIndexTableUpdater hook.
 
 ## Current Sources Of Truth
 
 Project pages:
 
 - `source-import.md`
-- `data-nodes.md`
+- `time-index-table-updates.md`
 - `markets.md`
 - `pricing.md`
 - `instruments.md`
@@ -27,11 +27,11 @@ Project pages:
 Relevant Main Sequence documentation checked for this migration:
 
 - Main Sequence SDK docs root: `https://mainsequence-sdk.github.io/mainsequence-sdk/`
-- DataNode knowledge page: `https://mainsequence-sdk.github.io/mainsequence-sdk/knowledge/data_nodes/`
+- TimeIndexTableUpdater knowledge page: `https://mainsequence-sdk.github.io/mainsequence-sdk/knowledge/time_index_table_updates/`
 
 Relevant repository skills:
 
-- `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
+- `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
 - `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
 - `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
 - `.agents/skills/ms_markets/assets/asset_indexed_data_nodes/SKILL.md`
@@ -52,7 +52,7 @@ Current declared package constraints:
 | Area | Current state | Remaining validation |
 | --- | --- | --- |
 | Source import | `ImportValmer.prepare_source_data()` selects platform Artifact bucket or local `DEBUG_ARTIFACT_PATH` | run both paths with representative files |
-| DataNode storage | `ValmerVectorPricesStorage` owns the time-series table contract | live namespaced write |
+| updater output table | `ValmerVectorPricesStorage` owns the time-series table contract | live namespaced write |
 | Asset registration | `valmer_connectors.assets.register_valmer_assets_from_rows(...)` is the public batch row-registration API; the minimal `AssetTable` write helper is private and requires explicit asset types | live row-registration run with representative Valmer rows |
 | Static details | `ValmerAssetDetailsTable.asset_uid` is a 1:1 FK to `AssetTable.uid` | live row link validation |
 | Pricing hydration | `prepare_for_update()` calls `_sync_asset_registry_and_pricing(...)` before `run()` and writes through `msm_pricing.api.add_many_pricing_details(...)` | live pricing-details write validation, including incomplete-result failure behavior |

@@ -716,18 +716,18 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
     def test_curve_runtime_sets_discount_curve_storage_cadence(self):
         from msm_pricing.data_nodes import DiscountCurvesNode
 
-        storage_table = DiscountCurvesNode._required_storage_table()
-        original_cadence = getattr(storage_table, "__cadence__", None)
+        output_table = DiscountCurvesNode._required_output_table()
+        original_cadence = getattr(output_table, "__cadence__", None)
         try:
-            storage_table.__cadence__ = None
+            output_table.__cadence__ = None
 
             configured_storage = configure_valmer_discount_curves_cadence()
 
-            self.assertIs(configured_storage, storage_table)
-            self.assertEqual(storage_table.__cadence__, VALMER_DISCOUNT_CURVES_CADENCE)
-            self.assertEqual(storage_table.__cadence__, "1d")
+            self.assertIs(configured_storage, output_table)
+            self.assertEqual(output_table.__cadence__, VALMER_DISCOUNT_CURVES_CADENCE)
+            self.assertEqual(output_table.__cadence__, "1d")
         finally:
-            storage_table.__cadence__ = original_cadence
+            output_table.__cadence__ = original_cadence
 
     def test_old_curve_schema_helper_forwards_to_runtime_attach(self):
         with patch(

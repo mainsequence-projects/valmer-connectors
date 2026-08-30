@@ -300,7 +300,7 @@ separately as optional decimal `yield` provenance:
 }
 ```
 
-The Valmer curve DataNode attaches a source-specific key-node validator before
+The Valmer curve TimeIndexTableUpdater attaches a source-specific key-node validator before
 the core `DiscountCurvesNode` compresses provenance. The validator enforces the
 CETES zero-coupon and M Bonos fixed-rate helper families, quote units, `mid`
 quote side, and Valmer yield provenance.
@@ -310,7 +310,7 @@ The instruments remain `Asset` / bond rows. CETE indexes are real benchmark
 selectors; `PricingMarketDataSetCurveBinding` maps those selectors to
 `VALMER_MXN_GOVERNMENT_BOND` for z-spread valuation.
 
-## Target DataNode Output
+## Target TimeIndexTableUpdater Output
 
 Publish the bootstrapped curve through `DiscountCurvesNode`.
 
@@ -343,7 +343,7 @@ time_index                 curve_identifier              curve
 ## Workflow
 
 ```text
-ImportValmer vector DataNode
+ImportValmer vector TimeIndexTableUpdater
     |
     v
 ValmerVectorPricesStorage
@@ -354,7 +354,7 @@ ValmerMxnGovernmentBondDiscountCurvesNode
     OFFSET_START = 2024-08-30T23:59:59Z
     |
     v
-query persisted snapshots from the DataNode update boundary
+query persisted snapshots from the updater boundary
     |
     v
 select bootstrap rows
@@ -556,7 +556,7 @@ request, not through an MXN currency fallback.
 - [x] Add a service and CLI command for running the new curve update.
 - [x] Build the curve from `ValmerVectorPricesStorage` joined to
       `ValmerAssetDetailsTable`, not from a separate raw artifact read.
-- [x] Set the MXN government curve DataNode `OFFSET_START` to the first
+- [x] Set the MXN government curve TimeIndexTableUpdater `OFFSET_START` to the first
   available persisted vector snapshot, August 30, 2024 at 23:59:59 UTC.
 - [x] Add unit tests for row selection using the local sample shape.
 - [x] Add unit tests for CETES helper validation and M Bonos helper validation.

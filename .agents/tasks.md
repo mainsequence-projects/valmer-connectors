@@ -1,5 +1,36 @@
 # Open Tasks
 
+## Finish the SDK 8 integration and migration-package validation
+
+- Scope: restore or provide the project-owned `migrations` package expected by
+  `tests/test_valmer_migrations.py`, then run the complete repository suite and
+  one updater lifecycle against the migrated backend. `ms-markets==1.0.2` is
+  now the first adopted release that declares Main Sequence SDK 8 compatibility;
+  updater imports and all tests outside the missing migration package pass.
+- Owning skills: `mainsequence-time-index-table-updates` and the relevant
+  `mainsequence-markets-*` domain skills.
+- Expected output: the project imports cleanly with Main Sequence SDK 8.0.4 or
+  newer, all tests pass, and one project updater completes a backend run.
+- Required evidence: dependency lock, clean legacy-name scan, passing full test
+  suite and Ruff check, successful updater run, and persisted output readback.
+
+## Publish and verify the two-repository control plane
+
+- Scope: review and canonically sync this dirty backend so the FastAPI resource
+  is indexed, add and validate its API 2.1.0 automatic-release declaration with
+  the real resource UID, sync again, configure the stable FastAPI release target
+  for `ValmerConnectorsMonitor`, and then sync its validated automatic Vite
+  static-site declaration. Navigation placement remains a separate explicit
+  human grant.
+- Owning skills: `mainsequence-command-center-fastapi`, `resource-release`,
+  `static-site`, and `command-center`.
+- Expected output: the embedded SDK-native control plane reads current Valmer
+  state and an authorized operator can launch one approved Job.
+- Required evidence: both ready active revisions, automatic deployment enabled
+  with null tag policies and three retained revisions, repository-event
+  DeploymentRuns, iframe/theme verification, viewer denial, operator preflight
+  and launch, JobRun polling, and application logs.
+
 ## Correct the invalid `F_BINVEX_24484` source schedule
 
 - Scope: determine the authoritative issuance, maturity, coupon-frequency, and
@@ -17,8 +48,8 @@
 
 - Scope: execute FRED, Banxico policy, Banxico fixings, both quote producers,
   TIIE, SOFR, XCCY, vector history, and government curve a second time using
-  their normal DataNode identities.
-- Owning skills: `mainsequence-data-nodes` and
+  their normal updater identities.
+- Owning skills: `mainsequence-time-index-table-updates` and
   `mainsequence-markets-index-workflow`.
 - Expected output: no duplicate time-series keys and no unexpected replacement
   of current observations.

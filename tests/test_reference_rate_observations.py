@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import Mock
 
 import pandas as pd
-from msm.data_nodes.indices import index_values_storage_table_name
+from msm.data_nodes.indices import index_values_output_table_name
 from msm.models.indices import IndexTable
 from pydantic import ValidationError
 
@@ -25,7 +25,7 @@ class ReferenceRateStorageTests(unittest.TestCase):
         )
         self.assertEqual(
             DailyIndexValuesStorage.__table__.name,
-            index_values_storage_table_name(cadence="1d"),
+            index_values_output_table_name(cadence="1d"),
         )
         self.assertEqual(
             DailyIndexValuesStorage.__index_names__,

@@ -11,7 +11,7 @@ The dashboard now exposes:
 - `pages/1_Source_Data.py`: recent `vector_de_precios_valmer` coverage plus
   source exploration for a focused asset
 - `pages/2_Pricing_Hydration.py`: asset pricing-detail hydration status
-- `pages/3_Curve_Health.py`: canonical `discount_curves` DataNode checks for
+- `pages/3_Curve_Health.py`: canonical `discount_curves` time-index table checks for
   the Valmer TIIE and MXN government curves
 
 The app reuses MainSequence Streamlit scaffolding and sidebar components for
@@ -28,6 +28,6 @@ streamlit run dashboards/valmer_monitor/app.py
 
 ## Deployment Note
 
-The project currently has no verified dashboard resources or project images for
+The CodeRepository currently has no verified dashboard resources or CodeRepository images for
 the current remote head. See `docs/deployment.md` for the latest
 deployment procedure and CLI verification commands.

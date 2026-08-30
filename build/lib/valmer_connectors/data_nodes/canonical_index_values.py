@@ -49,7 +49,7 @@ class ReferenceRateObservationConfiguration(IndexDataNodeConfiguration):
     def _reject_manual_backfill_scope(self) -> ReferenceRateObservationConfiguration:
         if self.offset_start is not None:
             raise ValueError(
-                "offset_start is not supported: reference-rate DataNodes load five "
+                "offset_start is not supported: reference-rate updaters load five "
                 "calendar years on their first normal run and then update incrementally."
             )
         return self
@@ -237,7 +237,7 @@ class DailyIndexValuesNode(IndexValuesDataNode):
     """Base producer for canonical daily Index observations."""
 
     @classmethod
-    def _required_storage_table(cls):
+    def _required_output_table(cls):
         return DailyIndexValuesStorage
 
 

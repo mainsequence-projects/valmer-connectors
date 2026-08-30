@@ -142,7 +142,7 @@ Default behavior:
   current pricing details;
 - filter imported rows from the last vector observation per
   `asset_identifier`, not from one global source date;
-- run the Valmer vector DataNode update with `run(force_update=True)`.
+- run the Valmer vector updater update with `run(force_update=True)`.
 
 Options:
 
@@ -200,7 +200,7 @@ Options:
 
 `--bucket-name` and `--debug-artifact-path` are compatibility options and are
 ignored for this command. To test a local Vector Analitico artifact, run the
-vector DataNode with the debug artifact first, then run this curve command
+vector TimeIndexTableUpdater with the debug artifact first, then run this curve command
 against persisted vector storage.
 
 ### `valmer-connectors curves update-tiie-irs-mxn`
@@ -212,7 +212,7 @@ Default behavior:
 - call `bootstrap_runtime()`;
 - build `DiscountCurvesNode` with the Valmer TIIE overnight OIS curve identifier;
 - attach `build_tiie_irs_mxn_valmer`;
-- run the curve DataNode update with the current script behavior,
+- run the curve updater update with the current script behavior,
   `run(force_update=True)`.
 
 Options:
@@ -238,7 +238,7 @@ Default behavior:
   identifier;
 - attach `build_usd_sofr_valmer`;
 - resolve the Valmer benchmark date before downloading the CSV;
-- run the curve DataNode update with the current script behavior,
+- run the curve updater update with the current script behavior,
   `run(force_update=True)`.
 
 Options:
@@ -268,7 +268,7 @@ Default behavior:
 - resolve the Valmer benchmark date before downloading the CSVs;
 - build the local QuantLib FX-swap and constant-notional cross-currency basis
   swap helper set;
-- run the curve DataNode update with the current script behavior,
+- run the curve updater update with the current script behavior,
   `run(force_update=True)`.
 
 Options:
@@ -282,7 +282,7 @@ Options:
 The default curve identifier is
 `VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER`.
 
-`--hash-namespace` is available for isolated DataNode runs. It should be used
+`--hash-namespace` is available for isolated updater runs. It should be used
 for shared-backend validation, not to encode curve business meaning.
 
 `--rebuild-current` is a local operational/debug option for launch
@@ -318,7 +318,7 @@ This ADR does not:
 - add Alembic table-creation migration files;
 - run live platform updates during installation;
 - introduce a new CLI framework dependency;
-- change DataNode, curve, or bootstrap semantics;
+- change TimeIndexTableUpdater, curve, or bootstrap semantics;
 - rename package modules outside the CLI/operations boundary.
 
 ## Implementation Tasks

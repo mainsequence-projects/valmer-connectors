@@ -180,7 +180,7 @@ FormulaIndexDataNode(config, target_storage)
 
 The registered source-storage MetaTable UID set must exactly equal the
 persisted formula-input UID set. Verify unique UIDs, exact grain, numeric
-observables, and build all `APIDataNode` dependencies before `update()`.
+observables, and build all `TimeIndexTableRef` dependencies before `update()`.
 
 Formula results always include the exact formula `definition_uid`.
 
@@ -228,7 +228,7 @@ tests, OpenAPI, docs, examples, tutorial, changelog, and this skill aligned.
 
 ## Validation Checklist
 
-1. Run focused parser, engine, API, repository, DataNode, model, migration, and
+1. Run focused parser, engine, API, repository, TimeIndexTableUpdater, model, migration, and
    example tests.
 2. Run FastAPI/OpenAPI and Adapter from API contract tests.
 3. Run Ruff on every changed Python file.

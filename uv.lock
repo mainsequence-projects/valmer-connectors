@@ -295,6 +295,19 @@ wheels = [
 ]
 
 [[package]]
+name = "httpcore"
+version = "1.0.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "h11" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/94/82699a10bca87a5556c9c59b5963f2d039dbd239f25bc2a63907a05a14cb/httpcore-1.0.9.tar.gz", hash = "sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8", size = 85484, upload-time = "2025-04-24T22:06:22.219Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl", hash = "sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55", size = 78784, upload-time = "2025-04-24T22:06:20.566Z" },
+]
+
+[[package]]
 name = "httptools"
 version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -307,6 +320,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/04/ab/d1cef3b5523f4d272a70f42a776c3169a2dddfe3a54de4b2ce4a36341528/httptools-0.8.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:6a43c9dd399758ccc0531acb0a3c4a6c299ee893ee9400e9c893b7bdcfae0681", size = 464460, upload-time = "2026-05-25T22:17:20.882Z" },
     { url = "https://files.pythonhosted.org/packages/ce/48/5d1d072442277bb2b3434e0e60690b8e8c23840ef7de8b6ea54040a536d3/httptools-0.8.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:0770728beb05094c809b98e814edff5fef69d26ad7d21185f2f6d5884a0ba683", size = 471312, upload-time = "2026-05-25T22:17:22.085Z" },
     { url = "https://files.pythonhosted.org/packages/0d/66/b96623b27e51a68199ef4efdda0613cced9233fe3062ac74e50749c5ad37/httptools-0.8.0-cp313-cp313-win_amd64.whl", hash = "sha256:7685df791fad561384bfb139e77fde27a1ffd93134e016f95a0db424ffbf77b1", size = 90117, upload-time = "2026-05-25T22:17:23.074Z" },
+]
+
+[[package]]
+name = "httpx"
+version = "0.28.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "certifi" },
+    { name = "httpcore" },
+    { name = "idna" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406, upload-time = "2024-12-06T15:37:23.222Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
 ]
 
 [[package]]
@@ -386,7 +414,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "6.0.46"
+version = "8.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -412,9 +440,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/73/e46df37458b42f8296df4f45a5dfcd143819f2a46b97796c22c761ef299f/mainsequence-6.0.46.tar.gz", hash = "sha256:f8eb410be27ffcce3c20eafb7ffab1407d618dabccfaefd80dde56a07526527e", size = 516330, upload-time = "2026-08-23T17:00:29.217Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/e4/17f0f1dfc032b472d17b5e012938531732528e23071fc9022b2db7631856/mainsequence-8.0.4.tar.gz", hash = "sha256:fc630eaf1febd27a8da3b9d8b7c9b590a756f2fd629d86c50049c54778bad90a", size = 539211, upload-time = "2026-08-29T15:35:35.112Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5f/50/61d9c8e86a80b82176d861287805cf5c690583331ae4c7f12cd77527e38c/mainsequence-6.0.46-py3-none-any.whl", hash = "sha256:e62eb08dc333310d89040a0a12abd5af8c8afbfb4e5cf247f6b9fdf10ff49f6f", size = 402550, upload-time = "2026-08-23T17:00:27.356Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/1e/1b15c3cf8029655f81d35202f076d44ac6c179d550f6d4d1b1ca59093ca8/mainsequence-8.0.4-py3-none-any.whl", hash = "sha256:66102c7e05ec0d20458186c3db3f730f436e2b1a97cca846345151b60e7edeb2", size = 414929, upload-time = "2026-08-29T15:35:32.951Z" },
 ]
 
 [[package]]
@@ -482,7 +510,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.110"
+version = "1.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -500,9 +528,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e4/a3/23b006898b32a1a244ab2f263003bd57e92ef9e621ac56cdad8c76b50729/ms_markets-0.0.110.tar.gz", hash = "sha256:cb22cb7bdcf798e274be28cf538ba22c8013dcddec2779e841df65a2d748cd14", size = 2204102, upload-time = "2026-08-24T11:30:49.612Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/9c/311e48ce795dd1067b290eaa8bb98f697b134106aa43f1cc947092508579/ms_markets-1.0.2.tar.gz", hash = "sha256:ce96f012c65293f6357c2d44535f40efaef233ed052b9eec65789e288b4c29a6", size = 2206190, upload-time = "2026-08-30T07:10:41.524Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/ca/747e1868eaba02899f89de7ecfebcc9e29b27b80e0910e378b2ccd3dbd85/ms_markets-0.0.110-py3-none-any.whl", hash = "sha256:10df5797e5695e50f642c4c4905bcce114c77315aa3204a7bd24df4b923a25cd", size = 641804, upload-time = "2026-08-24T11:30:47.362Z" },
+    { url = "https://files.pythonhosted.org/packages/80/08/a55980c8630f63f4f68f256d71a674b03f1eb1cab45c5c2e1f9e1a55ad65/ms_markets-1.0.2-py3-none-any.whl", hash = "sha256:10b04eff827988aa9cfec357d47fbe432ea38b6fdc638a260926387d322887b6", size = 642506, upload-time = "2026-08-30T07:10:39.766Z" },
 ]
 
 [[package]]
@@ -1310,10 +1338,11 @@ wheels = [
 
 [[package]]
 name = "valmer-connectors"
-version = "0.1.25"
+version = "0.1.26"
 source = { editable = "." }
 dependencies = [
     { name = "arch" },
+    { name = "fastapi" },
     { name = "mainsequence" },
     { name = "ms-markets" },
     { name = "pandas-market-calendars" },
@@ -1328,14 +1357,16 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "arch", specifier = ">=8.0.0" },
+    { name = "fastapi", specifier = ">=0.141.1" },
     { name = "mainsequence" },
-    { name = "ms-markets", specifier = "==0.0.110" },
+    { name = "ms-markets", specifier = "==1.0.2" },
     { name = "pandas-market-calendars", specifier = ">=5.4.0" },
     { name = "plotly", specifier = ">=6.8.0" },
     { name = "pymssql", specifier = ">=2.3.13" },
@@ -1347,7 +1378,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+dev = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "pytest", specifier = ">=9.1.1" },
+]
 
 [[package]]
 name = "watchdog"

@@ -68,7 +68,7 @@ _DISCOUNT_CURVE_REQUIRED_PAYLOAD_COLUMNS = frozenset({"curve", "key_nodes"})
 
 
 class ValmerMxnGovernmentBondDiscountCurvesNode(DiscountCurvesNode):
-    """Government curve DataNode with the Valmer vector availability boundary."""
+    """Government curve updater with the Valmer vector availability boundary."""
 
     OFFSET_START = VALMER_MXN_GOVERNMENT_BOND_OFFSET_START
 
@@ -198,7 +198,7 @@ def run_usd_mxn_xccy_curve_update(
         curve_config=ValmerXccyCurveConfig(
             curve_unique_identifier=curve_identifier,
             quote_storage_table=DailyIndexValuesStorage,
-            curve_storage_table=DiscountCurvesNode._required_storage_table(),
+            curve_storage_table=DiscountCurvesNode._required_output_table(),
             source_families=("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),
             tiie_curve_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
             sofr_curve_identifier=VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,

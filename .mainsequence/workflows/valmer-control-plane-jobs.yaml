@@ -1,0 +1,163 @@
+api_version: 2.1.0
+name: valmer-control-plane-jobs
+
+resources:
+  - key: vector-refresh
+    kind: job
+    spec:
+      name: Valmer Vector Refresh
+      execution_path: scripts/update_vector_valmer.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: irs-mxn-quotes-refresh
+    kind: job
+    spec:
+      name: Valmer IRS MXN Quotes Refresh
+      execution_path: scripts/update_valmer_irs_mxn_quotes.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: irs-usd-quotes-refresh
+    kind: job
+    spec:
+      name: Valmer IRS USD Quotes Refresh
+      execution_path: scripts/update_valmer_irs_usd_quotes.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: banxico-fixings-refresh
+    kind: job
+    spec:
+      name: Banxico Fixings Refresh
+      execution_path: scripts/update_banxico_fixings.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: fred-reference-rates-refresh
+    kind: job
+    spec:
+      name: FRED Reference Rates Refresh
+      execution_path: scripts/update_fred_reference_rates.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: banxico-policy-refresh
+    kind: job
+    spec:
+      name: Banxico Policy Target Refresh
+      execution_path: scripts/update_banxico_policy_rates.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: tiie-curve-refresh
+    kind: job
+    spec:
+      name: Valmer TIIE Curve Refresh
+      execution_path: scripts/update_valmer_tiie_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: sofr-curve-refresh
+    kind: job
+    spec:
+      name: Valmer SOFR Curve Refresh
+      execution_path: scripts/update_valmer_usd_sofr_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: xccy-curve-refresh
+    kind: job
+    spec:
+      name: Valmer USD/MXN XCCY Curve Refresh
+      execution_path: scripts/update_valmer_usd_mxn_xccy_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: government-curve-refresh
+    kind: job
+    spec:
+      name: Valmer MXN Government Curve Refresh
+      execution_path: scripts/update_valmer_mxn_government_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 10800
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: standard-pipeline-refresh
+    kind: job
+    spec:
+      name: Valmer Standard Pipeline Refresh
+      execution_path: scripts/run_control_plane_pipeline.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 21600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+      task_schedule:
+        schedule:
+          type: crontab
+          expression: "0 13 * * 1-5"
+
+  - key: pipeline-verification
+    kind: job
+    spec:
+      name: Valmer Pipeline Verification
+      execution_path: scripts/verify_current_pipeline.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null

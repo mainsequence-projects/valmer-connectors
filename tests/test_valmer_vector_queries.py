@@ -16,54 +16,54 @@ from valmer_connectors.queries.vector_quotes import (
     read_valmer_history,
     read_valmer_last_observation,
     read_valmer_yield_history,
-    valmer_vector_node,
-    valmer_vector_node_identifier,
     valmer_vector_storage_columns,
+    valmer_vector_table_identifier,
+    valmer_vector_table_ref,
 )
 
 
 class ValmerVectorQueriesTest(unittest.TestCase):
-    def test_vector_node_identifier_derives_from_storage_contract(self):
+    def test_vector_table_identifier_derives_from_storage_contract(self):
         self.assertEqual(
-            valmer_vector_node_identifier(),
+            valmer_vector_table_identifier(),
             str(ValmerVectorPricesStorage.__metatable_identifier__),
         )
 
     def test_vector_queries_do_not_depend_on_fundcompetition_settings(self):
         self.assertNotIn("fundcompetition", inspect.getsource(vector_quotes))
 
-    def test_valmer_vector_node_builds_api_node_from_bound_storage_metatable(self):
-        api_node = object()
+    def test_valmer_vector_table_ref_builds_from_bound_storage_metatable(self):
+        table_ref = object()
         meta_table = object()
 
         with patch(
-            "valmer_connectors.queries.vector_quotes.ValmerVectorPricesStorage.get_meta_table",
+            "valmer_connectors.queries.vector_quotes.ValmerVectorPricesStorage.get_time_index_meta_table",
             return_value=meta_table,
-        ) as get_meta_table, patch(
-            "mainsequence.meta_tables.APIDataNode.build_from_meta_table",
-            return_value=api_node,
-        ) as build_from_meta_table:
-            result = valmer_vector_node()
+        ) as get_time_index_meta_table, patch(
+            "mainsequence.meta_tables.TimeIndexTableRef.from_meta_table",
+            return_value=table_ref,
+        ) as from_meta_table:
+            result = valmer_vector_table_ref()
 
-        self.assertIs(result, api_node)
-        get_meta_table.assert_called_once_with()
-        build_from_meta_table.assert_called_once_with(
+        self.assertIs(result, table_ref)
+        get_time_index_meta_table.assert_called_once_with()
+        from_meta_table.assert_called_once_with(
             meta_table,
         )
 
-    def test_valmer_vector_node_requires_runtime_bound_storage_metatable(self):
+    def test_valmer_vector_table_ref_requires_runtime_bound_storage_metatable(self):
         with patch(
-            "valmer_connectors.queries.vector_quotes.ValmerVectorPricesStorage.get_meta_table",
+            "valmer_connectors.queries.vector_quotes.ValmerVectorPricesStorage.get_time_index_meta_table",
             return_value=None,
         ), patch(
-            "mainsequence.meta_tables.APIDataNode.build_from_identifier",
+            "mainsequence.meta_tables.TimeIndexTableRef.from_identifier",
             side_effect=AssertionError("must not look up the vector by string identifier"),
         ), patch(
-            "mainsequence.meta_tables.APIDataNode.build_from_meta_table",
+            "mainsequence.meta_tables.TimeIndexTableRef.from_meta_table",
             side_effect=AssertionError("must not build without a bound MetaTable"),
         ):
             with self.assertRaisesRegex(RuntimeError, "Valmer vector storage is not bound"):
-                valmer_vector_node()
+                valmer_vector_table_ref()
 
     def test_storage_columns_are_read_from_registered_storage_schema(self):
         self.assertIn("time_index", valmer_vector_storage_columns())
@@ -86,16 +86,16 @@ class ValmerVectorQueriesTest(unittest.TestCase):
 
     def test_read_history_avoids_platform_call_for_empty_identifiers(self):
         with patch(
-            "valmer_connectors.queries.vector_quotes.valmer_vector_node",
+            "valmer_connectors.queries.vector_quotes.valmer_vector_table_ref",
             side_effect=AssertionError("platform should not be called"),
         ):
             result = read_valmer_history([], start_date=dt.datetime(2024, 1, 1))
 
         self.assertTrue(result.empty)
 
-    def test_read_history_calls_api_node_with_asset_dimension_filter(self):
-        node = Mock()
-        node.get_df_between_dates.return_value = pd.DataFrame(
+    def test_read_history_calls_table_ref_with_asset_dimension_filter(self):
+        table_ref = Mock()
+        table_ref.get_df_between_dates.return_value = pd.DataFrame(
             [
                 {
                     "time_index": "2024-01-02T00:00:00Z",
@@ -106,8 +106,8 @@ class ValmerVectorQueriesTest(unittest.TestCase):
         )
 
         with patch(
-            "valmer_connectors.queries.vector_quotes.valmer_vector_node",
-            return_value=node,
+            "valmer_connectors.queries.vector_quotes.valmer_vector_table_ref",
+            return_value=table_ref,
         ):
             result = read_valmer_history(
                 ["M_BONOS_241205", "M_BONOS_241205"],
@@ -116,8 +116,8 @@ class ValmerVectorQueriesTest(unittest.TestCase):
                 columns=["dirty_price"],
             )
 
-        node.get_df_between_dates.assert_called_once()
-        kwargs = node.get_df_between_dates.call_args.kwargs
+        table_ref.get_df_between_dates.assert_called_once()
+        kwargs = table_ref.get_df_between_dates.call_args.kwargs
         self.assertEqual(
             kwargs["dimension_filters"],
             {ASSET_IDENTIFIER_DIMENSION: ["M_BONOS_241205"]},
@@ -151,7 +151,7 @@ class ValmerVectorQueriesTest(unittest.TestCase):
         self.assertEqual(result["yield_rate"].iloc[0], 9.75)
 
     def test_last_observation_uses_backend_latest_per_asset_as_of(self):
-        node = Mock()
+        table_ref = Mock()
         frame = pd.DataFrame(
             [
                 {
@@ -168,14 +168,14 @@ class ValmerVectorQueriesTest(unittest.TestCase):
                 },
             ]
         ).set_index(["time_index", ASSET_IDENTIFIER_DIMENSION])
-        node.get_last_observation.return_value = frame
+        table_ref.get_last_observation.return_value = frame
 
         as_of = dt.datetime(2024, 1, 3, tzinfo=dt.UTC)
         latest_search_start = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
         with (
             patch(
-                "valmer_connectors.queries.vector_quotes.valmer_vector_node",
-                return_value=node,
+                "valmer_connectors.queries.vector_quotes.valmer_vector_table_ref",
+                return_value=table_ref,
             ),
             patch(
                 "valmer_connectors.queries.vector_quotes.read_valmer_history",
@@ -189,7 +189,7 @@ class ValmerVectorQueriesTest(unittest.TestCase):
                 latest_search_start=latest_search_start,
             )
 
-        node.get_last_observation.assert_called_once_with(
+        table_ref.get_last_observation.assert_called_once_with(
             dimension_range_map=[
                 {
                     "coordinate": {ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205"},

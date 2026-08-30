@@ -92,19 +92,19 @@ published storage and existing MetaTables.
 Phase 1 modifies these documentation files:
 
 ```text
-docs/data-nodes.md
+docs/time-index-table-updates.md
 docs/markets.md
 docs/SUMMARY.md
 ```
 
-`docs/data-nodes.md` will document the vector query API beside the
+`docs/time-index-table-updates.md` will document the vector query API beside the
 `ValmerVectorPricesStorage` publication contract.
 
 `docs/markets.md` will document the asset-detail identifier lookup beside the
 existing AssetTable and `ValmerAssetDetailsTable` identity rules.
 
 `docs/SUMMARY.md` contains the entry for this implementation plan. Phase 1
-does not create another summary entry because `docs/data-nodes.md` and
+does not create another summary entry because `docs/time-index-table-updates.md` and
 `docs/markets.md` already exist in the summary.
 
 Phase 1 does not modify these code files:
@@ -139,8 +139,8 @@ read_valmer_history
 read_valmer_last_observation
 read_valmer_yield_history
 resolve_valmer_detail_identifier_aliases
-valmer_vector_node
-valmer_vector_node_identifier
+valmer_vector_table_ref
+valmer_vector_table_identifier
 valmer_vector_storage_columns
 ```
 
@@ -189,8 +189,8 @@ VALMER_VECTOR_INDEX_COLUMNS = ("time_index", "asset_identifier")
 Functions:
 
 ```python
-valmer_vector_node_identifier() -> str
-valmer_vector_node() -> APIDataNode
+valmer_vector_table_identifier() -> str
+valmer_vector_table_ref() -> TimeIndexTableRef
 valmer_vector_storage_columns() -> frozenset[str]
 filter_valmer_vector_columns(columns: Sequence[str] | None) -> list[str]
 read_valmer_history(asset_identifiers, start_date, end_date=None, columns=None) -> pd.DataFrame
@@ -202,12 +202,12 @@ normalize_valmer_quote_frame(frame) -> pd.DataFrame
 
 Implementation rules:
 
-- `valmer_vector_node_identifier()` derives the identifier from
+- `valmer_vector_table_identifier()` derives the identifier from
   `ValmerVectorPricesStorage.__metatable_identifier__`.
 - The code does not read `fundcompetition.config.settings.VECTOR_IDENTIFIER`.
 - The code does not define a new setting for the vector identifier.
-- `valmer_vector_node()` imports `APIDataNode` inside the function and calls
-  `APIDataNode.build_from_meta_table(...)` using the runtime-bound
+- `valmer_vector_table_ref()` imports `TimeIndexTableRef` inside the function and calls
+  `TimeIndexTableRef.from_meta_table(...)` using the runtime-bound
   `ValmerVectorPricesStorage` MetaTable.
 - `filter_valmer_vector_columns(...)` inspects
   `ValmerVectorPricesStorage.__table__.columns`.
@@ -217,7 +217,7 @@ Implementation rules:
   `dimension_filters={"asset_identifier": cleaned_identifiers}`.
 - `read_valmer_history(...)` returns an empty `DataFrame` without calling the
   platform when identifier cleanup removes every input value.
-- `read_valmer_last_observation(...)` calls `APIDataNode.get_last_observation(...)`
+- `read_valmer_last_observation(...)` calls `TimeIndexTableRef.get_last_observation(...)`
   with one `dimension_range_map` entry per `asset_identifier` and returns one
   backend-selected row per asset.
 - `read_valmer_last_observation(...)` exposes `latest_search_start` as an
@@ -305,7 +305,7 @@ Mapping:
 | Donor symbol | Target symbol | Disposition |
 | --- | --- | --- |
 | `DEFAULT_VALMER_COLUMNS` | `DEFAULT_VALMER_VECTOR_COLUMNS` | Keep, rename for package clarity. |
-| `valmer_node()` | `valmer_vector_node()` | Keep, derive identifier from `ValmerVectorPricesStorage`. |
+| `valmer_node()` | `valmer_vector_table_ref()` | Keep, derive identifier from `ValmerVectorPricesStorage`. |
 | `valmer_storage_columns()` | `valmer_vector_storage_columns()` | Keep, return `frozenset[str]`. |
 | `read_valmer_history(...)` | `read_valmer_history(...)` | Keep, remove project setting dependency. |
 | `read_valmer_last_observation(...)` | `read_valmer_last_observation(...)` | Keep, use backend latest-observation lookup with optional `latest_search_start`. |
@@ -380,7 +380,7 @@ not the core Valmer storage read API.
 - index columns retained even when the caller requests only quote columns;
 - identifier cleanup order and deduplication;
 - empty identifier input avoids platform calls;
-- `read_valmer_history(...)` calls `APIDataNode.get_df_between_dates(...)` with
+- `read_valmer_history(...)` calls `TimeIndexTableRef.get_df_between_dates(...)` with
   the correct `dimension_filters` and column list;
 - normalization resets index columns, coerces `time_index` to UTC, and coerces
   numeric quote columns;
@@ -422,7 +422,7 @@ not the core Valmer storage read API.
 4. Create `src/valmer_connectors/queries/__init__.py` with the public exports.
 5. Add `tests/test_valmer_vector_queries.py`.
 6. Add `tests/test_valmer_asset_detail_queries.py`.
-7. Update `docs/data-nodes.md`.
+7. Update `docs/time-index-table-updates.md`.
 8. Update `docs/markets.md`.
 9. Confirm `docs/SUMMARY.md` still links this implementation plan.
 10. Run the focused query tests.
@@ -432,7 +432,7 @@ Phase 2 implementation order:
 1. Create `src/valmer_connectors/analytics/__init__.py`.
 2. Create `src/valmer_connectors/analytics/spread_market_data.py`.
 3. Add `tests/test_valmer_spread_market_data.py`.
-4. Update `docs/data-nodes.md` with the public analytics helper surface.
+4. Update `docs/time-index-table-updates.md` with the public analytics helper surface.
 5. Confirm `docs/SUMMARY.md` describes the query and analytics surfaces.
 6. Run the focused analytics tests.
 
@@ -483,7 +483,7 @@ Phase 2 is complete when:
   returns numeric spread snapshot fields;
 - spread analytics helpers reuse Phase 1 identifier and timestamp
   normalization;
-- no spread analytics helper defines a DataNode identifier, storage schema, or
+- no spread analytics helper defines a time-index table identifier, storage schema, or
   platform read path directly;
 - focused tests cover the promoted analytics behavior without importing the
   fund competition project;
