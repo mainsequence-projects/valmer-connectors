@@ -28,7 +28,7 @@ The API publishes:
 - canonical Job-run bulk-action preflight and execution endpoints.
 
 Collection responses use the SDK `command-center.resource_collection@v1` shape. Discovery,
-preflight, and execution use the installed Command Center SDK 0.1.15 contracts. Discovery
+preflight, and execution use the installed Command Center SDK 0.1.18 contracts. Discovery
 payloads are validated with the SDK runtime parser rather than a copied schema.
 
 The Assets collection joins persisted platform state by responsibility: canonical identity comes
@@ -68,15 +68,26 @@ Job name, and returned JobRun UID.
 ## Jobs And Scheduling
 
 `.mainsequence/workflows/valmer-control-plane-jobs.yaml` declares the approved source, fixing,
-curve, verification, and standard-pipeline Jobs. Only the dependency-ordered standard pipeline is
-scheduled (`0 13 * * 1-5`). Individual Jobs remain unscheduled recovery operations that an
-authorized operator can launch from the static site.
+curve, verification, and standard-pipeline Jobs. It includes distinct immutable entrypoints for
+the production-safe VS Code variants: Artifact, OneDrive Graph, and MetaTable vector sources;
+the four-series TIIE-only fixing refresh; and the forced current XCCY rebuild. Only the
+dependency-ordered standard pipeline is scheduled (`0 13 * * 1-5`). Individual Jobs remain
+unscheduled recovery operations that an authorized operator can launch from the static site.
+
+The local upload-folder vector launch is intentionally not a platform Job because its configured
+path exists only on the developer workstation. Migration inspection/revision/upgrade, Streamlit,
+the example script, and the local API/Vite host are development or administration launchers, not
+production workload Jobs.
 
 The workflow declaration is desired repository state, not proof that the Jobs exist. Overview and
-Pipeline responses reconcile all twelve approved declarations with live branch Jobs. Missing Jobs
+Pipeline responses reconcile all sixteen approved declarations with live branch Jobs. Missing Jobs
 are reported as configuration failures, and an existing Job without a run is reported as
 `not-run`. Launch responses must contain both the platform JobRun UID and platform status; the API
 does not manufacture a pending state when either field is absent.
+
+The Jobs collection is one frontend collection request. Its backend adapter performs one bulk
+Job query restricted to the sixteen approved names and one bulk JobRun query for those Job UIDs;
+it does not issue one JobRun request per Job.
 
 `scripts/run_control_plane_pipeline.py` is a thin Job entry point. The reusable runner under
 `src/valmer_connectors/control_plane/pipeline.py` starts every existing producer in its own Python

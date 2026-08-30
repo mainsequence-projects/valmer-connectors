@@ -27,6 +27,7 @@ from valmer_connectors.control_plane.catalog import (
 from valmer_connectors.control_plane.service import (
     ControlPlaneError,
     ControlPlaneService,
+    Job,
     PlatformControlPlaneGateway,
     _approved_job_definition,
     _qualified_table_name,
@@ -173,6 +174,19 @@ def test_health_is_available_for_release_checks() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "valmer-control-plane"}
+
+
+def test_platform_job_projection_accepts_current_script_discriminator() -> None:
+    job = Job.model_validate(
+        {
+            "name": "Valmer Vector Refresh",
+            "related_image_uid": "11111111-1111-4111-8111-111111111111",
+            "image_status": "ready",
+            "type": "script",
+        }
+    )
+
+    assert job.type == "script"
 
 
 def test_registry_reads_use_scoped_compiled_metatable_operations(monkeypatch) -> None:
@@ -372,6 +386,62 @@ def test_platform_gateway_reads_current_pricing_details() -> None:
     assert pricing_details["error"] is None
     assert "identity_count" not in pricing_details
     assert "identity_count" not in vector
+
+
+def test_platform_gateway_bulk_loads_required_jobs_and_runs(monkeypatch) -> None:
+    first_action, second_action = JOB_ACTIONS[:2]
+    jobs = [
+        SimpleNamespace(
+            uid="job-1",
+            name=first_action.job_name,
+            execution_path=first_action.execution_path,
+            task_schedule=None,
+            image_status="ready",
+            automatic_deployment=True,
+        ),
+        SimpleNamespace(
+            uid="job-2",
+            name=second_action.job_name,
+            execution_path=second_action.execution_path,
+            task_schedule=None,
+            image_status="ready",
+            automatic_deployment=True,
+        ),
+    ]
+    runs = [
+        SimpleNamespace(
+            uid="run-1",
+            job_uid="job-1",
+            status="SUCCEEDED",
+            execution_start=dt.datetime(2026, 8, 30, tzinfo=dt.UTC),
+        )
+    ]
+    job_queries: list[dict[str, object]] = []
+    run_queries: list[dict[str, object]] = []
+
+    def filter_jobs(*, timeout, **kwargs):
+        job_queries.append({"timeout": timeout, **kwargs})
+        return jobs
+
+    def filter_runs(*, timeout, **kwargs):
+        run_queries.append({"timeout": timeout, **kwargs})
+        return runs
+
+    monkeypatch.setattr(control_plane_service.Job, "filter", filter_jobs)
+    monkeypatch.setattr(control_plane_service.JobRun, "filter", filter_runs)
+
+    result = PlatformControlPlaneGateway().jobs()
+
+    assert [item["uid"] for item in result] == ["job-1", "job-2"]
+    assert job_queries == [
+        {
+            "timeout": 60,
+            "name__in": [definition.job_name for definition in JOB_ACTIONS],
+        }
+    ]
+    assert run_queries == [
+        {"timeout": 60, "job__uid__in": ["job-1", "job-2"]}
+    ]
 
 
 def test_assets_use_persisted_pricing_details_to_identify_pricing_targets() -> None:

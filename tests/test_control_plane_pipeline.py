@@ -44,3 +44,15 @@ def test_control_plane_workflow_declares_the_exact_approved_job_catalog() -> Non
         }
     scheduled = [key for key, spec in jobs_by_key.items() if "task_schedule" in spec]
     assert scheduled == ["standard-pipeline-refresh"]
+
+
+def test_pipeline_exposes_every_approved_job_action() -> None:
+    from valmer_connectors.control_plane.catalog import PIPELINE_STAGES
+
+    pipeline_action_keys = {
+        str(action_key)
+        for stage in PIPELINE_STAGES
+        for action_key in stage["actions"]
+    }
+
+    assert pipeline_action_keys == {action.key for action in JOB_ACTIONS}

@@ -15,6 +15,32 @@ resources:
         enabled: true
         tag_regex: null
 
+  - key: vector-onedrive-refresh
+    kind: job
+    spec:
+      name: Valmer Vector Refresh — OneDrive Graph
+      execution_path: scripts/update_vector_valmer_onedrive.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: vector-metatable-refresh
+    kind: job
+    spec:
+      name: Valmer Vector Refresh — MetaTable
+      execution_path: scripts/update_vector_valmer_metatable.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
   - key: irs-mxn-quotes-refresh
     kind: job
     spec:
@@ -46,6 +72,19 @@ resources:
     spec:
       name: Banxico Fixings Refresh
       execution_path: scripts/update_banxico_fixings.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: banxico-tiie-fixings-refresh
+    kind: job
+    spec:
+      name: Banxico TIIE Fixings Refresh
+      execution_path: scripts/update_banxico_tiie_fixings.py
       cpu_request: "0.5"
       memory_request: "2"
       max_runtime_seconds: 3600
@@ -111,6 +150,19 @@ resources:
     spec:
       name: Valmer USD/MXN XCCY Curve Refresh
       execution_path: scripts/update_valmer_usd_mxn_xccy_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: xccy-curve-rebuild
+    kind: job
+    spec:
+      name: Valmer USD/MXN XCCY Curve Rebuild
+      execution_path: scripts/rebuild_valmer_usd_mxn_xccy_curve.py
       cpu_request: "1"
       memory_request: "4"
       max_runtime_seconds: 7200

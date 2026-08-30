@@ -22,7 +22,8 @@ from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 from sqlalchemy import func, select
 
 from mainsequence.client.metatables import MetaTable, TimeIndexMetaTable
-from mainsequence.client.models_helpers import Job, JobRun
+from mainsequence.client.models_helpers import Job as MainSequenceJob
+from mainsequence.client.models_helpers import JobRun
 from mainsequence.meta_tables import TimeIndexTableRef
 from valmer_connectors.control_plane.catalog import (
     DATA_PRODUCTS,
@@ -54,6 +55,12 @@ DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 250
 MAX_ASSET_DETAIL_ROWS = 100_000
 SAFE_SQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class Job(MainSequenceJob):
+    """Current platform Job projection including its additive target discriminator."""
+
+    type: str | None = None
 
 
 class ControlPlaneError(RuntimeError):
@@ -588,13 +595,15 @@ class PlatformControlPlaneGateway:
         return result
 
     def jobs(self) -> list[dict[str, Any]]:
-        jobs = list(Job.filter(timeout=60))
+        jobs = self.required_jobs()
+        job_uids = [str(job.uid) for job in jobs if job.uid]
+        runs_by_job_uid = self.job_runs_for_uids(job_uids)
         result: list[dict[str, Any]] = []
         for job in jobs:
             if not job.uid:
                 continue
             definition = _approved_job_definition(job)
-            runs = self.job_runs_for(job.uid)
+            runs = runs_by_job_uid.get(str(job.uid), [])
             latest = runs[0] if runs else None
             latest_status = (
                 _canonical_job_run_status(getattr(latest, "status", None))
@@ -629,20 +638,61 @@ class PlatformControlPlaneGateway:
         return result
 
     @staticmethod
+    def required_jobs() -> list[Job]:
+        try:
+            return list(
+                Job.filter(
+                    name__in=[definition.job_name for definition in JOB_ACTIONS],
+                    timeout=60,
+                )
+            )
+        except Exception as exc:
+            raise ControlPlaneError(
+                "The required platform Jobs query failed: "
+                f"{_operational_error_message(exc)}"
+            ) from exc
+
+    @staticmethod
     def job_runs_for(job_uid: str) -> list[JobRun]:
-        runs = list(JobRun.filter(job__uid=job_uid, timeout=60))
-        return sorted(
-            runs,
-            key=lambda run: getattr(run, "execution_start", None) or dt.datetime.min.replace(tzinfo=dt.UTC),
-            reverse=True,
-        )
+        return PlatformControlPlaneGateway.job_runs_for_uids([job_uid]).get(job_uid, [])
+
+    @staticmethod
+    def job_runs_for_uids(job_uids: Sequence[str]) -> dict[str, list[JobRun]]:
+        normalized_job_uids = list(dict.fromkeys(str(uid) for uid in job_uids if uid))
+        if not normalized_job_uids:
+            return {}
+        try:
+            runs = list(JobRun.filter(job__uid__in=normalized_job_uids, timeout=60))
+        except Exception as exc:
+            raise ControlPlaneError(
+                "The platform JobRun query failed: "
+                f"{_operational_error_message(exc)}"
+            ) from exc
+        runs_by_job_uid: dict[str, list[JobRun]] = {
+            job_uid: [] for job_uid in normalized_job_uids
+        }
+        for run in runs:
+            run_job_uid = str(run.job_uid or "")
+            if run_job_uid in runs_by_job_uid:
+                runs_by_job_uid[run_job_uid].append(run)
+        for job_runs in runs_by_job_uid.values():
+            job_runs.sort(
+                key=lambda run: getattr(run, "execution_start", None)
+                or dt.datetime.min.replace(tzinfo=dt.UTC),
+                reverse=True,
+            )
+        return runs_by_job_uid
 
     def job_runs(self) -> list[dict[str, Any]]:
+        jobs = self.required_jobs()
+        runs_by_job_uid = self.job_runs_for_uids(
+            [str(job.uid) for job in jobs if job.uid]
+        )
         result: list[dict[str, Any]] = []
-        for job in Job.filter(timeout=60):
+        for job in jobs:
             if not job.uid:
                 continue
-            for run in self.job_runs_for(job.uid):
+            for run in runs_by_job_uid.get(str(job.uid), []):
                 if not run.uid:
                     raise ControlPlaneError(
                         f"Job {job.name!r} returned a run without a public UID."

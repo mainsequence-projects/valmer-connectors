@@ -148,8 +148,20 @@ JOB_ACTIONS: tuple[JobActionDefinition, ...] = (
     JobActionDefinition(
         key="vector-refresh",
         job_name="Valmer Vector Refresh",
-        description="Import the configured Valmer source and publish vector observations.",
+        description="Import the configured Main Sequence Artifact source and publish vector observations.",
         execution_path="scripts/update_vector_valmer.py",
+    ),
+    JobActionDefinition(
+        key="vector-onedrive-refresh",
+        job_name="Valmer Vector Refresh — OneDrive Graph",
+        description="Import Valmer files from the configured Microsoft Graph drive.",
+        execution_path="scripts/update_vector_valmer_onedrive.py",
+    ),
+    JobActionDefinition(
+        key="vector-metatable-refresh",
+        job_name="Valmer Vector Refresh — MetaTable",
+        description="Import Valmer rows from the repository-declared MetaTable source.",
+        execution_path="scripts/update_vector_valmer_metatable.py",
     ),
     JobActionDefinition(
         key="irs-mxn-quotes-refresh",
@@ -168,6 +180,12 @@ JOB_ACTIONS: tuple[JobActionDefinition, ...] = (
         job_name="Banxico Fixings Refresh",
         description="Refresh supported Banxico TIIE and CETE fixings.",
         execution_path="scripts/update_banxico_fixings.py",
+    ),
+    JobActionDefinition(
+        key="banxico-tiie-fixings-refresh",
+        job_name="Banxico TIIE Fixings Refresh",
+        description="Refresh only the overnight, 28-day, 91-day, and 182-day TIIE fixings.",
+        execution_path="scripts/update_banxico_tiie_fixings.py",
     ),
     JobActionDefinition(
         key="fred-reference-rates-refresh",
@@ -200,6 +218,13 @@ JOB_ACTIONS: tuple[JobActionDefinition, ...] = (
         job_name="Valmer USD/MXN XCCY Curve Refresh",
         description="Build the cross-currency curve after TIIE and SOFR are fresh.",
         execution_path="scripts/update_valmer_usd_mxn_xccy_curve.py",
+        dependencies=("tiie-curve-refresh", "sofr-curve-refresh"),
+    ),
+    JobActionDefinition(
+        key="xccy-curve-rebuild",
+        job_name="Valmer USD/MXN XCCY Curve Rebuild",
+        description="Force a rebuild of the current cross-currency curve for recovery.",
+        execution_path="scripts/rebuild_valmer_usd_mxn_xccy_curve.py",
         dependencies=("tiie-curve-refresh", "sofr-curve-refresh"),
     ),
     JobActionDefinition(
@@ -264,6 +289,19 @@ PIPELINE_STAGES: tuple[dict[str, object], ...] = (
             "Run the complete dependency-ordered refresh or validate the persisted result."
         ),
         "actions": ["standard-pipeline-refresh", "pipeline-verification"],
+    },
+    {
+        "id": "operational-variants",
+        "label": "Operational variants",
+        "description": (
+            "Alternative production-safe source configurations and explicit recovery runs."
+        ),
+        "actions": [
+            "vector-onedrive-refresh",
+            "vector-metatable-refresh",
+            "banxico-tiie-fixings-refresh",
+            "xccy-curve-rebuild",
+        ],
     },
 )
 

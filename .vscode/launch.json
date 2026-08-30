@@ -174,7 +174,7 @@
         "--source",
         "metatable",
         "--source-metatables-config-path",
-        "${workspaceFolder}/.vscode/valmer-metatable-sources.debug.json"
+        "${workspaceFolder}/configs/valmer-metatable-sources.json"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
