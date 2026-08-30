@@ -44,8 +44,12 @@ Service = Annotated[ControlPlaneService, Depends(_service)]
 RequestUserUid = Annotated[str, Depends(_request_user_uid)]
 
 
-def create_app(service: ControlPlaneService | None = None) -> FastAPI:
-    app = FastAPI(
+def create_app(
+    service: ControlPlaneService | None = None,
+    *,
+    app: FastAPI | None = None,
+) -> FastAPI:
+    app = app or FastAPI(
         title="Valmer Control Plane API",
         version="1.0.0",
         description=(
