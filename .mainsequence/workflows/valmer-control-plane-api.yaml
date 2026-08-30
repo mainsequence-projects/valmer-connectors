@@ -1,0 +1,19 @@
+api_version: 2.1.0
+name: valmer-control-plane-api
+
+resources:
+  - key: valmer-control-plane-api
+    kind: resource_release
+    spec:
+      release_kind: fastapi
+      resource_uid: 0a0dbefb-48e3-445b-9fcc-69d63cb52212
+      automatic_deployment: true
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+      revision_retention_count: 3
+      cors_allowed_origins:
+        - https://*.site-dev.main-sequence.app
+      env_vars:
+        - name: VALMER_CONTROL_PLANE_OPERATOR_UIDS
+          value: e2a4f38a-1b5f-40a3-974f-70bc8f065b3f
