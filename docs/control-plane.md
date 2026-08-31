@@ -4,8 +4,8 @@
 
 The control plane is one application implemented across two Main Sequence CodeRepositories:
 
-- `valmer-connectors` owns the FastAPI resource, operational read models, approved Job catalog,
-  job execution authorization, and backend-managed Job workflow declarations.
+- `valmer-connectors` owns the FastAPI resource, operational read models, specialized Job launch
+  profiles, job execution authorization, and backend-managed Job workflow declarations.
 - `ValmerConnectorsMonitor` owns the Vite/React static site. It is the only control-plane user
   interface and extends `@dev-mainsequence/command-center-sdk` for embedding, theme, navigation,
   page layout, resource lists, discovery, and bulk actions.
@@ -57,13 +57,15 @@ no operator access. Job launch behavior is fail-closed:
 2. discovery must advertise the action for that caller;
 3. the SDK performs preflight before confirmation;
 4. selection must contain exactly one Job UID;
-5. the Job name must match the fixed approved catalog;
+5. the Job must belong to the current CodeRepositoryBranch;
 6. the latest run cannot already be pending or running; and
 7. the Job image must be ready.
 
-The execution endpoint does not accept arbitrary execution paths or command arguments. Each
-approved Job has an explicit typed parameter allowlist. The API validates those values, converts
-them to fixed command flags, and appends only those flags to the registered Job entrypoint.
+The execution endpoint does not accept arbitrary execution paths or command arguments. Every
+branch Job is discoverable and parameterless by default. Jobs with specialized runtime controls
+have an execution-path launch profile containing an explicit typed parameter allowlist. The API
+validates those values, converts them to fixed command flags, and appends only those flags to the
+registered Job entrypoint.
 Successful launches produce a structured application log containing the human UID, request UID,
 Job UID, Job name, returned JobRun UID, and command-argument count.
 
@@ -75,18 +77,19 @@ create a second JobRun presentation or polling implementation.
 
 ## Jobs And Scheduling
 
-`.mainsequence/workflows/valmer-control-plane-jobs.yaml` declares the approved source, fixing,
-curve, verification, and standard-pipeline Jobs. It includes distinct immutable entrypoints for
+`.mainsequence/workflows/valmer-control-plane-jobs.yaml` declares the source, fixing, curve,
+verification, and standard-pipeline Jobs, including their platform-owned display descriptions. It
+includes distinct immutable entrypoints for
 the production-safe VS Code variants: Artifact, OneDrive Graph, and MetaTable vector sources;
 the four-series TIIE-only fixing refresh; and the forced current XCCY rebuild. Only the
 dependency-ordered standard pipeline is scheduled (`0 13 * * 1-5`). Individual Jobs remain
 unscheduled recovery operations that an authorized operator can launch from the static site.
 
 `GET /api/v1/control-plane/jobs/{job_uid}/run-parameters` returns the application-owned runtime
-controls for one approved Job. Vector Jobs expose pricing-detail refresh and cursor-reprocessing
-booleans. Provider Jobs that support a cutoff expose an optional inclusive end date. The static
-site renders these controls inside the SDK confirmation dialog and sends their values through the
-normal SDK preflight and execution payload.
+controls for one branch Job. Unprofiled Jobs return an empty parameter list. Vector Jobs expose
+pricing-detail refresh and cursor-reprocessing booleans. Provider Jobs that support a cutoff expose
+an optional inclusive end date. The static site renders these controls inside the SDK confirmation
+dialog and sends their values through the normal SDK preflight and execution payload.
 
 The MetaTable source itself is not a runtime control. Both
 `scripts/update_vector_valmer_metatable.py` and the control-plane preflight import
@@ -103,14 +106,17 @@ the example script, and the local API/Vite host are development or administratio
 production workload Jobs.
 
 The workflow declaration is desired repository state, not proof that the Jobs exist. Overview and
-Pipeline responses reconcile all sixteen approved declarations with live branch Jobs. Missing Jobs
-are reported as configuration failures, and an existing Job without a run is reported as
+Pipeline responses reconcile all sixteen configured pipeline launch profiles with live branch
+Jobs by execution path. Missing pipeline Jobs are reported as configuration failures, and an
+existing Job without a run is reported as
 `not-run`. Launch responses must contain the platform JobRun UID. When the platform omits a status,
 the control plane reports the accepted launch as `ACCEPTED` and links to that returned JobRun.
 
 The Jobs collection is one frontend collection request. Its backend adapter performs one bulk
-Job query restricted to the sixteen approved names and one bulk JobRun query for those Job UIDs;
-it does not issue one JobRun request per Job.
+branch-scoped Job query without a name allowlist and one bulk JobRun query for all returned Job
+UIDs; it does not issue one JobRun request per Job. Job names, descriptions, execution paths,
+schedules, and image state come from the platform Job. Adding another branch Job therefore needs
+no display-catalog or Vite change.
 
 `scripts/run_control_plane_pipeline.py` is a thin Job entry point. The reusable runner under
 `src/valmer_connectors/control_plane/pipeline.py` starts every existing producer in its own Python

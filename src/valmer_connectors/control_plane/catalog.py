@@ -39,10 +39,8 @@ class JobParameterDefinition:
 
 
 @dataclass(frozen=True)
-class JobActionDefinition:
+class JobLaunchProfile:
     key: str
-    job_name: str
-    description: str
     execution_path: str
     dependencies: tuple[str, ...] = ()
     parameters: tuple[JobParameterDefinition, ...] = ()
@@ -200,119 +198,91 @@ DATA_PRODUCTS: tuple[DataProductDefinition, ...] = (
 )
 
 
-JOB_ACTIONS: tuple[JobActionDefinition, ...] = (
-    JobActionDefinition(
+JOB_LAUNCH_PROFILES: tuple[JobLaunchProfile, ...] = (
+    JobLaunchProfile(
         key="vector-refresh",
-        job_name="Valmer Vector Refresh",
-        description="Import the configured Main Sequence Artifact source and publish vector observations.",
         execution_path="scripts/update_vector_valmer.py",
         parameters=VECTOR_PARAMETERS,
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="vector-onedrive-refresh",
-        job_name="Valmer Vector Refresh — OneDrive Graph",
-        description="Import Valmer files from the configured Microsoft Graph drive.",
         execution_path="scripts/update_vector_valmer_onedrive.py",
         parameters=VECTOR_PARAMETERS,
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="vector-metatable-refresh",
-        job_name="Valmer Vector Refresh — MetaTable",
-        description="Import Valmer rows from the repository-declared MetaTable source.",
         execution_path="scripts/update_vector_valmer_metatable.py",
         parameters=VECTOR_PARAMETERS,
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="irs-mxn-quotes-refresh",
-        job_name="Valmer IRS MXN Quotes Refresh",
-        description="Publish the current IRS MXN quote snapshot.",
         execution_path="scripts/update_valmer_irs_mxn_quotes.py",
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="irs-usd-quotes-refresh",
-        job_name="Valmer IRS USD Quotes Refresh",
-        description="Publish the current IRS USD and SOFR quote snapshot.",
         execution_path="scripts/update_valmer_irs_usd_quotes.py",
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="banxico-fixings-refresh",
-        job_name="Banxico Fixings Refresh",
-        description="Refresh supported Banxico TIIE and CETE fixings.",
         execution_path="scripts/update_banxico_fixings.py",
         parameters=(END_DATE_PARAMETER,),
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="banxico-tiie-fixings-refresh",
-        job_name="Banxico TIIE Fixings Refresh",
-        description="Refresh only the overnight, 28-day, 91-day, and 182-day TIIE fixings.",
         execution_path="scripts/update_banxico_tiie_fixings.py",
         parameters=(END_DATE_PARAMETER,),
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="fred-reference-rates-refresh",
-        job_name="FRED Reference Rates Refresh",
-        description="Refresh configured FRED reference-rate observations.",
         execution_path="scripts/update_fred_reference_rates.py",
         parameters=(END_DATE_PARAMETER,),
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="banxico-policy-refresh",
-        job_name="Banxico Policy Target Refresh",
-        description="Refresh the Banco de Mexico policy target series.",
         execution_path="scripts/update_banxico_policy_rates.py",
         parameters=(END_DATE_PARAMETER,),
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="tiie-curve-refresh",
-        job_name="Valmer TIIE Curve Refresh",
-        description="Build the TIIE curve after MXN quotes and Banxico fixings are fresh.",
         execution_path="scripts/update_valmer_tiie_curve.py",
         dependencies=("irs-mxn-quotes-refresh", "banxico-fixings-refresh"),
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="sofr-curve-refresh",
-        job_name="Valmer SOFR Curve Refresh",
-        description="Build the SOFR curve after USD quotes are fresh.",
         execution_path="scripts/update_valmer_usd_sofr_curve.py",
         dependencies=("irs-usd-quotes-refresh",),
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="xccy-curve-refresh",
-        job_name="Valmer USD/MXN XCCY Curve Refresh",
-        description="Build the cross-currency curve after TIIE and SOFR are fresh.",
         execution_path="scripts/update_valmer_usd_mxn_xccy_curve.py",
         dependencies=("tiie-curve-refresh", "sofr-curve-refresh"),
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="xccy-curve-rebuild",
-        job_name="Valmer USD/MXN XCCY Curve Rebuild",
-        description="Force a rebuild of the current cross-currency curve for recovery.",
         execution_path="scripts/rebuild_valmer_usd_mxn_xccy_curve.py",
         dependencies=("tiie-curve-refresh", "sofr-curve-refresh"),
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="government-curve-refresh",
-        job_name="Valmer MXN Government Curve Refresh",
-        description="Build the government curve after the Valmer vector is fresh.",
         execution_path="scripts/update_valmer_mxn_government_curve.py",
         dependencies=("vector-refresh",),
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="standard-pipeline-refresh",
-        job_name="Valmer Standard Pipeline Refresh",
-        description="Execute the complete dependency-ordered production refresh.",
         execution_path="scripts/run_control_plane_pipeline.py",
     ),
-    JobActionDefinition(
+    JobLaunchProfile(
         key="pipeline-verification",
-        job_name="Valmer Pipeline Verification",
-        description="Run the persisted-data verification suite without mutating source data.",
         execution_path="scripts/verify_current_pipeline.py",
     ),
 )
 
-JOB_ACTIONS_BY_KEY = {action.key: action for action in JOB_ACTIONS}
-JOB_ACTIONS_BY_NAME = {action.job_name: action for action in JOB_ACTIONS}
+JOB_LAUNCH_PROFILES_BY_KEY = {
+    profile.key: profile for profile in JOB_LAUNCH_PROFILES
+}
+JOB_LAUNCH_PROFILES_BY_EXECUTION_PATH = {
+    profile.execution_path: profile for profile in JOB_LAUNCH_PROFILES
+}
 
 
 PIPELINE_STAGES: tuple[dict[str, object], ...] = (
@@ -375,11 +345,11 @@ __all__ = [
     "CURRENT_PRICING_DETAILS_TABLE_IDENTIFIER",
     "DISCOUNT_CURVE_TABLE_IDENTIFIER",
     "INDEX_FIXINGS_TABLE_IDENTIFIER",
-    "JOB_ACTIONS",
-    "JOB_ACTIONS_BY_KEY",
-    "JOB_ACTIONS_BY_NAME",
+    "JOB_LAUNCH_PROFILES",
+    "JOB_LAUNCH_PROFILES_BY_EXECUTION_PATH",
+    "JOB_LAUNCH_PROFILES_BY_KEY",
     "PIPELINE_STAGES",
     "DataProductDefinition",
-    "JobActionDefinition",
+    "JobLaunchProfile",
     "JobParameterDefinition",
 ]

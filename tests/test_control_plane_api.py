@@ -20,7 +20,7 @@ from valmer_connectors.control_plane.catalog import (
     DISCOUNT_CURVE_TABLE_IDENTIFIER,
     INDEX_FIXINGS_TABLE_IDENTIFIER,
     INDEX_VALUES_TABLE_IDENTIFIER,
-    JOB_ACTIONS,
+    JOB_LAUNCH_PROFILES,
     VALMER_ASSET_DETAILS_TABLE_IDENTIFIER,
     VECTOR_TABLE_IDENTIFIER,
 )
@@ -29,7 +29,7 @@ from valmer_connectors.control_plane.service import (
     ControlPlaneService,
     Job,
     PlatformControlPlaneGateway,
-    _approved_job_definition,
+    _job_launch_profile,
     _qualified_table_name,
     _select_meta_table_rows,
 )
@@ -114,21 +114,20 @@ class FakeControlPlaneGateway:
         return [
             {
                 "uid": f"job-{index}",
-                "key": action.key,
-                "name": action.job_name,
-                "description": action.description,
+                "key": profile.key,
+                "name": f"Job {profile.key}",
+                "description": f"Purpose of {profile.key}.",
                 "status": self.job_status,
                 "last_run_status": "SUCCEEDED",
                 "last_run_at": "2026-08-30T00:00:00+00:00",
-                "execution_path": action.execution_path,
+                "execution_path": profile.execution_path,
                 "schedule": None,
                 "image_status": "ready",
                 "automatic_deployment": True,
-                "dependencies": list(action.dependencies),
-                "approved_action": True,
-                "parameter_count": len(action.parameters),
+                "dependencies": list(profile.dependencies),
+                "parameter_count": len(profile.parameters),
             }
-            for index, action in enumerate(JOB_ACTIONS, start=1)
+            for index, profile in enumerate(JOB_LAUNCH_PROFILES, start=1)
         ]
 
     def environment_name(self) -> str:
@@ -287,18 +286,18 @@ def test_overview_does_not_expose_upstream_html_error_pages() -> None:
     assert "DOCTYPE" not in overview.failures[-1]
 
 
-def test_approved_job_requires_both_catalog_name_and_execution_path() -> None:
-    approved = SimpleNamespace(
-        name="Valmer Vector Refresh",
+def test_job_launch_profile_is_resolved_from_execution_path() -> None:
+    configured = SimpleNamespace(
+        name="A renamed platform Job",
         execution_path="scripts/update_vector_valmer.py",
     )
-    replaced = SimpleNamespace(
+    unconfigured = SimpleNamespace(
         name="Valmer Vector Refresh",
-        execution_path="scripts/unapproved.py",
+        execution_path="scripts/another_job.py",
     )
 
-    assert _approved_job_definition(approved) is not None
-    assert _approved_job_definition(replaced) is None
+    assert _job_launch_profile(configured) is not None
+    assert _job_launch_profile(unconfigured) is None
 
 
 def test_authenticated_overview_and_resource_collection() -> None:
@@ -335,7 +334,7 @@ def test_authenticated_overview_and_resource_collection() -> None:
     }
 
 
-def test_overview_reports_missing_approved_jobs_as_a_failure() -> None:
+def test_overview_reports_missing_pipeline_jobs_as_a_failure() -> None:
     class MissingJobsGateway(FakeControlPlaneGateway):
         def jobs(self) -> list[dict[str, object]]:
             return []
@@ -346,10 +345,10 @@ def test_overview_reports_missing_approved_jobs_as_a_failure() -> None:
     )
 
     assert overview.status == "failed"
-    assert available_jobs.display == f"0/{len(JOB_ACTIONS)}"
+    assert available_jobs.display == "0"
     assert available_jobs.status == "failed"
     assert overview.failures[-1] == (
-        f"Jobs: 0 of {len(JOB_ACTIONS)} approved control-plane Jobs are "
+        f"Pipeline Jobs: 0 of {len(JOB_LAUNCH_PROFILES)} configured pipeline Jobs are "
         "available in this branch."
     )
 
@@ -398,21 +397,32 @@ def test_platform_gateway_reads_current_pricing_details() -> None:
     assert "identity_count" not in vector
 
 
-def test_platform_gateway_bulk_loads_required_jobs_and_runs(monkeypatch) -> None:
-    first_action, second_action = JOB_ACTIONS[:2]
+def test_platform_gateway_bulk_loads_all_branch_jobs_and_runs(monkeypatch) -> None:
+    first_profile, second_profile = JOB_LAUNCH_PROFILES[:2]
     jobs = [
         SimpleNamespace(
             uid="job-1",
-            name=first_action.job_name,
-            execution_path=first_action.execution_path,
+            name="First platform Job",
+            description="Description owned by the first platform Job.",
+            execution_path=first_profile.execution_path,
             task_schedule=None,
             image_status="ready",
             automatic_deployment=True,
         ),
         SimpleNamespace(
             uid="job-2",
-            name=second_action.job_name,
-            execution_path=second_action.execution_path,
+            name="Second platform Job",
+            description="Description owned by the second platform Job.",
+            execution_path=second_profile.execution_path,
+            task_schedule=None,
+            image_status="ready",
+            automatic_deployment=True,
+        ),
+        SimpleNamespace(
+            uid="job-3",
+            name="New branch Job",
+            description="Automatically discovered without a launch profile.",
+            execution_path="scripts/new_branch_job.py",
             task_schedule=None,
             image_status="ready",
             automatic_deployment=True,
@@ -442,15 +452,13 @@ def test_platform_gateway_bulk_loads_required_jobs_and_runs(monkeypatch) -> None
 
     result = PlatformControlPlaneGateway().jobs()
 
-    assert [item["uid"] for item in result] == ["job-1", "job-2"]
-    assert job_queries == [
-        {
-            "timeout": 60,
-            "name__in": [definition.job_name for definition in JOB_ACTIONS],
-        }
-    ]
+    assert [item["uid"] for item in result] == ["job-1", "job-2", "job-3"]
+    assert result[0]["description"] == "Description owned by the first platform Job."
+    assert result[2]["key"] is None
+    assert result[2]["parameter_count"] == 0
+    assert job_queries == [{"timeout": 60}]
     assert run_queries == [
-        {"timeout": 60, "job__uid__in": ["job-1", "job-2"]}
+        {"timeout": 60, "job__uid__in": ["job-1", "job-2", "job-3"]}
     ]
 
 
@@ -621,7 +629,7 @@ def test_viewer_cannot_execute_job_action() -> None:
     assert execution.status_code == 403
 
 
-def test_operator_preflights_and_launches_one_approved_job() -> None:
+def test_operator_preflights_and_launches_one_branch_job() -> None:
     gateway = FakeControlPlaneGateway()
     payload = {"selection": {"mode": "explicit", "uids": ["job-1"]}, "options": {}}
 
@@ -640,6 +648,51 @@ def test_operator_preflights_and_launches_one_approved_job() -> None:
     assert gateway.launched_command_args == [
         ["--force-pricing-details-patch", "--no-bypass-vector-cursor-filter"]
     ]
+
+
+def test_unprofiled_branch_job_is_parameterless_and_launchable() -> None:
+    class DynamicJobsGateway(FakeControlPlaneGateway):
+        def jobs(self) -> list[dict[str, object]]:
+            return [
+                *super().jobs(),
+                {
+                    "uid": "job-dynamic",
+                    "key": None,
+                    "name": "New branch Job",
+                    "description": "Discovered from the platform Job.",
+                    "status": "not-run",
+                    "last_run_status": None,
+                    "last_run_at": None,
+                    "execution_path": "scripts/new_branch_job.py",
+                    "schedule": None,
+                    "image_status": "ready",
+                    "automatic_deployment": True,
+                    "dependencies": [],
+                    "parameter_count": 0,
+                },
+            ]
+
+    gateway = DynamicJobsGateway()
+    payload = {
+        "selection": {"mode": "explicit", "uids": ["job-dynamic"]},
+        "options": {},
+    }
+
+    with _client("operator-user", gateway=gateway) as client:
+        parameters = client.get(
+            "/api/v1/control-plane/jobs/job-dynamic/run-parameters"
+        )
+        execution = client.post(
+            "/api/v1/control-plane/jobs/actions/run",
+            json=payload,
+        )
+
+    assert parameters.status_code == 200
+    assert parameters.json()["job_key"] == "job-dynamic"
+    assert parameters.json()["parameters"] == []
+    assert execution.status_code == 202
+    assert gateway.launched_job_uids == ["job-dynamic"]
+    assert gateway.launched_command_args == [[]]
 
 
 def test_job_run_parameters_expose_runtime_controls_not_metatable_selection() -> None:
@@ -704,11 +757,17 @@ def test_pipeline_reconciles_declared_actions_with_registered_jobs() -> None:
 
     assert vector.available is True
     assert vector.job_uid == "job-1"
+    assert vector.name == "Job vector-refresh"
+    assert vector.description == "Purpose of vector-refresh."
     assert vector.status == "succeeded"
     assert missing.available is False
     assert missing.job_uid is None
+    assert missing.name is None
+    assert missing.description is None
     assert missing.status == "missing"
-    assert {action.key for action in actions} == {action.key for action in JOB_ACTIONS}
+    assert {action.key for action in actions} == {
+        profile.key for profile in JOB_LAUNCH_PROFILES
+    }
 
 
 def test_launch_accepts_platform_response_without_run_status() -> None:

@@ -262,7 +262,7 @@ This repository currently does not create:
 
 The repository now includes:
 
-- `.mainsequence/workflows/valmer-control-plane-jobs.yaml` for approved manual
+- `.mainsequence/workflows/valmer-control-plane-jobs.yaml` for described manual
   Jobs and the scheduled dependency-ordered standard pipeline
 - independent FRED and Banxico analytical reference-rate producers
 - `valmer-connectors runtime validate` for runtime validation

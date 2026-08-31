@@ -6,6 +6,7 @@ resources:
     kind: job
     spec:
       name: Valmer Vector Refresh
+      description: Import the configured Main Sequence Artifact source and publish vector observations.
       execution_path: scripts/update_vector_valmer.py
       cpu_request: "1"
       memory_request: "4"
@@ -19,6 +20,7 @@ resources:
     kind: job
     spec:
       name: Valmer Vector Refresh — OneDrive Graph
+      description: Import Valmer files from the configured Microsoft Graph drive.
       execution_path: scripts/update_vector_valmer_onedrive.py
       cpu_request: "1"
       memory_request: "4"
@@ -32,6 +34,7 @@ resources:
     kind: job
     spec:
       name: Valmer Vector Refresh — MetaTable
+      description: Import Valmer rows from the repository-configured MetaTable source.
       execution_path: scripts/update_vector_valmer_metatable.py
       cpu_request: "1"
       memory_request: "4"
@@ -45,6 +48,7 @@ resources:
     kind: job
     spec:
       name: Valmer IRS MXN Quotes Refresh
+      description: Publish the current IRS MXN quote snapshot.
       execution_path: scripts/update_valmer_irs_mxn_quotes.py
       cpu_request: "0.5"
       memory_request: "2"
@@ -58,6 +62,7 @@ resources:
     kind: job
     spec:
       name: Valmer IRS USD Quotes Refresh
+      description: Publish the current IRS USD and SOFR quote snapshot.
       execution_path: scripts/update_valmer_irs_usd_quotes.py
       cpu_request: "0.5"
       memory_request: "2"
@@ -71,6 +76,7 @@ resources:
     kind: job
     spec:
       name: Banxico Fixings Refresh
+      description: Refresh supported Banxico TIIE and CETE fixings.
       execution_path: scripts/update_banxico_fixings.py
       cpu_request: "0.5"
       memory_request: "2"
@@ -84,6 +90,7 @@ resources:
     kind: job
     spec:
       name: Banxico TIIE Fixings Refresh
+      description: Refresh only the overnight, 28-day, 91-day, and 182-day TIIE fixings.
       execution_path: scripts/update_banxico_tiie_fixings.py
       cpu_request: "0.5"
       memory_request: "2"
@@ -97,6 +104,7 @@ resources:
     kind: job
     spec:
       name: FRED Reference Rates Refresh
+      description: Refresh configured FRED reference-rate observations.
       execution_path: scripts/update_fred_reference_rates.py
       cpu_request: "0.5"
       memory_request: "2"
@@ -110,6 +118,7 @@ resources:
     kind: job
     spec:
       name: Banxico Policy Target Refresh
+      description: Refresh the Banco de Mexico policy target series.
       execution_path: scripts/update_banxico_policy_rates.py
       cpu_request: "0.5"
       memory_request: "2"
@@ -123,6 +132,7 @@ resources:
     kind: job
     spec:
       name: Valmer TIIE Curve Refresh
+      description: Build the TIIE curve after MXN quotes and Banxico fixings are fresh.
       execution_path: scripts/update_valmer_tiie_curve.py
       cpu_request: "1"
       memory_request: "4"
@@ -136,6 +146,7 @@ resources:
     kind: job
     spec:
       name: Valmer SOFR Curve Refresh
+      description: Build the SOFR curve after USD quotes are fresh.
       execution_path: scripts/update_valmer_usd_sofr_curve.py
       cpu_request: "1"
       memory_request: "4"
@@ -149,6 +160,7 @@ resources:
     kind: job
     spec:
       name: Valmer USD/MXN XCCY Curve Refresh
+      description: Build the cross-currency curve after TIIE and SOFR are fresh.
       execution_path: scripts/update_valmer_usd_mxn_xccy_curve.py
       cpu_request: "1"
       memory_request: "4"
@@ -162,6 +174,7 @@ resources:
     kind: job
     spec:
       name: Valmer USD/MXN XCCY Curve Rebuild
+      description: Force a rebuild of the current cross-currency curve for recovery.
       execution_path: scripts/rebuild_valmer_usd_mxn_xccy_curve.py
       cpu_request: "1"
       memory_request: "4"
@@ -175,6 +188,7 @@ resources:
     kind: job
     spec:
       name: Valmer MXN Government Curve Refresh
+      description: Build the government curve after the Valmer vector is fresh.
       execution_path: scripts/update_valmer_mxn_government_curve.py
       cpu_request: "1"
       memory_request: "4"
@@ -188,6 +202,7 @@ resources:
     kind: job
     spec:
       name: Valmer Standard Pipeline Refresh
+      description: Execute the complete dependency-ordered production refresh.
       execution_path: scripts/run_control_plane_pipeline.py
       cpu_request: "1"
       memory_request: "4"
@@ -205,6 +220,7 @@ resources:
     kind: job
     spec:
       name: Valmer Pipeline Verification
+      description: Run the persisted-data verification suite without mutating source data.
       execution_path: scripts/verify_current_pipeline.py
       cpu_request: "0.5"
       memory_request: "2"

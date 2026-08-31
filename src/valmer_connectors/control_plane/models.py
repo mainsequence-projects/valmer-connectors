@@ -100,8 +100,8 @@ class OverviewResponse(StrictModel):
 
 class PipelineAction(StrictModel):
     key: str
-    name: str
-    description: str
+    name: str | None
+    description: str | None
     execution_path: str
     dependencies: list[str]
     available: bool

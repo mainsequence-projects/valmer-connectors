@@ -13,7 +13,7 @@ mainsequence code-repository update AGENTS.md --path .
 mainsequence code-repository sync --path . -m "Sync Valmer control-plane backend"
 ```
 
-The approved control-plane Jobs are declared in
+The control-plane Jobs and their platform-owned descriptions are declared in
 `.mainsequence/workflows/valmer-control-plane-jobs.yaml`. The standard pipeline
 is the only scheduled Job; leaf Jobs and source/rebuild variants are manual
 operations. The platform catalog deliberately excludes launch configurations that
@@ -70,7 +70,7 @@ Use the Vite control plane after both ResourceReleases are ready to confirm:
 - data-product and asset resource pagination;
 - viewer read access and viewer launch denial;
 - operator Job discovery, preflight, typed confirmation, and execution; and
-- JobRun polling after a launch.
+- the accepted JobRun link after a launch.
 
 For both releases, verify that `automatic_deployment` is enabled, the nested
 tag policy is null (every synchronized commit), `revision_retention_count` is

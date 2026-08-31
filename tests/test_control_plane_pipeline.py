@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from valmer_connectors.control_plane.catalog import JOB_ACTIONS
+from valmer_connectors.control_plane.catalog import JOB_LAUNCH_PROFILES
 from valmer_connectors.control_plane.pipeline import PIPELINE_SCRIPTS, run_pipeline
 
 
@@ -24,7 +24,7 @@ def test_control_plane_pipeline_runs_every_stage_in_dependency_order() -> None:
     assert all(cwd == Path(__file__).resolve().parents[1] for _command, _check, cwd, _text in calls)
 
 
-def test_control_plane_workflow_declares_the_exact_approved_job_catalog() -> None:
+def test_control_plane_workflow_declares_described_jobs_for_every_launch_profile() -> None:
     repository_root = Path(__file__).resolve().parents[1]
     workflow_path = (
         repository_root / ".mainsequence" / "workflows" / "valmer-control-plane-jobs.yaml"
@@ -34,11 +34,12 @@ def test_control_plane_workflow_declares_the_exact_approved_job_catalog() -> Non
     jobs_by_key = {resource["key"]: resource["spec"] for resource in jobs}
 
     assert workflow["api_version"] == "2.1.0"
-    assert set(jobs_by_key) == {action.key for action in JOB_ACTIONS}
-    for action in JOB_ACTIONS:
-        assert jobs_by_key[action.key]["name"] == action.job_name
-        assert jobs_by_key[action.key]["execution_path"] == action.execution_path
-        assert jobs_by_key[action.key]["automatic_redeployment"] == {
+    assert set(jobs_by_key) == {profile.key for profile in JOB_LAUNCH_PROFILES}
+    for profile in JOB_LAUNCH_PROFILES:
+        assert jobs_by_key[profile.key]["name"].strip()
+        assert jobs_by_key[profile.key]["description"].strip()
+        assert jobs_by_key[profile.key]["execution_path"] == profile.execution_path
+        assert jobs_by_key[profile.key]["automatic_redeployment"] == {
             "enabled": True,
             "tag_regex": None,
         }
@@ -55,4 +56,6 @@ def test_pipeline_exposes_every_approved_job_action() -> None:
         for action_key in stage["actions"]
     }
 
-    assert pipeline_action_keys == {action.key for action in JOB_ACTIONS}
+    assert pipeline_action_keys == {
+        profile.key for profile in JOB_LAUNCH_PROFILES
+    }

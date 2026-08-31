@@ -26,13 +26,13 @@ from mainsequence.client.models_helpers import Job, JobRun
 from mainsequence.meta_tables import TimeIndexTableRef
 from valmer_connectors.control_plane.catalog import (
     DATA_PRODUCTS,
-    JOB_ACTIONS,
-    JOB_ACTIONS_BY_KEY,
-    JOB_ACTIONS_BY_NAME,
+    JOB_LAUNCH_PROFILES,
+    JOB_LAUNCH_PROFILES_BY_EXECUTION_PATH,
+    JOB_LAUNCH_PROFILES_BY_KEY,
     PIPELINE_STAGES,
     VALMER_ASSET_DETAILS_TABLE_IDENTIFIER,
     DataProductDefinition,
-    JobActionDefinition,
+    JobLaunchProfile,
     JobParameterDefinition,
 )
 from valmer_connectors.control_plane.models import (
@@ -150,11 +150,10 @@ def _canonical_job_run_status(value: object) -> str:
     return status
 
 
-def _approved_job_definition(job: Job) -> JobActionDefinition | None:
-    definition = JOB_ACTIONS_BY_NAME.get(job.name)
-    if definition is None or job.execution_path != definition.execution_path:
+def _job_launch_profile(job: Job) -> JobLaunchProfile | None:
+    if not job.execution_path:
         return None
-    return definition
+    return JOB_LAUNCH_PROFILES_BY_EXECUTION_PATH.get(job.execution_path)
 
 
 def _job_parameter_value(
@@ -182,18 +181,24 @@ def _job_parameter_value(
 
 
 def _job_command_args(
-    definition: JobActionDefinition,
+    profile: JobLaunchProfile | None,
     options: dict[str, Any],
 ) -> list[str]:
-    parameter_by_key = {parameter.key: parameter for parameter in definition.parameters}
+    if profile is None:
+        if options:
+            raise ValueError("This Job does not accept runtime parameters.")
+        return []
+
+    parameter_by_key = {parameter.key: parameter for parameter in profile.parameters}
     unknown = sorted(set(options) - set(parameter_by_key))
     if unknown:
         raise ValueError(
-            f"Unsupported parameter(s) for {definition.job_name}: {', '.join(unknown)}."
+            "Unsupported runtime parameter(s) for "
+            f"{profile.execution_path}: {', '.join(unknown)}."
         )
 
     command_args: list[str] = []
-    for parameter in definition.parameters:
+    for parameter in profile.parameters:
         value = _job_parameter_value(parameter, options)
         if parameter.required and value is None:
             raise ValueError(f"{parameter.label} is required.")
@@ -651,14 +656,14 @@ class PlatformControlPlaneGateway:
         return result
 
     def jobs(self) -> list[dict[str, Any]]:
-        jobs = self.required_jobs()
+        jobs = self.branch_jobs()
         job_uids = [str(job.uid) for job in jobs if job.uid]
         runs_by_job_uid = self.job_runs_for_uids(job_uids)
         result: list[dict[str, Any]] = []
         for job in jobs:
             if not job.uid:
                 continue
-            definition = _approved_job_definition(job)
+            profile = _job_launch_profile(job)
             runs = runs_by_job_uid.get(str(job.uid), [])
             latest = runs[0] if runs else None
             latest_status = (
@@ -677,9 +682,9 @@ class PlatformControlPlaneGateway:
             result.append(
                 {
                     "uid": str(job.uid),
-                    "key": definition.key if definition else None,
+                    "key": profile.key if profile else None,
                     "name": job.name,
-                    "description": definition.description if definition else None,
+                    "description": str(job.description).strip() or None,
                     "status": status,
                     "last_run_status": latest_status,
                     "last_run_at": _iso(getattr(latest, "execution_start", None)) if latest else None,
@@ -687,25 +692,19 @@ class PlatformControlPlaneGateway:
                     "schedule": schedule,
                     "image_status": job.image_status,
                     "automatic_deployment": job.automatic_deployment,
-                    "dependencies": list(definition.dependencies) if definition else [],
-                    "approved_action": definition is not None,
-                    "parameter_count": len(definition.parameters) if definition else 0,
+                    "dependencies": list(profile.dependencies) if profile else [],
+                    "parameter_count": len(profile.parameters) if profile else 0,
                 }
             )
         return result
 
     @staticmethod
-    def required_jobs() -> list[Job]:
+    def branch_jobs() -> list[Job]:
         try:
-            return list(
-                Job.filter(
-                    name__in=[definition.job_name for definition in JOB_ACTIONS],
-                    timeout=60,
-                )
-            )
+            return list(Job.filter(timeout=60))
         except Exception as exc:
             raise ControlPlaneError(
-                "The required platform Jobs query failed: "
+                "The platform Jobs query failed: "
                 f"{_operational_error_message(exc)}"
             ) from exc
 
@@ -741,7 +740,7 @@ class PlatformControlPlaneGateway:
         return runs_by_job_uid
 
     def job_runs(self) -> list[dict[str, Any]]:
-        jobs = self.required_jobs()
+        jobs = self.branch_jobs()
         runs_by_job_uid = self.job_runs_for_uids(
             [str(job.uid) for job in jobs if job.uid]
         )
@@ -781,10 +780,6 @@ class PlatformControlPlaneGateway:
         if len(matches) != 1:
             raise ControlPlaneConflict("The selected Job is no longer available in this branch.")
         job = matches[0]
-        if _approved_job_definition(job) is None:
-            raise ControlPlaneConflict(
-                "The selected Job no longer matches the approved control-plane catalog."
-            )
         runs = self.job_runs_for(job_uid)
         if runs and _canonical_job_run_status(runs[0].status) in RUNNING_JOB_STATUSES:
             raise ControlPlaneConflict(
@@ -855,23 +850,25 @@ class ControlPlaneService:
             jobs = []
             jobs_loaded = False
             failures.append(f"Jobs: {_operational_error_message(exc)}")
-        approved_jobs = [item for item in jobs if item["approved_action"]]
         available_action_keys = {
-            item["key"] for item in approved_jobs if item.get("key") is not None
+            item["key"] for item in jobs if item.get("key") is not None
         }
-        missing_actions = [
-            action for action in JOB_ACTIONS if action.key not in available_action_keys
+        missing_profiles = [
+            profile
+            for profile in JOB_LAUNCH_PROFILES
+            if profile.key not in available_action_keys
         ]
-        if jobs_loaded and missing_actions:
+        if jobs_loaded and missing_profiles:
             failures.append(
-                "Jobs: "
-                f"{len(approved_jobs)} of {len(JOB_ACTIONS)} approved control-plane "
-                "Jobs are available in this branch."
+                "Pipeline Jobs: "
+                f"{len(JOB_LAUNCH_PROFILES) - len(missing_profiles)} of "
+                f"{len(JOB_LAUNCH_PROFILES)} configured pipeline Jobs are "
+                "available in this branch."
             )
-        running = sum(item["status"] == "running" for item in approved_jobs)
+        running = sum(item["status"] == "running" for item in jobs)
         failed = sum(
             item["last_run_status"] in FAILURE_JOB_STATUSES
-            for item in approved_jobs
+            for item in jobs
             if item["last_run_status"] is not None
         )
         unhealthy_products = sum(
@@ -893,7 +890,7 @@ class ControlPlaneService:
             else "warning"
         )
         jobs_available_status = (
-            "healthy" if jobs_loaded and not missing_actions else "failed"
+            "healthy" if jobs_loaded and not missing_profiles else "failed"
         )
         metrics = [
             Metric(
@@ -946,13 +943,11 @@ class ControlPlaneService:
             Metric(
                 id="available-jobs",
                 label="Available Jobs",
-                value=len(approved_jobs) if jobs_loaded else None,
+                value=len(jobs) if jobs_loaded else None,
                 display=(
-                    f"{len(approved_jobs)}/{len(JOB_ACTIONS)}"
-                    if jobs_loaded
-                    else "Unavailable"
+                    str(len(jobs)) if jobs_loaded else "Unavailable"
                 ),
-                detail="Approved control-plane Jobs currently registered in this branch.",
+                detail="Jobs currently registered in this branch.",
                 status=jobs_available_status,
             ),
             Metric(
@@ -965,7 +960,7 @@ class ControlPlaneService:
                     "running"
                     if running
                     else "healthy"
-                    if jobs_loaded and not missing_actions
+                    if jobs_loaded and not missing_profiles
                     else "failed"
                 ),
             ),
@@ -975,7 +970,7 @@ class ControlPlaneService:
                 value=failed if jobs_loaded else None,
                 display=str(failed) if jobs_loaded else "Unavailable",
                 detail="Branch Jobs whose latest run failed or was aborted.",
-                status="failed" if failed or missing_actions else "healthy",
+                status="failed" if failed or missing_profiles else "healthy",
             ),
             Metric(
                 id="unhealthy-products",
@@ -1064,11 +1059,13 @@ class ControlPlaneService:
             (item for item in self.gateway.jobs() if item["uid"] == job_uid),
             None,
         )
-        if selected is None or not selected["approved_action"] or not selected.get("key"):
-            raise ControlPlaneConflict(
-                "The selected Job is not available in the approved control-plane catalog."
-            )
-        definition = JOB_ACTIONS_BY_KEY[str(selected["key"])]
+        if selected is None:
+            raise ControlPlaneConflict("The selected Job is not available in this branch.")
+        profile = (
+            JOB_LAUNCH_PROFILES_BY_KEY[str(selected["key"])]
+            if selected.get("key")
+            else None
+        )
         parameters = [
             JobParameter(
                 key=parameter.key,
@@ -1078,16 +1075,16 @@ class ControlPlaneService:
                 required=parameter.required,
                 default=parameter.default,
             )
-            for parameter in definition.parameters
+            for parameter in (profile.parameters if profile is not None else ())
         ]
         return JobRunParametersResponse(
             job_uid=job_uid,
-            job_key=definition.key,
+            job_key=profile.key if profile is not None else job_uid,
             parameters=parameters,
             configuration_summary=(
                 "The vector source is fixed by the repository configuration and "
                 "validated with a one-row read probe before launch."
-                if definition.key == "vector-metatable-refresh"
+                if profile is not None and profile.key == "vector-metatable-refresh"
                 else None
             ),
         )
@@ -1112,21 +1109,21 @@ class ControlPlaneService:
         jobs_by_key = {
             item["key"]: item
             for item in self.gateway.jobs()
-            if item["approved_action"] and item.get("key") is not None
+            if item.get("key") is not None
         }
         stages: list[dict[str, Any]] = []
         for stage in PIPELINE_STAGES:
             actions: list[dict[str, Any]] = []
             for action_key in stage["actions"]:
-                definition = JOB_ACTIONS_BY_KEY[str(action_key)]
-                job = jobs_by_key.get(definition.key)
+                profile = JOB_LAUNCH_PROFILES_BY_KEY[str(action_key)]
+                job = jobs_by_key.get(profile.key)
                 actions.append(
                     {
-                        "key": definition.key,
-                        "name": definition.job_name,
-                        "description": definition.description,
-                        "execution_path": definition.execution_path,
-                        "dependencies": list(definition.dependencies),
+                        "key": profile.key,
+                        "name": job["name"] if job else None,
+                        "description": job["description"] if job else None,
+                        "execution_path": profile.execution_path,
+                        "dependencies": list(profile.dependencies),
                         "available": job is not None,
                         "job_uid": job["uid"] if job else None,
                         "status": job["status"] if job else "missing",
@@ -1136,7 +1133,7 @@ class ControlPlaneService:
                         "automatic_deployment": (
                             job["automatic_deployment"] if job else None
                         ),
-                        "parameter_count": len(definition.parameters),
+                        "parameter_count": len(profile.parameters),
                     }
                 )
             stages.append(
@@ -1149,7 +1146,10 @@ class ControlPlaneService:
             )
         return PipelineResponse(
             stages=stages,
-            action_dependencies={action.key: list(action.dependencies) for action in JOB_ACTIONS},
+            action_dependencies={
+                profile.key: list(profile.dependencies)
+                for profile in JOB_LAUNCH_PROFILES
+            },
         )
 
     def preflight(self, user_uid: str, request: BulkActionExecution) -> BulkActionPreflight:
@@ -1171,19 +1171,21 @@ class ControlPlaneService:
             selected = next((job for job in jobs if job["uid"] == selected_uids[0]), None)
             if selected is None:
                 blockers.append("The selected Job is not available in this branch.")
-            elif not selected["approved_action"]:
-                blockers.append("The selected Job is not in the approved control-plane catalog.")
             elif selected["status"] == "running":
                 blockers.append("The selected Job already has a pending or running execution.")
             elif selected["image_status"] not in {"ready", "READY"}:
                 blockers.append("The selected Job image is not ready.")
-            if selected and selected.get("key"):
-                definition = JOB_ACTIONS_BY_KEY[str(selected["key"])]
+            if selected:
+                profile = (
+                    JOB_LAUNCH_PROFILES_BY_KEY[str(selected["key"])]
+                    if selected.get("key")
+                    else None
+                )
                 try:
-                    _job_command_args(definition, request.options)
+                    _job_command_args(profile, request.options)
                 except ValueError as exc:
                     blockers.append(str(exc))
-                if definition.key == "vector-metatable-refresh":
+                if profile is not None and profile.key == "vector-metatable-refresh":
                     try:
                         validated_source = (
                             self.gateway.validate_configured_vector_source()
@@ -1229,13 +1231,15 @@ class ControlPlaneService:
             (item for item in self.gateway.jobs() if item["uid"] == job_uid),
             None,
         )
-        if selected is None or not selected.get("key"):
-            raise ControlPlaneConflict(
-                "The selected Job is not available in the approved control-plane catalog."
-            )
-        definition = JOB_ACTIONS_BY_KEY[str(selected["key"])]
+        if selected is None:
+            raise ControlPlaneConflict("The selected Job is not available in this branch.")
+        profile = (
+            JOB_LAUNCH_PROFILES_BY_KEY[str(selected["key"])]
+            if selected.get("key")
+            else None
+        )
         try:
-            command_args = _job_command_args(definition, request.options)
+            command_args = _job_command_args(profile, request.options)
         except ValueError as exc:
             raise ControlPlaneConflict(str(exc)) from exc
         request_uid = str(uuid.uuid4())
