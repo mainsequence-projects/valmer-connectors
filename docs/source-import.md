@@ -342,28 +342,10 @@ The config file contains one or more `MetaTableValmerSource` entries:
 }
 ```
 
-When the source has no stable logical identifier, use a MetaTable UID instead:
-
-```json
-{
-  "sources": [
-    {
-      "source_name": "example_corporate_slice",
-      "metatable_uid": "00000000-0000-0000-0000-000000000000",
-      "column_map": {
-        "Fecha": "fecha",
-        "TV": "tipovalor",
-        "Emisora": "emisora",
-        "Serie": "serie",
-        "PrecioSucio": "preciosucio",
-        "PrecioLimpio": "preciolimpio",
-        "Moneda": "monedaemision",
-        "Isin": "isin"
-      }
-    }
-  ]
-}
-```
+Every source must have a stable logical MetaTable identifier. Register or import
+the external table and assign that identifier before configuring the Job. The
+Job resolves the identifier through Main Sequence and never accepts a physical
+database connection or a MetaTable UID as a source reference.
 
 Multiple sources are allowed. Each source is read independently and then
 normalized into the same Valmer semantic column names:
@@ -404,40 +386,11 @@ cursor per `asset_identifier`, and only then concatenated with the other source
 frames. Duplicate `(time_index, asset_identifier)` rows across MetaTable
 sources fail unless a source-priority rule is added in a later implementation.
 
-### Direct MSSQL compatibility source
+### MetaTable-only database access
 
-Use a governed MetaTable identifier or UID whenever the Main Sequence MSSQL
-DataSource supports table registration. Some legacy MSSQL DataSources do not
-advertise `supports_table_registration`; the backend therefore cannot restore
-a missing external MetaTable on those connections.
-
-For that case, a source config may opt into the direct MSSQL compatibility
-reader with an explicit schema-qualified table name:
-
-```json
-{
-  "sources": [
-    {
-      "source_name": "example_historical_vector",
-      "direct_mssql_table": "dbo.example_vector_history",
-      "sql_dialect": "mssql",
-      "column_map": {
-        "Fecha": "fecha",
-        "TV": "tipovalor",
-        "Emisora": "emisora",
-        "Serie": "serie",
-        "PrecioSucio": "preciosucio"
-      }
-    }
-  ]
-}
-```
-
-Pass exactly one of `metatable_identifier`, `metatable_uid`, or
-`direct_mssql_table`. The direct config contains no credentials. The reader
-resolves them from either the `VALMER_METATABLE_MSSQL_*` environment variables
-or the local exploration aliases `EXTERNAL_URL`, `EXTERNAL_BD`,
-`EXTERNAL_USER`, and `EXTERNAL_PWD`.
+The production reader accepts only `metatable_identifier`. Main Sequence owns
+the registered DataSource binding and governed query execution; the Job and API
+do not open database connections or load database access values.
 
 When a vector cursor exists, the reader pushes the minimum stored per-asset
 cursor into the SQL query as a lower `Fecha` bound, then applies the normal
@@ -445,10 +398,9 @@ per-asset cursor filter in pandas. Repair runs using
 `--bypass-vector-cursor-filter` intentionally omit that SQL bound. An initial
 load with no stored cursor reads the full configured table.
 
-This path is an explicit compatibility exception: it bypasses governed
-MetaTable query execution. Keep credentials in environment/secret management,
-use a read-only SQL login, and migrate the config back to a MetaTable identifier
-when the DataSource gains table-registration support.
+The read uses the schema and table stored on the resolved MetaTable, including
+cursor pushdown against the configured valuation-date column. Query failures
+stop the run instead of bypassing MetaTable governance.
 
 ## Low-Level Debug Artifact Path
 

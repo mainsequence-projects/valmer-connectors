@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, List, Literal, Union
-from urllib.parse import urlparse
 
 import pandas as pd
 from msm.api.assets import Asset as MarketsAsset
@@ -20,14 +19,12 @@ from msm.repositories.base import compile_markets_statement, execute_markets_ope
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_pricing.api import add_many_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from tqdm import tqdm
 
-from mainsequence.client.exceptions import ApiError, raise_for_response
 from mainsequence.client.metatables import MetaTable
 from mainsequence.client.models_foundry import Artifact
-from mainsequence.client.utils import make_request
 from valmer_connectors.asset_classification import classify_valmer_asset_type
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.asset_identity import (
@@ -926,17 +923,15 @@ def _prepare_frame_for_target_bond_rules(df: pd.DataFrame) -> pd.DataFrame:
 
 
 class MetaTableValmerSourceConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     source_name: str = Field(
         ...,
         description="Stable label used for diagnostics for this Valmer MetaTable source.",
     )
-    metatable_identifier: str | None = Field(
-        default=None,
+    metatable_identifier: str = Field(
+        ...,
         description="Logical MetaTable identifier to read from.",
-    )
-    metatable_uid: str | None = Field(
-        default=None,
-        description="MetaTable uid to read from. Use this when no identifier is available.",
     )
     column_map: dict[str, str] = Field(
         ...,
@@ -956,10 +951,6 @@ class MetaTableValmerSourceConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_source(self) -> "MetaTableValmerSourceConfig":
-        if not self.metatable_identifier and not self.metatable_uid:
-            raise ValueError("metatable_identifier or metatable_uid is required.")
-        if self.metatable_identifier and self.metatable_uid:
-            raise ValueError("Pass metatable_identifier or metatable_uid, not both.")
         missing_targets = sorted(set(VALMER_REQUIRED_IDENTITY_SOURCE_COLUMNS) - set(self.column_map.values()))
         if missing_targets:
             raise ValueError(
@@ -1271,10 +1262,85 @@ class ImportValmer(AssetIndexedDataNode):
 
     @classmethod
     def _resolve_source_metatable(cls, source: MetaTableValmerSourceConfig) -> MetaTable:
-        if source.metatable_uid:
-            return MetaTable.get(uid=source.metatable_uid)
-        assert source.metatable_identifier is not None
         return MetaTable.get(identifier=source.metatable_identifier)
+
+    @staticmethod
+    def _physical_metatable_name(meta_table: MetaTable) -> str:
+        physical_table_name = str(
+            getattr(meta_table, "physical_table_name", "") or ""
+        )
+        if not physical_table_name:
+            raise ValueError(f"MetaTable {meta_table.uid} has no physical table binding.")
+        physical_schema = str(getattr(meta_table, "physical_schema", "") or "")
+        if physical_schema:
+            return f"{physical_schema}.{physical_table_name}"
+        return physical_table_name
+
+    @staticmethod
+    def _source_valuation_date_column(source: MetaTableValmerSourceConfig) -> str:
+        return next(
+            source_column
+            for source_column, normalized_column in source.column_map.items()
+            if normalized_column == "fecha"
+        )
+
+    @staticmethod
+    def _minimum_source_valuation_date(
+        cursor_by_asset: Mapping[str, pd.Timestamp],
+    ) -> pd.Timestamp | None:
+        if not cursor_by_asset:
+            return None
+        values = pd.to_datetime(
+            list(cursor_by_asset.values()),
+            errors="coerce",
+            utc=True,
+        )
+        valid_values = values[~values.isna()]
+        if valid_values.empty:
+            return None
+        return pd.Timestamp(valid_values.min())
+
+    @classmethod
+    def _build_source_select_sql(
+        cls,
+        source: MetaTableValmerSourceConfig,
+        *,
+        physical_table_name: str,
+        minimum_valuation_date: pd.Timestamp | None,
+    ) -> str:
+        table_name = cls._quote_metatable_identifier(
+            physical_table_name,
+            dialect=source.sql_dialect,
+        )
+        columns = [
+            cls._quote_metatable_identifier(column, dialect=source.sql_dialect)
+            for column in source.column_map
+        ]
+        if source.sql_dialect == "mssql" and source.max_rows is not None:
+            select_clause = f"SELECT TOP ({source.max_rows}) {', '.join(columns)}"
+            limit_clause = ""
+        else:
+            select_clause = f"SELECT {', '.join(columns)}"
+            limit_clause = f" LIMIT {source.max_rows}" if source.max_rows is not None else ""
+
+        where_clause = ""
+        if minimum_valuation_date is not None:
+            timestamp = pd.Timestamp(minimum_valuation_date)
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.tz_localize("UTC")
+            else:
+                timestamp = timestamp.tz_convert("UTC")
+            if source.sql_dialect == "mssql":
+                timestamp_literal = timestamp.tz_localize(None).isoformat(timespec="milliseconds")
+            else:
+                timestamp_literal = timestamp.isoformat(timespec="microseconds")
+            date_column = cls._quote_metatable_identifier(
+                cls._source_valuation_date_column(source),
+                dialect=source.sql_dialect,
+            )
+            where_clause = f" WHERE {date_column} > '{timestamp_literal}'"
+
+        return f"{select_clause} FROM {table_name}{where_clause}{limit_clause}"
 
     @staticmethod
     def _metatable_contract_columns(meta_table: MetaTable) -> set[str]:
@@ -1312,148 +1378,14 @@ class ImportValmer(AssetIndexedDataNode):
             return []
         return sorted(str(key) for key in result.keys())
 
-    @classmethod
-    def _query_error_message(cls, result: object) -> str:
-        if not isinstance(result, Mapping):
-            return ""
-        error = result.get("error")
-        messages: list[str] = []
-        if isinstance(error, Mapping):
-            messages.extend(
-                str(error.get(key, ""))
-                for key in ("message", "detail", "kind")
-                if error.get(key)
-            )
-        elif error is not None:
-            messages.append(str(error))
-        for key in ("message", "detail"):
-            if result.get(key):
-                messages.append(str(result[key]))
-        return " ".join(messages)
-
-    @classmethod
-    def _requires_raw_sql_request_body(cls, result: object) -> bool:
-        return "raw sql string" in cls._query_error_message(result).lower()
-
-    @classmethod
-    def _is_backend_mssql_dsn_error(cls, result: object) -> bool:
-        message = cls._query_error_message(result).lower()
-        return "invalid dsn" in message and "mssql://" in message
-
-    @classmethod
-    def _run_metatable_query_with_raw_sql_body(
-        cls,
-        meta_table: MetaTable,
-        sql: str,
-        *,
-        timeout: int | None = None,
-    ) -> dict[str, Any]:
-        if meta_table.uid is None:
-            raise ValueError("MetaTable must have a uid before running a query.")
-
-        meta_table_cls = type(meta_table)
-        url = f"{meta_table_cls.get_object_url().rstrip('/')}/{meta_table.uid}/run_query/"
-        response = make_request(
-            s=meta_table_cls.build_session(),
-            loaders=meta_table_cls.LOADERS,
-            r_type="POST",
-            url=url,
-            payload={"json": sql},
-            time_out=timeout,
-        )
-
-        try:
-            data = response.json()
-        except Exception:
-            data = None
-        if isinstance(data, dict) and "ok" in data:
-            return data
-        raise_for_response(response, payload={"json": sql})
-        return response.json()
-
-    @classmethod
-    def _run_metatable_query(
-        cls,
-        meta_table: MetaTable,
-        sql: str,
-        *,
-        timeout: int | None = None,
-    ) -> dict[str, Any]:
-        try:
-            result = meta_table.run_query(sql, timeout=timeout)
-        except ApiError as exc:
-            message = str(exc)
-            if "Unsupported media type" not in message or "text/plain" not in message:
-                raise
-            result = cls._run_metatable_query_with_raw_sql_body(
-                meta_table,
-                sql,
-                timeout=timeout,
-            )
-        if cls._requires_raw_sql_request_body(result):
-            return cls._run_metatable_query_with_raw_sql_body(
-                meta_table,
-                sql,
-                timeout=timeout,
-            )
-        return result
-
     @staticmethod
-    def _mssql_connection_config_from_env() -> dict[str, Any]:
-        raw_host = os.environ.get("VALMER_METATABLE_MSSQL_HOST") or os.environ.get(
-            "EXTERNAL_URL"
-        )
-        database = os.environ.get("VALMER_METATABLE_MSSQL_DATABASE") or os.environ.get(
-            "EXTERNAL_BD"
-        )
-        user = os.environ.get("VALMER_METATABLE_MSSQL_USER") or os.environ.get(
-            "EXTERNAL_USER"
-        )
-        password = os.environ.get("VALMER_METATABLE_MSSQL_PASSWORD") or os.environ.get(
-            "EXTERNAL_PWD"
-        )
-        if not all((raw_host, database, user, password)):
-            raise RuntimeError(
-                "Direct MSSQL MetaTable fallback requires "
-                "VALMER_METATABLE_MSSQL_HOST, VALMER_METATABLE_MSSQL_DATABASE, "
-                "VALMER_METATABLE_MSSQL_USER, and VALMER_METATABLE_MSSQL_PASSWORD "
-                "or EXTERNAL_URL, EXTERNAL_BD, EXTERNAL_USER, and EXTERNAL_PWD."
-            )
-
-        parsed = urlparse(raw_host if "://" in raw_host else f"//{raw_host}")
-        host = parsed.hostname or raw_host
-        port = parsed.port or int(os.environ.get("VALMER_METATABLE_MSSQL_PORT", "1433"))
-        return {
-            "server": host,
-            "port": port,
-            "database": database,
-            "user": user,
-            "password": password,
-        }
-
-    @classmethod
-    def _run_direct_mssql_query(cls, sql: str) -> pd.DataFrame:
-        try:
-            import pymssql
-        except ImportError as exc:
-            raise RuntimeError(
-                "Direct MSSQL MetaTable fallback requires pymssql to be installed."
-            ) from exc
-
-        config = cls._mssql_connection_config_from_env()
-        with pymssql.connect(
-            server=config["server"],
-            port=config["port"],
-            user=config["user"],
-            password=config["password"],
-            database=config["database"],
-            login_timeout=10,
-            timeout=120,
-            as_dict=True,
-        ) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql)
-                return pd.DataFrame.from_records(cursor.fetchall())
+    def _run_metatable_query(
+        meta_table: MetaTable,
+        sql: str,
+        *,
+        timeout: int | None = None,
+    ) -> dict[str, Any]:
+        return meta_table.run_query(sql, timeout=timeout)
 
     @staticmethod
     def _query_column_names(columns: object) -> list[str] | None:
@@ -1528,9 +1460,11 @@ class ImportValmer(AssetIndexedDataNode):
         source_name: str,
     ) -> pd.DataFrame:
         if isinstance(result, Mapping) and result.get("ok") is False:
+            error = result.get("error")
+            error_kind = error.get("kind") if isinstance(error, Mapping) else None
+            suffix = f" (kind={error_kind})" if error_kind else ""
             raise RuntimeError(
-                f"MetaTableValmerSource {source_name!r} query failed: "
-                f"{result.get('error') or result}."
+                f"MetaTableValmerSource {source_name!r} query failed{suffix}."
             )
 
         columns = None
@@ -1607,40 +1541,27 @@ class ImportValmer(AssetIndexedDataNode):
         source: MetaTableValmerSourceConfig,
         *,
         logger,
+        minimum_valuation_date: pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         meta_table = cls._resolve_source_metatable(source)
         cls._validate_metatable_source_contract(source, meta_table)
-        table_name = cls._quote_metatable_identifier(
-            meta_table.physical_table_name,
-            dialect=source.sql_dialect,
+        physical_table_name = cls._physical_metatable_name(meta_table)
+
+        sql = cls._build_source_select_sql(
+            source,
+            physical_table_name=physical_table_name,
+            minimum_valuation_date=minimum_valuation_date,
         )
-        columns = [
-            cls._quote_metatable_identifier(column, dialect=source.sql_dialect)
-            for column in source.column_map
-        ]
-        if source.sql_dialect == "mssql" and source.max_rows is not None:
-            select_clause = f"SELECT TOP ({source.max_rows}) {', '.join(columns)}"
-            limit_clause = ""
-        else:
-            select_clause = f"SELECT {', '.join(columns)}"
-            limit_clause = f" LIMIT {source.max_rows}" if source.max_rows is not None else ""
-        sql = f"{select_clause} FROM {table_name}{limit_clause}"
+
         logger.info(
             "Reading MetaTable Valmer source "
             f"{source.source_name!r} ({meta_table.identifier or meta_table.uid})."
         )
         result = cls._run_metatable_query(meta_table, sql)
-        if source.sql_dialect == "mssql" and cls._is_backend_mssql_dsn_error(result):
-            logger.warning(
-                "Backend MetaTable query failed with an MSSQL DSN error for "
-                f"{source.source_name!r}; retrying through direct MSSQL fallback."
-            )
-            frame = cls._run_direct_mssql_query(sql)
-        else:
-            frame = cls._frame_from_metatable_query_result(
-                result,
-                source_name=source.source_name,
-            )
+        frame = cls._frame_from_metatable_query_result(
+            result,
+            source_name=source.source_name,
+        )
         frame = cls._align_metatable_source_columns(
             frame,
             expected_columns=tuple(source.column_map),
@@ -1712,9 +1633,18 @@ class ImportValmer(AssetIndexedDataNode):
             return None
 
         cursor_by_asset = self._latest_vector_cursor_by_asset()
+        minimum_valuation_date = (
+            None
+            if bypass_vector_cursor_filter
+            else self._minimum_source_valuation_date(cursor_by_asset)
+        )
         frames: list[pd.DataFrame] = []
         for source in self.source_metatables:
-            raw_frame = self._read_metatable_source_frame(source, logger=self.logger)
+            raw_frame = self._read_metatable_source_frame(
+                source,
+                logger=self.logger,
+                minimum_valuation_date=minimum_valuation_date,
+            )
             normalized_frame = self._normalize_metatable_source_frame(raw_frame, source)
             if bypass_vector_cursor_filter:
                 filtered_frame = normalized_frame
@@ -2305,6 +2235,7 @@ class ImportValmer(AssetIndexedDataNode):
                     [
                         *missing_latest_rows,
                         *missing_assets_for_pricing,
+                        *missing_instruments_for_pricing,
                         *missing_after_persist,
                     ]
                 )

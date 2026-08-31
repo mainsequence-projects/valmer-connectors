@@ -357,10 +357,10 @@ class ValmerVectorStorageTest(unittest.TestCase):
             pd.Timestamp("2024-01-02 23:59:59", tz="UTC"),
         )
 
-    def test_direct_mssql_source_uses_explicit_table_and_cursor_pushdown(self):
+    def test_metatable_source_uses_registered_binding_and_cursor_pushdown(self):
         source = MetaTableValmerSourceConfig(
             source_name="government",
-            direct_mssql_table="dbo.vector_precios_gubernamental",
+            metatable_identifier="dbo.vector_precios_gubernamental",
             column_map={
                 "Fecha": "fecha",
                 "TV": "tipovalor",
@@ -381,9 +381,31 @@ class ValmerVectorStorageTest(unittest.TestCase):
             ]
         )
 
+        meta_table = SimpleNamespace(
+            uid="be6c0a2f-e142-43ae-80e5-1cdb82e53c6b",
+            identifier="dbo.vector_precios_gubernamental",
+            physical_schema="dbo",
+            physical_table_name="vector_precios_gubernamental",
+            columns=[],
+            table_contract=None,
+        )
+        query_result = {
+            "ok": True,
+            "columns": list(expected.columns),
+            "rows": expected.values.tolist(),
+        }
+
         with (
-            patch.object(ImportValmer, "_run_direct_mssql_query", return_value=expected) as run,
-            patch.object(ImportValmer, "_resolve_source_metatable") as resolve,
+            patch.object(
+                ImportValmer,
+                "_run_metatable_query",
+                return_value=query_result,
+            ) as run,
+            patch.object(
+                ImportValmer,
+                "_resolve_source_metatable",
+                return_value=meta_table,
+            ) as resolve,
         ):
             result = ImportValmer._read_metatable_source_frame(
                 source,
@@ -392,15 +414,16 @@ class ValmerVectorStorageTest(unittest.TestCase):
             )
 
         pd.testing.assert_frame_equal(result, expected)
-        resolve.assert_not_called()
-        sql = run.call_args.args[0]
+        resolve.assert_called_once_with(source)
+        self.assertIs(run.call_args.args[0], meta_table)
+        sql = run.call_args.args[1]
         self.assertIn("FROM [dbo].[vector_precios_gubernamental]", sql)
         self.assertIn(
             "WHERE [Fecha] > '2024-01-02T23:59:59.000'",
             sql,
         )
 
-    def test_metatable_source_config_requires_one_source_reference(self):
+    def test_metatable_source_config_rejects_non_metatable_reference(self):
         column_map = {
             "Fecha": "fecha",
             "TV": "tipovalor",
@@ -408,13 +431,32 @@ class ValmerVectorStorageTest(unittest.TestCase):
             "Serie": "serie",
         }
 
-        with self.assertRaisesRegex(ValueError, "exactly one"):
-            MetaTableValmerSourceConfig(
+        payload = {
+            "source_name": "government",
+            "metatable_identifier": "external.gov",
+            "database_table": "dbo.vector_history",
+            "column_map": column_map,
+        }
+
+        with self.assertRaisesRegex(ValueError, "database_table"):
+            MetaTableValmerSourceConfig.model_validate(payload)
+
+    def test_metatable_query_error_does_not_include_backend_details(self):
+        result = {
+            "ok": False,
+            "error": {
+                "kind": "sql_error",
+                "message": "invalid connection details must remain private",
+            },
+        }
+
+        with self.assertRaisesRegex(RuntimeError, r"query failed \(kind=sql_error\)") as exc:
+            ImportValmer._frame_from_metatable_query_result(
+                result,
                 source_name="government",
-                metatable_identifier="external.gov",
-                direct_mssql_table="dbo.vector_precios_gubernamental",
-                column_map=column_map,
             )
+
+        self.assertNotIn("connection details", str(exc.exception))
 
     def test_metatable_query_result_builds_frame_from_rows_and_columns(self):
         result = {

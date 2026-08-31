@@ -2,7 +2,7 @@
   "sources": [
     {
       "source_name": "historical_valmer_vector",
-      "direct_mssql_table": "dbo.vector_precios_gubernamental",
+      "metatable_identifier": "dbo.vector_precios_gubernamental",
       "sql_dialect": "mssql",
       "column_map": {
         "TipoMercado": "tipomercado",

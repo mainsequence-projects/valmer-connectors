@@ -10,13 +10,19 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import structlog
+from msm.api.base import operation_result_rows
+from msm.repositories.base import compile_markets_statement, execute_markets_operation
+from sqlalchemy import func, select
 
 from valmer_connectors.data_nodes.nodes import (
     ImportValmer,
     ImportValmerConfig,
     MetaTableValmerSourceConfig,
 )
-from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
+from valmer_connectors.data_nodes.valmer_vector_storage import (
+    ValmerVectorPricesStorage,
+    ensure_valmer_vector_runtime,
+)
 from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 from valmer_connectors.settings import (
     DEFAULT_VECTOR_FIRST_LOOP_COUNT,
@@ -101,7 +107,9 @@ def _is_first_time_update(updater: ImportValmer) -> bool:
     return False
 
 
-def load_metatable_sources_config(path: str | Path) -> list[MetaTableValmerSourceConfig]:
+def load_metatable_sources_config(
+    path: str | Path,
+) -> list[MetaTableValmerSourceConfig]:
     config_path = Path(path).expanduser()
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     raw_sources = payload.get("sources") if isinstance(payload, dict) else payload
@@ -110,6 +118,68 @@ def load_metatable_sources_config(path: str | Path) -> list[MetaTableValmerSourc
             "MetaTable source config must be a list or an object with a 'sources' list."
         )
     return [MetaTableValmerSourceConfig.model_validate(source) for source in raw_sources]
+
+
+def preflight_metatable_source(
+    path: str | Path,
+) -> dict[str, object]:
+    """Validate the repository-configured MetaTable and perform a one-row read probe."""
+
+    sources = load_metatable_sources_config(path)
+    if len(sources) != 1:
+        raise ValueError("The MetaTable Job requires exactly one configured source.")
+    source = sources[0]
+    meta_table = ImportValmer._resolve_source_metatable(source)
+    metatable_uid = str(meta_table.uid)
+    if str(getattr(meta_table, "provisioning_status", "")).lower() != "active":
+        raise ValueError(
+            f"MetaTable {metatable_uid} is not active "
+            f"(status={getattr(meta_table, 'provisioning_status', None)!r})."
+        )
+    physical_table_name = ImportValmer._physical_metatable_name(meta_table)
+
+    contract_columns = ImportValmer._metatable_contract_columns(meta_table)
+    if not contract_columns:
+        raise ValueError(
+            f"MetaTable {metatable_uid} does not expose a column contract."
+        )
+    missing_contract_columns = sorted(set(source.column_map) - contract_columns)
+    if missing_contract_columns:
+        raise ValueError(
+            f"MetaTable {metatable_uid} is missing required Valmer source columns: "
+            f"{missing_contract_columns}."
+        )
+
+    probe_source = source.model_copy(update={"max_rows": 1})
+    sql = ImportValmer._build_source_select_sql(
+        probe_source,
+        physical_table_name=physical_table_name,
+        minimum_valuation_date=None,
+    )
+    result = ImportValmer._run_metatable_query(meta_table, sql, timeout=30)
+    frame = ImportValmer._frame_from_metatable_query_result(
+        result,
+        source_name=source.source_name,
+    )
+    frame = ImportValmer._align_metatable_source_columns(
+        frame,
+        expected_columns=tuple(source.column_map),
+    )
+    missing_result_columns = sorted(set(source.column_map) - set(frame.columns))
+    if missing_result_columns:
+        raise ValueError(
+            f"MetaTable {metatable_uid} read probe did not return required columns: "
+            f"{missing_result_columns}."
+        )
+    return {
+        "uid": str(meta_table.uid),
+        "identifier": str(meta_table.identifier or ""),
+        "physical_table_name": physical_table_name,
+        "source_name": source.source_name,
+        "source_kind": "metatable",
+        "contract_column_count": len(contract_columns),
+        "sample_row_count": len(frame.index),
+    }
 
 
 def _resolve_local_bucket_path(
@@ -213,16 +283,18 @@ def _rows_from_query_result(result: object) -> list[dict]:
 
 
 def _latest_vector_storage_time_index() -> dt.datetime | None:
-    storage = ValmerVectorPricesStorage.get_time_index_meta_table()
-    if storage is None:
-        return None
-    result = ImportValmer._run_metatable_query(
-        storage,
-        "SELECT MAX(time_index) AS latest_time_index "
-        f"FROM {ValmerVectorPricesStorage.__tablename__}",
-        timeout=120,
+    context = ensure_valmer_vector_runtime(timeout=120)
+    table = ValmerVectorPricesStorage.__table__
+    statement = select(func.max(table.c.time_index).label("latest_time_index"))
+    operation = compile_markets_statement(
+        statement,
+        context=context,
+        operation="select",
+        models=[ValmerVectorPricesStorage],
+        access="read",
     )
-    rows = _rows_from_query_result(result)
+    result = execute_markets_operation(operation, context=context)
+    rows = list(operation_result_rows(result))
     if not rows:
         return None
     value = rows[0].get("latest_time_index")

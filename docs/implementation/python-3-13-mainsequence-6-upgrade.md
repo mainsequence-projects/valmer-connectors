@@ -17,7 +17,7 @@ Verified local state:
   3.13;
 - `uv.lock` resolves the Python 3.13 package graph, `uv lock --check`
   passes, and `requirements.txt` was regenerated;
-- QuantLib, NumPy, pandas, SciPy, PyArrow, `pymssql`, `psycopg2`, Streamlit,
+- QuantLib, NumPy, pandas, SciPy, PyArrow, `psycopg2`, Streamlit,
   the project CLI, and the native package graph import successfully;
 - Ruff passes for `src`, `tests`, and `scripts`;
 - MkDocs strict build and `uv build` pass;
@@ -179,7 +179,7 @@ Also verify:
 
 - package and migration-provider imports;
 - `valmer-connectors version` and `valmer-connectors --help`;
-- QuantLib, `psycopg2`, `pymssql`, NumPy, pandas, SciPy, and PyArrow imports;
+- QuantLib, `psycopg2`, NumPy, pandas, SciPy, and PyArrow imports;
 - wheel metadata contains `Requires-Python: <3.14,>=3.13`,
   `Requires-Dist: mainsequence`, and
   `Requires-Dist: ms-markets==0.0.110`;

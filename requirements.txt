@@ -198,8 +198,6 @@ pygments==2.21.0
     #   rich
 pyluach==2.3.0
     # via exchange-calendars
-pymssql==2.3.13
-    # via valmer-connectors
 python-dateutil==2.9.0.post0
     # via pandas
 python-multipart==0.0.32

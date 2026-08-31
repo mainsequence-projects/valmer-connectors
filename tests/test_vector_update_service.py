@@ -3,6 +3,7 @@ import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from valmer_connectors.data_nodes.nodes import MetaTableValmerSourceConfig
@@ -10,7 +11,7 @@ from valmer_connectors.services import vector_update
 
 
 class ValmerVectorUpdateServiceTests(unittest.TestCase):
-    def test_metatable_preflight_probes_the_fixed_direct_database_source(self):
+    def test_metatable_preflight_probes_the_registered_source(self):
         with TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "sources.json"
             config_path.write_text(
@@ -19,7 +20,7 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
                   "sources": [
                     {
                       "source_name": "government",
-                      "direct_mssql_table": "dbo.vector_precios_gubernamental",
+                      "metatable_identifier": "dbo.vector_precios_gubernamental",
                       "column_map": {
                         "Fecha": "fecha",
                         "TV": "tipovalor",
@@ -33,18 +34,43 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            frame = Mock(index=[0])
-            with patch.object(
-                vector_update.ImportValmer,
-                "_read_metatable_source_frame",
-                return_value=frame,
-            ) as read_source:
+            meta_table = SimpleNamespace(
+                uid="be6c0a2f-e142-43ae-80e5-1cdb82e53c6b",
+                identifier="dbo.vector_precios_gubernamental",
+                provisioning_status="active",
+                physical_schema="dbo",
+                physical_table_name="vector_precios_gubernamental",
+                columns=[
+                    SimpleNamespace(name=name)
+                    for name in ("Fecha", "TV", "Emisora", "Serie")
+                ],
+            )
+            with (
+                patch.object(
+                    vector_update.ImportValmer,
+                    "_resolve_source_metatable",
+                    return_value=meta_table,
+                ) as resolve_source,
+                patch.object(
+                    vector_update.ImportValmer,
+                    "_run_metatable_query",
+                    return_value={
+                        "ok": True,
+                        "columns": ["Fecha", "TV", "Emisora", "Serie"],
+                        "rows": [["2024-01-03", "M", "BONOS", "A"]],
+                    },
+                ) as run_query,
+            ):
                 result = vector_update.preflight_metatable_source(config_path)
 
-            probe_source = read_source.call_args.args[0]
-            self.assertEqual(probe_source.direct_mssql_table, "dbo.vector_precios_gubernamental")
-            self.assertEqual(probe_source.max_rows, 1)
-            self.assertEqual(result["source_kind"], "direct_mssql")
+            source = resolve_source.call_args.args[0]
+            self.assertEqual(
+                source.metatable_identifier,
+                "dbo.vector_precios_gubernamental",
+            )
+            sql = run_query.call_args.args[1]
+            self.assertIn("FROM [dbo].[vector_precios_gubernamental]", sql)
+            self.assertEqual(result["source_kind"], "metatable")
             self.assertEqual(result["sample_row_count"], 1)
 
     def test_vector_update_forces_current_pricing_hydration_without_global_daily_gate(self):

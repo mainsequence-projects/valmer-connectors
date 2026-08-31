@@ -922,21 +922,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pymssql"
-version = "2.3.13"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7a/cc/843c044b7f71ee329436b7327c578383e2f2499313899f88ad267cdf1f33/pymssql-2.3.13.tar.gz", hash = "sha256:2137e904b1a65546be4ccb96730a391fcd5a85aab8a0632721feb5d7e39cfbce", size = 203153, upload-time = "2026-02-14T05:00:36.865Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/4f/ee15b1f6b11e7c3accdc7da7840a019b63f12ba09eaa008acc601182f516/pymssql-2.3.13-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:30918bb044242865c01838909777ef5e0f1b9ecd7f5882346aefa57f4414b29c", size = 3156333, upload-time = "2026-02-14T05:00:01.21Z" },
-    { url = "https://files.pythonhosted.org/packages/79/03/aea5c77bad4a52649a1d9f786a1d9ce1c83d50f1a75df288e292737b6d80/pymssql-2.3.13-cp313-cp313-macosx_15_0_x86_64.whl", hash = "sha256:1c6d0b2d7961f159a07e4f0d8cc81f70ceab83f5e7fd1e832a2d069e1d67ee4e", size = 2957990, upload-time = "2026-02-14T05:00:03.11Z" },
-    { url = "https://files.pythonhosted.org/packages/5f/f8/30ac16fba32ff066b05f12c392d7b812fe11f06cb62d1d86ca5177c50a8b/pymssql-2.3.13-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:16c5957a3c9e51a03276bfd76a22431e2bc4c565e2e95f2cbb3559312edda230", size = 3065264, upload-time = "2026-02-14T05:00:05.377Z" },
-    { url = "https://files.pythonhosted.org/packages/a9/98/7568447bf85921d21453fd56e19b6c9591d595fde0546c5a569f3ae937a8/pymssql-2.3.13-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0fddd24efe9d18bbf174fab7c6745b0927773718387f5517cf8082241f721a68", size = 3190039, upload-time = "2026-02-14T05:00:06.925Z" },
-    { url = "https://files.pythonhosted.org/packages/35/f1/4d9d275ebaac42cdd49d40d504ccb648f27710660c8b60cc427752438c09/pymssql-2.3.13-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:123c55ee41bc7a82c76db12e2eb189b50d0d7a11222b4f8789206d1cda3b33b9", size = 3710151, upload-time = "2026-02-14T05:00:08.424Z" },
-    { url = "https://files.pythonhosted.org/packages/6f/bd/a5cc6244fd27d3ea0cc82f12a7d38a24d7fd90b0022afd250014e8bfba15/pymssql-2.3.13-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:e053b443e842f9e1698fcb2b23a4bff1ff3d410894d880064e754ad823d541e5", size = 3453156, upload-time = "2026-02-14T05:00:09.978Z" },
-    { url = "https://files.pythonhosted.org/packages/26/d0/c20ff0bbffd18db528bcc7b0c68b25c12ad563ed67c56ceca87c58f7399e/pymssql-2.3.13-cp313-cp313-win_amd64.whl", hash = "sha256:5c045c0f1977a679cc30d5acd9da3f8aeb2dc6e744895b26444b4a2f20dad9a0", size = 1995236, upload-time = "2026-02-14T05:00:11.495Z" },
-]
-
-[[package]]
 name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1338,7 +1323,7 @@ wheels = [
 
 [[package]]
 name = "valmer-connectors"
-version = "0.1.37"
+version = "0.1.38"
 source = { editable = "." }
 dependencies = [
     { name = "arch" },
@@ -1347,7 +1332,6 @@ dependencies = [
     { name = "ms-markets" },
     { name = "pandas-market-calendars" },
     { name = "plotly" },
-    { name = "pymssql" },
     { name = "quantlib" },
     { name = "ruff" },
     { name = "scipy" },
@@ -1369,7 +1353,6 @@ requires-dist = [
     { name = "ms-markets", specifier = "==1.0.2" },
     { name = "pandas-market-calendars", specifier = ">=5.4.0" },
     { name = "plotly", specifier = ">=6.8.0" },
-    { name = "pymssql", specifier = ">=2.3.13" },
     { name = "quantlib", specifier = ">=1.42.1" },
     { name = "ruff", specifier = ">=0.15.20" },
     { name = "scipy", specifier = ">=1.17.1" },

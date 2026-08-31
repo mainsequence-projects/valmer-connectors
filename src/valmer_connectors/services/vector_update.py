@@ -129,21 +129,6 @@ def preflight_metatable_source(
     if len(sources) != 1:
         raise ValueError("The MetaTable Job requires exactly one configured source.")
     source = sources[0]
-    if source.direct_mssql_table is not None:
-        probe_source = source.model_copy(update={"max_rows": 1})
-        frame = ImportValmer._read_metatable_source_frame(
-            probe_source,
-            logger=LOGGER,
-        )
-        return {
-            "uid": None,
-            "identifier": source.direct_mssql_table,
-            "physical_table_name": source.direct_mssql_table,
-            "source_name": source.source_name,
-            "source_kind": "direct_mssql",
-            "contract_column_count": len(source.column_map),
-            "sample_row_count": len(frame.index),
-        }
     meta_table = ImportValmer._resolve_source_metatable(source)
     metatable_uid = str(meta_table.uid)
     if str(getattr(meta_table, "provisioning_status", "")).lower() != "active":
@@ -151,9 +136,7 @@ def preflight_metatable_source(
             f"MetaTable {metatable_uid} is not active "
             f"(status={getattr(meta_table, 'provisioning_status', None)!r})."
         )
-    physical_table_name = str(getattr(meta_table, "physical_table_name", "") or "")
-    if not physical_table_name:
-        raise ValueError(f"MetaTable {metatable_uid} has no physical table binding.")
+    physical_table_name = ImportValmer._physical_metatable_name(meta_table)
 
     contract_columns = ImportValmer._metatable_contract_columns(meta_table)
     if not contract_columns:

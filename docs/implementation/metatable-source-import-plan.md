@@ -124,7 +124,7 @@ source_kind = "metatable"
 source_metatables = [
   {
     source_name = <stable label for diagnostics>
-    metatable_identifier = <MetaTable identifier or uid>
+    metatable_identifier = <stable MetaTable identifier>
     column_map = <strict MetaTable-column to normalized-Valmer-field map>
   },
   ...
@@ -469,8 +469,8 @@ changed. This plan does not propose a storage change.
   `source_metatables[]` list.
 - [ ] Add a typed TimeIndexTableUpdater configuration field for source mode.
 - [ ] Add typed MetaTable source configuration:
-  `source_metatables[]`, per-source `metatable_identifier` or
-  `metatable_uid`, and per-source `column_map`.
+  `source_metatables[]`, per-source `metatable_identifier`, and per-source
+  `column_map`.
 - [ ] Implement `partition_mode = "row_union"` first.
 - [ ] Document `partition_mode = "column_join"` as unsupported until join keys,
   row-multiplication checks, and source-priority rules are implemented.
