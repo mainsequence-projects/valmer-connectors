@@ -1,5 +1,6 @@
 import os
-from pathlib import Path
+from importlib import resources
+from importlib.resources.abc import Traversable
 
 from valmer_connectors.instruments.curve_bootstrap import (
     CETE_28_INDEX_UNIQUE_IDENTIFIER,
@@ -49,10 +50,11 @@ DEFAULT_VALMER_ONEDRIVE_GRAPH_PAGE_SIZE = 999
 # Repository-owned source setting for the MetaTable vector Job.  The control-plane
 # preflight and the Job entrypoint import this same value; it is intentionally not
 # accepted from a launch request.
-VALMER_METATABLE_SOURCE_CONFIG_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "configs"
-    / "valmer-metatable-sources.json"
+VALMER_METATABLE_SOURCE_CONFIG_RESOURCE: Traversable = resources.files(
+    "valmer_connectors"
+).joinpath(
+    "config",
+    "valmer-metatable-sources.json",
 )
 
 

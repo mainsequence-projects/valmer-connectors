@@ -1,6 +1,6 @@
 ---
 name: static-site
-description: Apply the Static Site specialization of the canonical ResourceRelease workflow, including delegated FastAPI preflight and optional human-authorized Command Center navigation placement.
+description: Apply the Static Site specialization of the canonical ResourceRelease workflow, including delegated FastAPI preflight and optional push-principal-authorized Command Center navigation placement.
 ---
 
 # Main Sequence Static-Site Release
@@ -63,15 +63,15 @@ This skill does not own:
 When deployment intent includes a Command Center link, use workflow API
 `2.1.0` and the backend template's nested `navigation_link` shape. Do not add a
 top-level link resource or create a personal link. The exact declaration must
-have a human-approved maximum-audience grant before repository automation may
-materialize its managed link.
+be pushed by an active human User whose signed provider identity resolves to
+their platform account and whose current exact-branch and complete affected-audience
+permissions authorize the mutation.
 
-Use `navigation_link_grant.list/get/create/update/revoke` only through their
-advertised MCP contracts. A coding agent may identify that approval is needed,
-but it must not claim repository access, CodeRepository edit access, Git identity, or
-the Organization automation identity as audience authority. The canonical DRF
-operation checks the human's CodeRepository and audience permissions. Placement does
-not grant target access.
+There is no navigation-grant registry or `navigation_link_grant.*` MCP contract.
+The Organization automation identity applies workflow state but is not the
+authorization principal. Commit authorship, email, username, bot identity, and
+coding-agent identity are not accepted substitutes for the signed provider actor.
+Placement does not grant target access.
 
 A navigation authorization failure does not mean the Static Site deployment
 failed. Read the workflow result and correlated DeploymentRun warning. A

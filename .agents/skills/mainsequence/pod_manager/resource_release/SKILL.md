@@ -63,11 +63,14 @@ asks the caller for a public-image UID.
 
 The public release kinds are:
 
-- `streamlit_dashboard`;
 - `agent`, meaning a runtime ResourceRelease and not a CodeRepository Coding Agent;
 - `fastapi`; and
 - `static_site`; and
 - `widget_extension`.
+
+Main Sequence-managed Streamlit dashboard deployment is retired. Stop if a
+request or repository workflow declares `streamlit_dashboard`; do not translate
+it to another release kind, infer a replacement, or use a legacy launcher.
 
 Every ResourceRelease belongs to one exact CodeRepositoryBranch. Use the public
 CodeRepositoryBranch UID for branch-scoped discovery and never substitute a logical
@@ -112,7 +115,7 @@ and code revision:
    state establishes whether it is ready or failed.
 4. Verify the source kind, image CodeRepositoryBranch, frozen commit, digest-pinned
    output, and read-only verified source provenance are compatible with the
-   intended `streamlit_dashboard`, `agent`, or `fastapi` release.
+   intended `agent` or `fastapi` release.
 
 The backend admits code-repository source only after proving that the full commit is
 reachable from the exact CodeRepositoryBranch ref, then supplies every provider one
@@ -207,8 +210,8 @@ determine the image requirement:
 | Static-site release | Either | No caller-supplied runtime image UID is needed. The backend owns the static-site build. |
 | Widget-extension release | Forced enabled | No caller-supplied runtime image or CodeRepositoryResource UID is accepted. The fixed SDK workload adapter owns the build output. |
 
-Runtime releases are `fastapi`, `streamlit_dashboard`, and runtime `agent`
-ResourceReleases. For the workflow path, effective automatic deployment is
+Runtime releases are `fastapi` and runtime `agent` ResourceReleases. For the
+workflow path, effective automatic deployment is
 enabled by either `automatic_deployment: true` or
 `automatic_redeployment.enabled: true`. Policy eligibility is decided before
 the backend builds or reuses the exact-commit image.
@@ -279,8 +282,7 @@ cors_allowed_origin_regex: '^https://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 The `*` policy authorizes browser JavaScript from every matching
 `<site-uid>.site-dev.main-sequence.app` static-site deployment origin to make
 and read CORS-enabled requests to that FastAPI release. It does not match the
-parent domain, nested subdomains, or Streamlit dashboard origins under
-`*.dash-dev.main-sequence.app`. CORS is not API authentication: the caller must
+parent domain or nested subdomains. CORS is not API authentication: the caller must
 still present the FastAPI release's valid Bearer token and target the exact
 release UID.
 

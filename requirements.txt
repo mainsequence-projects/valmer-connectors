@@ -79,7 +79,7 @@ jsonschema-specifications==2025.9.1
     # via jsonschema
 korean-lunar-calendar==0.4.0
     # via exchange-calendars
-mainsequence==8.0.6
+mainsequence==8.0.7
     # via
     #   ms-markets
     #   valmer-connectors

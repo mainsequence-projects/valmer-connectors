@@ -6,7 +6,7 @@ import argparse
 from collections.abc import Sequence
 
 from valmer_connectors.services.vector_update import run_vector_update
-from valmer_connectors.settings import VALMER_METATABLE_SOURCE_CONFIG_PATH
+from valmer_connectors.settings import VALMER_METATABLE_SOURCE_CONFIG_RESOURCE
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -28,7 +28,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     run_vector_update(
         source_kind="metatable",
-        source_metatables_config_path=str(VALMER_METATABLE_SOURCE_CONFIG_PATH),
+        source_metatables_config_path=VALMER_METATABLE_SOURCE_CONFIG_RESOURCE,
         force_pricing_details_patch=args.force_pricing_details_patch,
         bypass_vector_cursor_filter=args.bypass_vector_cursor_filter,
     )

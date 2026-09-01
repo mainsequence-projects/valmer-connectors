@@ -51,7 +51,7 @@ from valmer_connectors.control_plane.models import (
 from valmer_connectors.services.vector_update import (
     preflight_metatable_source,
 )
-from valmer_connectors.settings import VALMER_METATABLE_SOURCE_CONFIG_PATH
+from valmer_connectors.settings import VALMER_METATABLE_SOURCE_CONFIG_RESOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +323,7 @@ class PlatformControlPlaneGateway:
     def validate_configured_vector_source(self) -> dict[str, object]:
         return self._cache.get_or_load(
             "configured-source-metatable-preflight",
-            lambda: preflight_metatable_source(VALMER_METATABLE_SOURCE_CONFIG_PATH),
+            lambda: preflight_metatable_source(VALMER_METATABLE_SOURCE_CONFIG_RESOURCE),
         )
 
     def _latest_observation(self, definition: DataProductDefinition) -> pd.DataFrame:

@@ -8,9 +8,26 @@ from unittest.mock import Mock, patch
 
 from valmer_connectors.data_nodes.nodes import MetaTableValmerSourceConfig
 from valmer_connectors.services import vector_update
+from valmer_connectors.settings import VALMER_METATABLE_SOURCE_CONFIG_RESOURCE
 
 
 class ValmerVectorUpdateServiceTests(unittest.TestCase):
+    def test_packaged_metatable_source_config_is_readable(self):
+        self.assertTrue(VALMER_METATABLE_SOURCE_CONFIG_RESOURCE.is_file())
+
+        sources = vector_update.load_metatable_sources_config(
+            VALMER_METATABLE_SOURCE_CONFIG_RESOURCE
+        )
+
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0].source_name, "historical_valmer_vector")
+        self.assertEqual(
+            sources[0].metatable_identifier,
+            "dbo.vector_precios_gubernamental",
+        )
+        self.assertEqual(sources[0].sql_dialect, "mssql")
+        self.assertEqual(len(sources[0].column_map), 29)
+
     def test_metatable_preflight_probes_the_registered_source(self):
         with TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "sources.json"

@@ -1,6 +1,6 @@
 ---
 name: code-repository-workflows
-description: Create and validate backend-managed API 2.1.0 deployment declarations under .mainsequence/workflows, including target-owned environment variables, FastAPI browser origins, and human-authorized Static Site navigation placement.
+description: Create and validate backend-managed API 2.1.0 deployment declarations under .mainsequence/workflows, including target-owned environment variables, FastAPI browser origins, and push-principal-authorized Static Site navigation placement.
 ---
 
 # Main Sequence CodeRepository Workflows
@@ -158,22 +158,21 @@ navigation_link:
     user_uids: []
 ```
 
-The repository and Organization automation identity may propose and apply this
-state but cannot authorize its audience. Before committing, inspect the exact
-grant with `navigation_link_grant.list` or `navigation_link_grant.get`. If no
-active grant covers the requested audience, stop and ask the authenticated
-human to authorize it through `navigation_link_grant.create` or expand it
-through `navigation_link_grant.update`. Never infer approval from Git author,
-CodeRepository edit authority, an existing manual link, or the automation identity.
+The Organization automation identity applies workflow state but does not
+authorize its audience. On an authenticated GitHub push, the backend resolves
+the signed numeric `sender.id` through the User's existing GitHub account
+binding and evaluates that active human's current permissions. A navigation
+mutation requires edit access to the exact CodeRepositoryBranch. Organization-wide
+or other-User placement requires Organization administrator access; Team placement
+requires edit access to every affected Team; a branch editor may place a self-only
+link. No grant registry or `navigation_link_grant.*` MCP operation exists.
 
-Grant identity is the exact CodeRepositoryBranch, workflow path, and resource key.
-Humans must select an Organization Environment for list discovery; the grant's
-environment is backend-derived from its CodeRepositoryBranch. Placement never grants
-Static Site access.
+Commit authors, emails, usernames, bots, the automation identity, and coding-agent
+identity are not navigation authority. Placement never grants Static Site access.
 
 Omission preserves the existing workflow-owned link. Explicit
-`navigation_link: null` removes it. Missing, insufficient, revoked, or
-conflicting authorization blocks only link reconciliation; inspect the
+`navigation_link: null` removes it. An unresolved push actor, insufficient
+permission, or conflicting ownership blocks only link reconciliation; inspect the
 resource result and correlated DeploymentRun for a sanitized
 `blocks_deployment=false` warning. Malformed fields are blocking workflow
 validation errors.
@@ -189,13 +188,16 @@ whether the declaration needs an image:
 | Static site | Either | No runtime image UID is needed. The backend owns the static-site build. |
 | Widget extension | Always enabled | No runtime image or CodeRepositoryResource UID is accepted. The backend invokes the fixed SDK widget build through the existing ResourceReleaseRun pipeline. |
 | CodeRepository Coding Agent | Either | No code-repository-image or CodeRepository Executor image UID is needed. The backend builds the verified image chain. |
-| Runtime ResourceRelease (`fastapi`, `streamlit_dashboard`, or runtime `agent`) | Enabled | `related_image_uid` is not needed. If present for compatibility, the backend ignores it. |
-| Runtime ResourceRelease (`fastapi`, `streamlit_dashboard`, or runtime `agent`) | Disabled | `related_image_uid` is required and selects the explicit verified code repository image. |
+| Runtime ResourceRelease (`fastapi` or runtime `agent`) | Enabled | `related_image_uid` is not needed. If present for compatibility, the backend ignores it. |
+| Runtime ResourceRelease (`fastapi` or runtime `agent`) | Disabled | `related_image_uid` is required and selects the explicit verified code repository image. |
 
 For a workflow runtime release, effective automatic deployment is enabled by
 either `automatic_deployment: true` or `automatic_redeployment.enabled: true`.
 The direct `resource_release.create` MCP operation has a different initial
 deployment contract; read the `resource-release` skill before using it.
+
+Stop if a workflow declares `release_kind: streamlit_dashboard`. Managed
+Streamlit deployment is retired and must not be translated to another target.
 
 ## Jobs
 

@@ -7,6 +7,7 @@ import re
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from importlib.resources.abc import Traversable
 from pathlib import Path
 
 import structlog
@@ -108,10 +109,13 @@ def _is_first_time_update(updater: ImportValmer) -> bool:
 
 
 def load_metatable_sources_config(
-    path: str | Path,
+    path: str | os.PathLike[str] | Traversable,
 ) -> list[MetaTableValmerSourceConfig]:
-    config_path = Path(path).expanduser()
-    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    if isinstance(path, (str, os.PathLike)):
+        config_text = Path(path).expanduser().read_text(encoding="utf-8")
+    else:
+        config_text = path.read_text(encoding="utf-8")
+    payload = json.loads(config_text)
     raw_sources = payload.get("sources") if isinstance(payload, dict) else payload
     if not isinstance(raw_sources, list):
         raise ValueError(
@@ -121,7 +125,7 @@ def load_metatable_sources_config(
 
 
 def preflight_metatable_source(
-    path: str | Path,
+    path: str | os.PathLike[str] | Traversable,
 ) -> dict[str, object]:
     """Validate the repository-configured MetaTable and perform a one-row read probe."""
 
@@ -441,7 +445,7 @@ def run_vector_update(
     local_bucket_path: str | None = None,
     local_bucket_path_env_var: str | None = None,
     source_kind: str = "artifact",
-    source_metatables_config_path: str | None = None,
+    source_metatables_config_path: str | os.PathLike[str] | Traversable | None = None,
     onedrive_drive_id: str | None = None,
     onedrive_folder_path: str | None = None,
     onedrive_cache_path: str | None = None,

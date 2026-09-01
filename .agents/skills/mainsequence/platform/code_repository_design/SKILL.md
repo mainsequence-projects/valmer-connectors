@@ -98,8 +98,8 @@ Keep these distinctions:
 - `MetaTable` is the platform catalog boundary for a physical relational
   table. Platform-managed rows belong directly to one Organization Environment
   and use its canonical DataSource. External-registered rows, including
-  Connection/DataSource imports, may remain Organization-scoped or be attached
-  to an environment while retaining their selected DataSource. CodeRepository-owned
+  Connection/DataSource imports, belong to one explicit Organization Environment
+  while retaining their selected DataSource. CodeRepository-owned
   table shapes are authored in SQLAlchemy metadata and bound to
   PostgreSQL/TimescaleDB, MySQL, or SQL Server data sources.
 - `TimeIndexMetaTable` is the `MetaTable` specialization for time-indexed
@@ -524,10 +524,13 @@ Record:
 Do not rebuild producer logic in an API. Reference the TimeIndexTableUpdater or MetaTable
 that owns the data.
 
-When implementation produces a deployable FastAPI, Streamlit, agent-runtime,
-static-site, or widget-extension target, hand the accepted release intent to the
+When implementation produces a deployable FastAPI, agent-runtime, static-site,
+or widget-extension target, hand the accepted release intent to the
 `resource-release` execution skill. Do not copy the live ResourceRelease
 serializer into the Blueprint.
+
+Managed Streamlit deployment is not a supported implementation handoff. Record
+the requirement as unresolved until the design chooses a supported target.
 
 For a widget-extension deliverable, record only why the CodeRepository needs the
 extension and the repository-relative source ownership needed for
@@ -650,11 +653,11 @@ When an accepted Static Site must appear in Command Center navigation, record
 the intended label, allowlisted icon, enabled state, and recipient category in
 that Static Site's constraints and acceptance criteria. The implementation
 handoff uses the workflow's nested `navigation_link`; it does not add a
-top-level Blueprint links domain. Record that a human grant for the exact
-CodeRepositoryBranch, workflow path, resource key, and maximum audience is a
-precondition. Do not treat repository access, CodeRepository edit authority, Git
-identity, or the automation identity as audience approval, and do not claim
-placement grants target access.
+top-level Blueprint links domain. Record that the authenticated provider push
+must resolve to an active human User whose current permissions cover the exact
+CodeRepositoryBranch and complete affected audience. Do not treat commit authorship,
+email, username, bot identity, coding-agent identity, or the automation identity as
+audience approval, and do not claim placement grants target access.
 
 Represent an API dependency through `depends_on`, using its `apis.<key>`
 reference. Do not invent a build-environment variable name in CodeRepository design;

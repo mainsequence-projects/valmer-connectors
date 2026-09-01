@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valmer-connectors"
-version = "0.1.41"
+version = "0.1.42"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -30,7 +30,10 @@ include = ["valmer_connectors*", "banxico*", "fred*", "migrations*", "agents*"]
 
 [tool.setuptools.package-data]
 migrations = ["script.py.mako"]
-valmer_connectors = ["agent_skills/valmer-connectors/*/SKILL.md"]
+valmer_connectors = [
+    "agent_skills/valmer-connectors/*/SKILL.md",
+    "config/*.json",
+]
 
 [tool.ruff]
 line-length = 100                 # Max line length for Ruff/Black.

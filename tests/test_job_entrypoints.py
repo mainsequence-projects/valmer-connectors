@@ -12,6 +12,7 @@ from banxico.settings import (
     TIIE_OVERNIGHT_INDEX_IDENTIFIER,
 )
 from valmer_connectors.services import curve_update, vector_update
+from valmer_connectors.settings import VALMER_METATABLE_SOURCE_CONFIG_RESOURCE
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,9 +51,7 @@ def test_metatable_vector_job_encodes_its_source_and_repository_config(monkeypat
     assert calls == [
         {
             "source_kind": "metatable",
-            "source_metatables_config_path": str(
-                REPOSITORY_ROOT / "configs" / "valmer-metatable-sources.json"
-            ),
+            "source_metatables_config_path": VALMER_METATABLE_SOURCE_CONFIG_RESOURCE,
             "force_pricing_details_patch": None,
             "bypass_vector_cursor_filter": None,
         }

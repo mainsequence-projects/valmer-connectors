@@ -93,7 +93,9 @@ dialog and sends their values through the normal SDK preflight and execution pay
 
 The MetaTable source itself is not a runtime control. Both
 `scripts/update_vector_valmer_metatable.py` and the control-plane preflight import
-`VALMER_METATABLE_SOURCE_CONFIG_PATH` from `valmer_connectors.settings`. For a governed MetaTable,
+`VALMER_METATABLE_SOURCE_CONFIG_RESOURCE` from `valmer_connectors.settings`. The JSON is packaged
+under `valmer_connectors/config` and resolved with `importlib.resources`, so it is available from
+both a repository checkout and an installed wheel. For a governed MetaTable,
 preflight verifies active provisioning and physical binding, compares its registered column
 contract with the Valmer mapping, and performs a one-row governed read probe. For the explicit
 direct-MSSQL compatibility setting, it performs a one-row read through the same compatibility
