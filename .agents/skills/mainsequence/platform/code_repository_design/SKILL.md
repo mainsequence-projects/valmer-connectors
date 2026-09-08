@@ -1,6 +1,6 @@
 ---
 name: code-repository-design
-description: Design, explain, review, and maintain a Main Sequence CodeRepository architecture and its connected CodeRepository Blueprint. Use for initial CodeRepository design, organization-environment architecture, architectural changes, ontology maintenance, Blueprint review or reconciliation, and implementation handoff across MetaTables, TimeIndexMetaTables, TimeIndexTableUpdaters, jobs, APIs, CLI commands, code-repository-to-agent skills, and static sites.
+description: Design, explain, review, and maintain a Main Sequence CodeRepository architecture and its connected CodeRepository Blueprint. Use for initial CodeRepository design, organization-environment architecture, architectural changes, ontology maintenance, Blueprint review or reconciliation, and implementation handoff across MetaTables, TimeIndexMetaTables, TimeIndexTableUpdaters, jobs, APIs, CLI commands, code-repository-to-agent skills, and static sites including repository-backed navigation-mask intent.
 ---
 
 # Main Sequence CodeRepository Design
@@ -72,10 +72,11 @@ Keep these distinctions:
   selects one Organization Environment and returns only CodeRepository Coding Agents
   in that boundary. Human and local callers resolve the visible environments
   with `organization_environment.list` and ask the user to select one before
-  discovery; deployed Code Repository Executors use the backend-injected environment
-  and never ask. Same-environment delegation additionally requires persisted
-  parent-session provenance; environment membership is not blanket session or
-  task authorization.
+  discovery; deployed Astro Orchestrator and Code Repository Executor runtimes
+  use the Environment Django derives from their exact authenticated service
+  target and never ask. They may delegate only to same-Environment typed Code
+  Repository Executors, with persisted parent-session provenance; environment
+  membership is not blanket session or task authorization.
 - `code_repository.create` establishes the logical CodeRepository and canonical
   production `main` CodeRepositoryBranch and never accepts a branch name. It may accept
   one visible `bootstrap_organization_environment_uid`; the backend derives that
@@ -162,7 +163,7 @@ Keep these distinctions:
   fixed SDK workload build are backend-owned. Never design an `extension_id`,
   image selector, build command, environment, active deployment, or a second
   publication-attempt system.
-- Workflow APIs `2.0.0` and `2.1.0` can carry non-secret target-owned `env_vars` for Jobs,
+- Workflow APIs `2.0.0`, `2.1.0`, and `2.2.0` can carry non-secret target-owned `env_vars` for Jobs,
   runtime ResourceReleases, and CodeRepository Coding Agents. Static sites use
   `build_environment`; widget extensions accept neither. These literals configure only the declared target or
   its backing Job: they do not create or resolve platform Secrets/Constants,
@@ -254,8 +255,10 @@ why each relationship needs a foreign key or constraint, and which access
 pattern justifies an index. State the physical database dialect because it
 affects the SQLAlchemy types, defaults, and constraint behavior.
 
-For a TimeIndexTableUpdater, explain the produced dataset, complete output grain, cadence,
-dependencies, incremental boundary, determinism, and consumers.
+For a TimeIndexTableUpdater, explain the produced dataset, complete output grain,
+input/output data frequency and freshness expectations, dependencies,
+incremental boundary, determinism, and consumers. Do not assign executable
+cadence to the updater.
 
 ### Advanced Mode
 
@@ -390,7 +393,7 @@ consumer.
 When a component requires process configuration, record the required variable
 names, non-secret value intent, target ownership, and secret exclusions in its
 existing constraints, decisions, dependencies, and acceptance criteria. The
-implementation handoff uses the live `code-repository-workflows` API `2.1.0` template.
+implementation handoff uses the live `code-repository-workflows` API `2.2.0` template.
 Do not add a second Blueprint environment-variable domain or represent a
 workflow literal as a platform Secret/Constant resource.
 
@@ -442,7 +445,8 @@ Record:
 - the output `TimeIndexMetaTable` reference (stored in the Blueprint's existing
   `output_metatable` field);
 - complete output grain: time index plus all identity dimensions;
-- cadence and freshness expectation;
+- input/output data frequency and freshness expectation, without treating it as
+  executable cadence;
 - TimeIndexTableUpdater, MetaTable, and external-data dependencies;
 - update boundary and partitioning;
 - determinism and idempotency expectations;
@@ -473,7 +477,14 @@ Record:
 - `spot`;
 - positive `max_runtime_seconds`;
 - optional `task_schedule` using the existing interval or crontab schedule
-  shape, including start-time or one-off intent when needed.
+  shape, including start-time or one-off intent when needed;
+- for every crontab, the canonical IANA timezone in which its wall-clock fields
+  are evaluated; interval schedules have no timezone.
+
+Do not translate a calendar schedule to the designer's current UTC offset. The
+Job snapshots its chosen timezone and does not follow later Command Center
+preference changes. Treat an omitted legacy timezone as UTC-compatible but not
+as confirmed user intent; new designs should always state the zone.
 
 The canonical creation flow infers the Job type from `execution_path`. Do not
 declare an independent type or command contract in the Blueprint. A `.ipynb`
@@ -491,7 +502,7 @@ Direct manual Job creation selects one already-ready exact CodeRepository image.
 Direct automatic Job creation does not accept an image selector: the backend
 derives one exact initial image from the CodeRepositoryBranch's persisted synchronized
 commit and owns its preparation. Workflow Job declarations likewise carry no
-image or commit selectors: workflow API `2.1.0` derives the exact image from
+image or commit selectors: workflow API `2.2.0` derives the exact image from
 the immutable repository event. Neither automatic path resolves branch HEAD at
 runtime or persists an image-less Job.
 
@@ -650,14 +661,37 @@ Record:
 - observable acceptance criteria.
 
 When an accepted Static Site must appear in Command Center navigation, record
-the intended label, allowlisted icon, enabled state, and recipient category in
+the intended label, required allowlisted fallback icon key, optional
+repository-backed monochrome mask intent, enabled state, and recipient category in
 that Static Site's constraints and acceptance criteria. The implementation
 handoff uses the workflow's nested `navigation_link`; it does not add a
-top-level Blueprint links domain. Record that the authenticated provider push
-must resolve to an active human User whose current permissions cover the exact
-CodeRepositoryBranch and complete affected audience. Do not treat commit authorship,
-email, username, bot identity, coding-agent identity, or the automation identity as
-audience approval, and do not claim placement grants target access.
+top-level Blueprint links domain. Record that authenticated repository-action
+provenance must resolve to an active human User whose current permissions cover
+the exact CodeRepositoryBranch and complete affected audience. Ordinary pushes
+use exact signed provider identity; the canonical default-tag flow may use its
+short-lived exact branch/tag/commit correlation for one delivery. A later
+delivery cannot reuse it, and the request must predate delivery receipt. That correlation is causal
+identity evidence, not authorization persistence. Do not treat commit
+authorship, email, username, uncorrelated bot or deploy-key identity,
+coding-agent identity, or the automation identity as audience approval, and do
+not claim placement grants target access.
+
+When repository-backed mask intent is accepted, the implementation handoff
+uses workflow API `2.2.0` `navigation_link.icon_mask_path`; the Blueprint does
+not copy the path as a deployment field. The only supported asset is at most
+512 KiB and is either a sanitized basic-geometry SVG with a finite positive
+square `viewBox`, or a static square transparent PNG/WebP from 32 x 32 through
+512 x 512 pixels inclusive. Scripts, text, style, external references,
+embedded data, JPEG, animation, and opaque rasters are rejected. The path is a forward-slash,
+repository-root-relative POSIX path of at most 1024 UTF-8 bytes, contains no
+empty, `.`, `..`, `.git`, backslash, NUL, or symbolic-link component, and ends
+at a regular file in the exact event-commit checkout. Filename extensions and
+media types do not substitute for byte validation. Omission preserves the
+stored mask, explicit null removes it, identical sanitized bytes are a digest no-op,
+and `icon_key` remains the required fallback. Missing or invalid mask content
+warns without blocking Static Site deployment and preserves prior navigation
+state; unsafe path syntax is a blocking workflow validation error. A later
+valid push or redeployment re-resolves and restores the mask.
 
 Represent an API dependency through `depends_on`, using its `apis.<key>`
 reference. Do not invent a build-environment variable name in CodeRepository design;

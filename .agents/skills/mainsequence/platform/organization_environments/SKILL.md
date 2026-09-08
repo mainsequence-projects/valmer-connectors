@@ -1,6 +1,6 @@
 ---
 name: organization-environments
-description: Understand, enumerate, design, and review Main Sequence Organization Environments and their lifecycle. Use to resolve visible environment UIDs before human/local Agent discovery; distinguish an Organization Environment from a CodeRepository, CodeRepositoryBranch, Git branch, DataSource, release, or deployment; reason about branch-owned runtime scope and shared MetaTables, Secrets, and Constants; and separate code promotion from configuration and data migration.
+description: Understand, enumerate, design, and review Main Sequence Organization Environments and their lifecycle. Use to resolve visible environment UIDs before human/local Agent discovery; distinguish an Organization Environment from a CodeRepository, CodeRepositoryBranch, Git branch, DataSource, release, or deployment; reason about target-derived runtime scope and shared MetaTables, Secrets, and Constants; and separate code promotion from configuration and data migration.
 ---
 
 # Main Sequence Organization Environments
@@ -60,6 +60,8 @@ Decision Checklist are approved, including:
 - established mappings change only through explicit migration workflows;
 - CodeRepository Executor environment scope is derived through its persisted
   CodeRepositoryBranch; and
+- Astro Orchestrator runtime scope is derived through its authenticated
+  `UserOrchestratorAgentService` and required Environment-owned Agent;
 - deployed SDK callers never set runtime mode, CodeRepositoryBranch, repository
   branch, or environment context: authenticated JobRun startup or runtime
   credential exchange installs backend-derived context, reserved environment
@@ -72,7 +74,7 @@ Decision Checklist are approved, including:
 The strict normalization implementation is deployed in Django source: the canonical
 DRF relation, shared resolver contract, direct/derived/projected/snapshot model
 roles, exact-environment query boundaries, and deterministic data migrations
-are present. Public Secret, Constant, MetaTable, Namespace, Scheduler, Agent,
+are present. Public Secret, Constant, MetaTable, Namespace, Agent,
 capability, Workspace, widget-group, Bucket, and branch-owned paths now require
 or derive one exact Environment. After deterministic resolution, ambiguous
 legacy operational rows are retired and every stored Environment FK is
@@ -91,6 +93,14 @@ The registered read-only `organization_environment.list` MCP tool exposes the
 canonical DRF collection so a human or local agent can resolve visible
 environment names and public UIDs. It does not expose environment creation,
 mutation, deletion, branch assignment, or data migration.
+
+`OrganizationProject` is a separate lightweight Command Center organization
+concept. It stores one direct immutable Environment and may organize many
+`CodeRepositoryBranch` rows only when every branch belongs to that exact
+Environment. It uses standard user/team view and edit sharing, but a Project
+grant never bypasses Environment admission or grants access to member branches.
+Project CRUD, sharing, and branch membership are DRF/Command Center-only; there
+is no SDK, CLI, runtime, generated-CodeRepository, or MCP operation for it.
 
 ## Understand The Accepted Normalization Target
 
@@ -129,6 +139,7 @@ The target model by application is:
 
 ```text
 pod_manager
+├── OrganizationProject -> direct Environment; organizes only exact-Environment branches
 ├── CodeRepositoryBranch -> exact Environment partition
 │   └── Jobs, images, releases, runtimes, and CodeRepository Coding Agents derive or
 │       carry declared read-only projections/snapshots
@@ -136,12 +147,15 @@ pod_manager
 └── CodeRepository, DataSource, CloudTenancy, Cluster, registries -> not singular
 
 ts_manager
-├── MetaTable, Namespace, Scheduler, TableUpdateNode -> direct Environment
+├── MetaTable, Namespace, TableUpdateNode -> direct Environment
 └── columns, indexes, foreign keys, TimeIndexTableUpdate updates -> derive through
     their mandatory MetaTable/update-graph parent
 
 agents
 ├── Agent, AgentCapability, CodingAgentDeploymentDefault -> direct Environment
+├── UserOrchestratorAgentService -> derives through its required Agent; exactly
+│   one independently deployed Astro Agent/service per responsible User and
+│   Environment pair
 ├── CodeRepositoryExecutorRuntimeImage and CodeRepositoryExecutorRun -> inherited projection
     or snapshot from their Pod Manager parent
 └── sessions, tasks, messages, handles, and bindings -> derive and must match
@@ -184,12 +198,14 @@ partition resolved by its exact CodeRepositoryBranch.
 ```text
 Organization
 ├── OrganizationEnvironment
+│   ├── OrganizationProject ── organizes ──> CodeRepositoryBranch in this exact Environment
 │   ├── MetaTable (managed or external)
 │   ├── Secret
 │   ├── Constant
-│   ├── Namespace, Scheduler, and TableUpdateNode
+│   ├── Namespace and TableUpdateNode
 │   ├── Bucket and PVCDisk
 │   ├── Agent and AgentCapability
+│   ├── UserOrchestratorAgentService through its Environment-owned Agent
 │   └── Workspace and SavedWidgetGroup
 └── CodeRepository
     ├── GitHubRepositoryBinding
@@ -209,6 +225,7 @@ membership row.
 | --- | --- | --- |
 | `Organization` | Tenant and owner of environments and Organization control-plane resources | One deployment stage or a fallback operational environment |
 | `OrganizationEnvironment` | Canonical Organization-wide operational partition | A CodeRepository, Git branch, DataSource, release, or deployment |
+| `OrganizationProject` | Shareable lightweight Command Center grouping of branch identities inside one exact Organization Environment | Branch ownership, transitive branch access, runtime scope, nested project, or container for branch descendants |
 | `CodeRepository` | Logical code repository aggregate that owns its branches, source link, sharing, labels, and lifecycle | The active environment or execution branch |
 | `GitHubRepositoryBinding` | Provider/source-control identity | An environment or selected CodeRepositoryBranch |
 | `CodeRepositoryBranch` | Durable CodeRepository participation marker and execution context for one exact provider branch and Environment partition | A caller-selected environment mapping |
@@ -334,19 +351,36 @@ guessing its UID. Do not default to production or silently choose the only
 row. Reuse the selected UID for the bounded workflow and pass it explicitly to
 every `agent.list` or `agent.search` call.
 
+The same explicit selection also bounds human coding-agent service,
+AgentSession, and AgentTask collections. Apply it before every other filter,
+search, ordering, count, or pagination operation. Do not merge rows by Agent
+display name: one User may have an `Astro` Agent and a separately deployed
+`UserOrchestratorAgentService` in each visible Environment. Astro deploy uses
+top-level `organization_environment_uid`; `scope.kind=user` identifies the
+responsible principal only and is never a complete deployment, reconciliation,
+cache, or runtime identity.
+
 A genuine local checkout may use its active Git branch only to discover a
 persisted CodeRepositoryBranch for an explicit operation; it cannot turn that
 discovery into a runtime credential or infer an environment directly. Do not
 infer an active environment from a CodeRepository, DataSource, production default,
 branch text alone, or request body.
 
-### Organization-Scoped And Other Coding-Agent Services
+### Environment-Owned And Other Coding-Agent Services
 
-Do not give an Organization orchestrator, test runtime, or another coding-agent
-service type branch-owned semantics merely because it belongs to the same
-Organization. Only a persisted target relationship to a CodeRepositoryBranch creates
-implicit branch context. A null runtime context is intentional and must not
-fall back to production, `main`, an image, or a DataSource.
+Do not give an Organization test runtime or an unapproved coding-agent service
+type Environment semantics merely because it belongs to the same Organization.
+Only a persisted authenticated target relationship creates implicit runtime
+context. A missing or inconsistent runtime Environment must fail with `403` and
+must not fall back to human grants, production, `main`, an image, or a
+DataSource.
+
+An Astro runtime credential is still Environment-scoped even though it has no
+CodeRepositoryBranch. Its exact chain is runtime credential to
+`UserOrchestratorAgentService` to required Agent to Organization Environment.
+It may use only that exact service/Agent/session boundary and must never be
+combined with an endpoint, token, or service UID cached for another
+Environment.
 
 ## Understand The Resource Boundary
 
@@ -410,19 +444,21 @@ excluded.
 An authorized human or local caller first uses
 `organization_environment.list`, presents the visible choices to the user,
 and asks which environment should bound the work. The selected public UID is
-then required on `agent.list` and `agent.search`. A deployed CodeRepository Executor
-does not list or choose environments: Astro Tau injects the UID provided by
-the backend runtime context and removes it from the model-visible MCP schema.
-Never ask a deployed CodeRepository Executor user to select an environment, and never
+then required on `agent.list` and `agent.search`. A deployed Astro Orchestrator
+or CodeRepository Executor does not list or choose environments: Django derives
+the exact Environment from the authenticated service target, while Astro Tau
+removes the selector from the model-visible MCP schema. Never ask a deployed
+coding-agent runtime user to select an environment, and never
 infer or widen scope from Organization membership, repository branch text,
 DataSource equality, or prompt input.
 
-Same-environment discovery does not grant arbitrary session access. Delegation
-to another CodeRepository Coding Agent requires a caller-owned parent session, and the
+Same-environment discovery does not grant arbitrary session access. Astro and
+executor runtimes may delegate only to a typed CodeRepository Executor in the
+same Environment. Delegation requires a caller-owned parent session, and the
 persisted parent-child relationship authorizes subsequent delegated runtime-
-access and task operations. CodeRepository Executor subagent bindings require both
-endpoints to be CodeRepository Coding Agents in the same environment, and the calling
-runtime may manage only its own outbound bindings.
+access and task operations. Runtime-managed subagent bindings require a typed
+CodeRepository Executor child in the same environment, and the calling runtime
+may manage only its own outbound bindings.
 
 ### DataSource
 
@@ -460,9 +496,10 @@ The ADR defines list, create, retrieve, partial-update, and delete intent and
 does not define full-replacement PUT.
 
 The route is deployed with the accepted serializer fields, filters,
-Organization-admin mutation permissions, and transition restrictions. CodeRepository
-Executor credentials can observe only their derived environment and cannot
-mutate this resource. The read-only `organization_environment.list` MCP tool
+Organization-admin mutation permissions, and transition restrictions.
+Authenticated coding-agent runtime credentials can observe only their
+target-derived environment and cannot mutate this resource. The read-only
+`organization_environment.list` MCP tool
 delegates to this exact list action and returns its canonical paginated
 serializer response. It adds no MCP-only visibility or permission rule.
 
