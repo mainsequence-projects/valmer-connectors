@@ -148,7 +148,7 @@ class FredReferenceRateTests(unittest.TestCase):
             [US_TREASURY_CMT_2Y_INDEX_IDENTIFIER],
         )
         self.assertIsNone(node_class.call_args.kwargs["hash_namespace"])
-        node.run.assert_called_once_with(force_update=True)
+        node.run.assert_called_once_with()
 
 
 class FredReferenceRateCliTests(unittest.TestCase):

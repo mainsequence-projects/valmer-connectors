@@ -606,7 +606,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             ],
             verify_existing=False,
         )
-        snapshot_node.run.assert_called_once_with(force_update=True)
+        snapshot_node.run.assert_called_once_with()
         snapshot_node.get_df_between_dates.assert_not_called()
         self.assertEqual(published, 1)
 
@@ -650,7 +650,7 @@ class ValmerVectorStorageTest(unittest.TestCase):
             ],
             verify_existing=False,
         )
-        snapshot_node.run.assert_called_once_with(force_update=True)
+        snapshot_node.run.assert_called_once_with()
         self.assertEqual(published, 1)
 
     def test_current_pricing_face_value_resolver_uses_projection_query(self):

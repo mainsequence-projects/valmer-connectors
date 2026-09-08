@@ -391,7 +391,7 @@ def _publish_valmer_asset_snapshots(
     )
     node = AssetSnapshot()
 
-    result = node.set_snapshots(snapshot_rows, verify_existing=False).run(force_update=True)
+    result = node.set_snapshots(snapshot_rows, verify_existing=False).run()
     if isinstance(result, tuple) and len(result) == 2:
         error_on_last_update, frame = result
     else:

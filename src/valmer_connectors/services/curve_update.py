@@ -110,10 +110,10 @@ def _run_valmer_discount_curve_update(
     )
     if key_nodes_validator is not None:
         node = node.set_key_nodes_validator(key_nodes_validator)
-    run_kwargs = {"force_update": True}
     if rebuild_current:
-        run_kwargs["override_update_stats"] = UpdateStatistics.return_empty()
-    node.run(**run_kwargs)
+        node.run(override_update_stats=UpdateStatistics.return_empty())
+    else:
+        node.run()
 
 
 def _with_curve_summary_logging(
@@ -172,7 +172,7 @@ def run_tiie_irs_mxn_curve_update(
             quote_storage_table=DailyIndexValuesStorage,
             source_families=("tiie_ois",),
         )
-    ).run(force_update=True)
+    ).run()
 
 
 def run_usd_sofr_curve_update(
@@ -189,7 +189,7 @@ def run_usd_sofr_curve_update(
             quote_storage_table=DailyIndexValuesStorage,
             source_families=("sofr_future", "sofr_ois"),
         )
-    ).run(force_update=True)
+    ).run()
 
 
 def run_usd_mxn_xccy_curve_update(
@@ -213,10 +213,10 @@ def run_usd_mxn_xccy_curve_update(
         ),
         hash_namespace=hash_namespace,
     )
-    run_kwargs = {"force_update": True}
     if rebuild_current:
-        run_kwargs["override_update_stats"] = UpdateStatistics.return_empty()
-    node.run(**run_kwargs)
+        node.run(override_update_stats=UpdateStatistics.return_empty())
+    else:
+        node.run()
 
 
 def run_mxn_government_curve_update(

@@ -117,7 +117,7 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
             force_pricing_update=True,
             bypass_vector_cursor_filter=False,
         )
-        updater.run.assert_called_once_with(force_update=True)
+        updater.run.assert_called_once_with()
 
     def test_first_time_update_bypasses_daily_gate_and_runs_first_loop(self):
         stats_updater = Mock()
@@ -150,12 +150,12 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
             force_pricing_update=True,
             bypass_vector_cursor_filter=False,
         )
-        first_loop_updater.run.assert_called_once_with(force_update=True)
+        first_loop_updater.run.assert_called_once_with()
         second_loop_updater.prepare_for_update.assert_called_once_with(
             force_pricing_update=True,
             bypass_vector_cursor_filter=False,
         )
-        second_loop_updater.run.assert_called_once_with(force_update=True)
+        second_loop_updater.run.assert_called_once_with()
 
     def test_vector_update_passes_metatable_sources_config(self):
         updater = Mock()
@@ -208,7 +208,7 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
             force_pricing_update=True,
             bypass_vector_cursor_filter=False,
         )
-        updater.run.assert_called_once_with(force_update=True)
+        updater.run.assert_called_once_with()
 
     def test_vector_update_uses_local_bucket_path(self):
         updater = Mock()
@@ -248,7 +248,7 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
             force_pricing_update=True,
             bypass_vector_cursor_filter=False,
         )
-        updater.run.assert_called_once_with(force_update=True)
+        updater.run.assert_called_once_with()
 
     def test_vector_update_resolves_local_bucket_path_from_env_var(self):
         updater = Mock()
@@ -288,7 +288,7 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
             force_pricing_update=True,
             bypass_vector_cursor_filter=False,
         )
-        updater.run.assert_called_once_with(force_update=True)
+        updater.run.assert_called_once_with()
 
     def test_vector_update_filters_local_bucket_files_by_persisted_vector_date(self):
         updater = Mock()
@@ -326,7 +326,7 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
             force_pricing_update=True,
             bypass_vector_cursor_filter=False,
         )
-        updater.run.assert_called_once_with(force_update=True)
+        updater.run.assert_called_once_with()
 
     def test_vector_update_bypasses_local_cursor_filter_for_repair_runs(self):
         updater = Mock()
@@ -367,7 +367,7 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
             force_pricing_update=True,
             bypass_vector_cursor_filter=True,
         )
-        updater.run.assert_called_once_with(force_update=True)
+        updater.run.assert_called_once_with()
 
     def test_vector_update_uses_onedrive_graph_source(self):
         updater = Mock()
@@ -431,7 +431,7 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
             force_pricing_update=True,
             bypass_vector_cursor_filter=False,
         )
-        updater.run.assert_called_once_with(force_update=True)
+        updater.run.assert_called_once_with()
 
     def test_local_vector_file_selection_keeps_undated_files(self):
         latest = dt.datetime(2024, 12, 3, 23, 59, 59, tzinfo=dt.UTC)

@@ -371,7 +371,6 @@ def run_fred_reference_rates_update(
     validate_metadata: bool = True,
     runtime_end: dt.date | dt.datetime | str | pd.Timestamp | None = None,
     hash_namespace: str | None = None,
-    force_update: bool = True,
 ) -> None:
     """Attach runtime state, register FRED indexes, and execute the producer."""
 
@@ -395,7 +394,7 @@ def run_fred_reference_rates_update(
         definitions=selected,
         validate_metadata=validate_metadata,
     )
-    node.set_runtime_end(runtime_end).run(force_update=force_update)
+    node.set_runtime_end(runtime_end).run()
 
 
 def _normalize_text(value: str) -> str:

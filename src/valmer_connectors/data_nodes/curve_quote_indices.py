@@ -346,14 +346,14 @@ def run_valmer_irs_mxn_quote_update() -> None:
     from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 
     bootstrap_runtime(seed_static_rows=False)
-    ValmerIrsMxnIndexValuesNode(mxn_quote_config()).run(force_update=True)
+    ValmerIrsMxnIndexValuesNode(mxn_quote_config()).run()
 
 
 def run_valmer_irs_usd_quote_update() -> None:
     from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 
     bootstrap_runtime(seed_static_rows=False)
-    ValmerIrsUsdIndexValuesNode(usd_quote_config()).run(force_update=True)
+    ValmerIrsUsdIndexValuesNode(usd_quote_config()).run()
 
 
 def _normalize_quote_row(

@@ -111,7 +111,7 @@ class BanxicoPolicyRateTests(unittest.TestCase):
             config.index_unique_identifiers,
             [BANXICO_POLICY_TARGET_INDEX_IDENTIFIER],
         )
-        node.run.assert_called_once_with(force_update=True)
+        node.run.assert_called_once_with()
 
 
 class BanxicoPolicyRateCliTests(unittest.TestCase):

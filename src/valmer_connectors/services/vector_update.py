@@ -570,7 +570,7 @@ def run_vector_update(
                     force_pricing_update=resolved_force_pricing_details_patch,
                     bypass_vector_cursor_filter=resolved_bypass_vector_cursor_filter,
                 )
-                batch_updater.run(force_update=True)
+                batch_updater.run()
             LOGGER.info(
                 "Vector batch complete",
                 batch=batch_index,
@@ -616,7 +616,7 @@ def run_vector_update(
                     force_pricing_update=resolved_force_pricing_details_patch,
                     bypass_vector_cursor_filter=resolved_bypass_vector_cursor_filter,
                 )
-                loop_updater.run(force_update=True)
+                loop_updater.run()
                 LOGGER.info(
                     "Vector backfill iteration complete",
                     iteration=iteration,
@@ -636,7 +636,7 @@ def run_vector_update(
             force_pricing_update=resolved_force_pricing_details_patch,
             bypass_vector_cursor_filter=resolved_bypass_vector_cursor_filter,
         )
-        updater.run(force_update=True)
+        updater.run()
         LOGGER.info(
             "Incremental vector update complete",
             elapsed_seconds=round(time.monotonic() - started, 1),

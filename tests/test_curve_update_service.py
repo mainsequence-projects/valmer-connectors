@@ -48,7 +48,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         configure_cadence.assert_called_once_with()
         curve_config.assert_called_once_with(curve_unique_identifier="TEST_CURVE")
         node_class.assert_called_once_with(curve_config=curve_config.return_value)
-        node.run.assert_called_once_with(force_update=True)
+        node.run.assert_called_once_with()
 
         wrapped_builder = node.set_curve_builder.call_args.args[0]
         result = wrapped_builder(
@@ -95,7 +95,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
             )
 
         node.set_key_nodes_validator.assert_called_once_with(validator)
-        node.run.assert_called_once_with(force_update=True)
+        node.run.assert_called_once_with()
 
     def test_shared_runner_can_rebuild_current_curve_date(self):
         builder = Mock(
@@ -136,10 +136,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
             hash_namespace="pytest-xccy",
         )
         update_stats.return_empty.assert_called_once_with()
-        node.run.assert_called_once_with(
-            force_update=True,
-            override_update_stats=empty_stats,
-        )
+        node.run.assert_called_once_with(override_update_stats=empty_stats)
 
     def test_shared_runner_rejects_curve_frame_without_key_nodes(self):
         frame = pd.DataFrame(
@@ -181,7 +178,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         config = node_class.call_args.kwargs["curve_config"]
         self.assertEqual(config.curve_unique_identifier, "VALMER_TIIE_OVERNIGHT")
         self.assertEqual(config.source_families, ("tiie_ois",))
-        node_class.return_value.run.assert_called_once_with(force_update=True)
+        node_class.return_value.run.assert_called_once_with()
 
     def test_usd_sofr_update_uses_dependency_backed_node(self):
         with (
@@ -198,7 +195,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         config = node_class.call_args.kwargs["curve_config"]
         self.assertEqual(config.curve_unique_identifier, "VALMER_USD_SOFR_OVERNIGHT")
         self.assertEqual(config.source_families, ("sofr_future", "sofr_ois"))
-        node_class.return_value.run.assert_called_once_with(force_update=True)
+        node_class.return_value.run.assert_called_once_with()
 
     def test_usd_mxn_xccy_update_uses_dependency_backed_node(self):
         with (
@@ -221,7 +218,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
             config.source_families,
             ("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),
         )
-        node_class.return_value.run.assert_called_once_with(force_update=True)
+        node_class.return_value.run.assert_called_once_with()
 
     def test_usd_mxn_xccy_update_forwards_rebuild_controls(self):
         with (

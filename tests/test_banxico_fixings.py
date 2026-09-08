@@ -218,7 +218,7 @@ class BanxicoFixingsTests(unittest.TestCase):
         self.assertEqual(config.index_unique_identifiers, [TIIE_28_INDEX_IDENTIFIER])
         self.assertEqual(node_class.call_args.kwargs["hash_namespace"], "pytest")
         node.set_fixing_builders.assert_called_once_with(builders)
-        node.run.assert_called_once_with(force_update=True)
+        node.run.assert_called_once_with()
 
     def test_resolve_banxico_token_hydrates_secret_detail_when_name_lookup_omits_value(self):
         class SecretValue:

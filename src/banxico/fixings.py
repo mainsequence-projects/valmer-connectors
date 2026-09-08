@@ -364,7 +364,6 @@ def run_banxico_fixings_update(
     end_date: dt.date | str | pd.Timestamp | None = None,
     offset_start: dt.date | dt.datetime | str | pd.Timestamp = BANXICO_FIXING_OFFSET_START,
     hash_namespace: str | None = None,
-    force_update: bool = True,
 ) -> None:
     """Run Banxico TIIE/CETE fixings through the current pricing fixing node."""
 
@@ -389,7 +388,7 @@ def run_banxico_fixings_update(
         ),
         **node_kwargs,
     ).set_fixing_builders(builders)
-    node.run(force_update=force_update)
+    node.run()
 
 
 def _last_update_for_identity(update_statistics, index_identifier: str) -> Any | None:
