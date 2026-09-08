@@ -5,6 +5,7 @@ import uuid
 from unittest.mock import patch
 
 import msm_pricing.instruments.bond_terms as bond_terms
+import pandas as pd
 import QuantLib as ql
 from msm_pricing.instruments import (
     BondInstrumentTerms,
@@ -17,6 +18,7 @@ from valmer_connectors.instruments.vector_to_asset import (
     CoreBondPricingPayload,
     build_instrument_from_core_bond_pricing_payload,
     resolve_reference_index_uid,
+    valmer_row_to_core_bond_pricing_payload,
 )
 from valmer_connectors.settings import SUBYACENTE_TO_INDEX_MAP
 
@@ -180,6 +182,77 @@ class ValmerInstrumentIndexUidTests(unittest.TestCase):
         self.assertNotIn("MXN_GOVERNMENT_BOND", set(SUBYACENTE_TO_INDEX_MAP.values()))
         self.assertEqual(SUBYACENTE_TO_INDEX_MAP["Bonos M Bruta(Yield)"], "CETE_28")
         self.assertEqual(SUBYACENTE_TO_INDEX_MAP["P8-X8"], "CETE_182")
+
+    def test_cetes_accepts_null_coupon_count_from_governed_pip_view(self):
+        row = pd.Series(
+            {
+                "fecha": "2026-09-07",
+                "fechaemision": "2026-06-25",
+                "fechavcto": "2026-09-24",
+                "valornominalactualizado": 10.0,
+                "sobretasa": 0.0,
+                "reglacupon": pd.NA,
+                "emisora": "CETES",
+                "tipovalor": "BI",
+                "cuponesemision": pd.NA,
+            }
+        )
+
+        with patch(
+            "valmer_connectors.instruments.vector_to_asset.resolve_reference_index_uid",
+            return_value=uuid.uuid4(),
+        ):
+            payload = valmer_row_to_core_bond_pricing_payload(
+                row,
+                calendar=ql.Mexico(ql.Mexico.BMV),
+                dc=ql.Actual360(),
+                bdc=ql.Following,
+                settlement_days=1,
+            )
+
+        self.assertEqual(payload.instrument_type, "zero_coupon_bond")
+
+    def test_m_bonos_defaults_missing_subyacente_to_cete_28(self):
+        expected_index_uid = uuid.uuid4()
+        row = pd.Series(
+            {
+                "fecha": "2026-09-07",
+                "fechaemision": "2021-09-09",
+                "fechavcto": "2027-03-04",
+                "valornominalactualizado": 100.0,
+                "sobretasa": 0.0,
+                "reglacupon": "Tasa Fija",
+                "emisora": "BONOS",
+                "tipovalor": "M",
+                "cuponesemision": "11",
+                "cuponesxcobrar": 1,
+                "freccpn": "Cada 182 dia(s)",
+                "tasacupon": 5.5,
+                "subyacente": pd.NA,
+            }
+        )
+
+        with (
+            patch(
+                "valmer_connectors.instruments.vector_to_asset.compute_sheet_schedule_force_match",
+                return_value=object(),
+            ),
+            patch(
+                "valmer_connectors.instruments.vector_to_asset.resolve_reference_index_uid",
+                return_value=expected_index_uid,
+            ) as resolve_index,
+        ):
+            payload = valmer_row_to_core_bond_pricing_payload(
+                row,
+                calendar=ql.Mexico(ql.Mexico.BMV),
+                dc=ql.Actual360(),
+                bdc=ql.Following,
+                settlement_days=1,
+            )
+
+        self.assertEqual(payload.instrument_type, "fixed_rate_bond")
+        self.assertEqual(payload.benchmark_rate_index_uid, expected_index_uid)
+        resolve_index.assert_called_once_with(SUBYACENTE_TO_INDEX_MAP["Bonos M Bruta(Yield)"])
 
 
 if __name__ == "__main__":

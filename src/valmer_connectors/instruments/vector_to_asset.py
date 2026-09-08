@@ -526,12 +526,14 @@ def valmer_row_to_core_bond_pricing_payload(
     coupon_rule = row["reglacupon"]
     emisora = row["emisora"]
     tipo_valor = row["tipovalor"]
-    cuponesemision = row["cuponesemision"]
+    cuponesemision = pd.to_numeric(row["cuponesemision"], errors="coerce")
 
     zero_corps_tipo_valor = ["I", "93", "92"]
 
-    is_zero_coupon = tipo_valor in zero_corps_tipo_valor or emisora in ["CETES"]
-    is_zero_coupon = is_zero_coupon if cuponesemision == 0 else False
+    is_zero_coupon_family = tipo_valor in zero_corps_tipo_valor or emisora in ["CETES"]
+    if is_zero_coupon_family and pd.isna(cuponesemision):
+        cuponesemision = 0
+    is_zero_coupon = is_zero_coupon_family and cuponesemision == 0
     coupon_frequency = None
     explicit_schedule = None
 
@@ -591,7 +593,10 @@ def valmer_row_to_core_bond_pricing_payload(
         )
 
     elif coupon_rule == "Tasa Fija":  # Fixed Rate Bond
-        benchmark_rate_index_identifier = SUBYACENTE_TO_INDEX_MAP[row["subyacente"]]
+        subyacente = row.get("subyacente")
+        if pd.isna(subyacente) and (tipo_valor, emisora) == ("M", "BONOS"):
+            subyacente = "Bonos M Bruta(Yield)"
+        benchmark_rate_index_identifier = SUBYACENTE_TO_INDEX_MAP[subyacente]
         benchmark_rate_index_uid = resolve_reference_index_uid(
             benchmark_rate_index_identifier
         )

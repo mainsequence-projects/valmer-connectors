@@ -23,10 +23,16 @@ class ValmerVectorUpdateServiceTests(unittest.TestCase):
         self.assertEqual(sources[0].source_name, "historical_valmer_vector")
         self.assertEqual(
             sources[0].metatable_identifier,
-            "dbo.vector_precios_gubernamental",
+            "dbo.vector_precios_gubernamental_pip_vista",
+        )
+        self.assertEqual(sources[0].column_map["fecha_emision"], "fechaemision")
+        self.assertEqual(sources[0].column_map["subyacente"], "subyacente")
+        self.assertEqual(
+            sources[0].column_map["vn_actualizado"],
+            "valornominalactualizado",
         )
         self.assertEqual(sources[0].sql_dialect, "mssql")
-        self.assertEqual(len(sources[0].column_map), 29)
+        self.assertEqual(len(sources[0].column_map), 60)
 
     def test_metatable_preflight_probes_the_registered_source(self):
         with TemporaryDirectory() as tmpdir:

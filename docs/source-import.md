@@ -392,6 +392,14 @@ The production reader accepts only `metatable_identifier`. Main Sequence owns
 the registered DataSource binding and governed query execution; the Job and API
 do not open database connections or load database access values.
 
+The packaged production source resolves the registered current-snapshot view
+`dbo.vector_precios_gubernamental_pip_vista`. Its PIP column contract includes
+the instrument-definition fields required for pricing hydration. The adapter
+normalizes bracketed Valmer currency labels to their codes, fills the canonical
+government benchmark keys for CETES, M BONOS, and BPAG families, and excludes
+zero-coupon corporate rows when the source does not provide a benchmark key.
+The historical PIP table is intentionally not used by the live Job.
+
 When a vector cursor exists, the reader pushes the minimum stored per-asset
 cursor into the SQL query as a lower `Fecha` bound, then applies the normal
 per-asset cursor filter in pandas. Repair runs using

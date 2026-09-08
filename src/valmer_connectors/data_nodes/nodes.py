@@ -1601,6 +1601,35 @@ class ImportValmer(AssetIndexedDataNode):
                 f"normalized columns: {required_missing}."
             )
         normalized = cls._materialize_optional_source_columns(normalized)
+        currency = normalized["monedaemision"].astype("string").str.strip()
+        currency_code = currency.str.extract(r"^\[([^\]]+)\]", expand=False)
+        normalized["monedaemision"] = currency_code.fillna(currency)
+
+        security_type = normalized["tipovalor"].astype("string").str.strip()
+        issuer = normalized["emisora"].astype("string").str.strip()
+        missing_underlying = normalized["subyacente"].isna() | normalized[
+            "subyacente"
+        ].astype("string").str.strip().eq("")
+        cete_mask = security_type.eq("BI") & issuer.eq("CETES")
+        m_bonos_mask = security_type.eq("M") & issuer.eq("BONOS")
+        normalized.loc[cete_mask & missing_underlying, "subyacente"] = "CETE28"
+        normalized.loc[m_bonos_mask & missing_underlying, "subyacente"] = (
+            "Bonos M Bruta(Yield)"
+        )
+        government_floater_underlyings = {
+            "BPAG28": "CETE28",
+            "BPAG91": "IRMXP-FGub-91",
+            "BPA182": "CETE182",
+        }
+        for government_issuer, underlying in government_floater_underlyings.items():
+            normalized.loc[
+                issuer.eq(government_issuer) & missing_underlying,
+                "subyacente",
+            ] = underlying
+        normalized.loc[
+            cete_mask & normalized["cuponesemision"].isna(),
+            "cuponesemision",
+        ] = "0"
         normalized = add_valmer_unique_identifier(normalized)
         return normalized
 
@@ -1736,6 +1765,13 @@ class ImportValmer(AssetIndexedDataNode):
 
         all_target_bonds = df_latest.loc[target_mask].copy()
         all_target_bonds = all_target_bonds.loc[working.loc[target_mask, "fechaemision"].notna()]
+        zero_coupon_corporate = all_target_bonds["tipovalor"].isin({"I", "92", "93"})
+        has_underlying = all_target_bonds["subyacente"].notna() & all_target_bonds[
+            "subyacente"
+        ].astype("string").str.strip().ne("")
+        all_target_bonds = all_target_bonds.loc[
+            ~zero_coupon_corporate | has_underlying
+        ]
 
         return all_target_bonds
 

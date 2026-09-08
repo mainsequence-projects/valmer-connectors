@@ -357,6 +357,89 @@ class ValmerVectorStorageTest(unittest.TestCase):
             pd.Timestamp("2024-01-02 23:59:59", tz="UTC"),
         )
 
+    def test_pip_metatable_values_normalize_for_government_pricing(self):
+        source = MetaTableValmerSourceConfig(
+            source_name="government",
+            metatable_identifier="dbo.vector_precios_gubernamental_pip_vista",
+            column_map={
+                "fecha": "fecha",
+                "tv": "tipovalor",
+                "emisora": "emisora",
+                "serie": "serie",
+                "moneda_emision": "monedaemision",
+                "subyacente": "subyacente",
+                "cpn_emision": "cuponesemision",
+            },
+        )
+        frame = pd.DataFrame(
+            [
+                {
+                    "fecha": "2026-09-07",
+                    "tv": "BI",
+                    "emisora": "CETES",
+                    "serie": "260924",
+                    "moneda_emision": "[MPS] Peso Mexicano (MXN)",
+                    "subyacente": None,
+                    "cpn_emision": None,
+                },
+                {
+                    "fecha": "2026-09-07",
+                    "tv": "M",
+                    "emisora": "BONOS",
+                    "serie": "341123",
+                    "moneda_emision": "[MPS] Peso Mexicano (MXN)",
+                    "subyacente": None,
+                    "cpn_emision": "42",
+                },
+                {
+                    "fecha": "2026-09-07",
+                    "tv": "IM",
+                    "emisora": "BPAG28",
+                    "serie": "271104",
+                    "moneda_emision": "[MPS] Peso Mexicano (MXN)",
+                    "subyacente": None,
+                    "cpn_emision": "20",
+                },
+            ]
+        )
+
+        result = ImportValmer._normalize_metatable_source_frame(frame, source)
+
+        self.assertEqual(result["monedaemision"].tolist(), ["MPS", "MPS", "MPS"])
+        self.assertEqual(
+            result["subyacente"].tolist(),
+            ["CETE28", "Bonos M Bruta(Yield)", "CETE28"],
+        )
+        self.assertEqual(result["cuponesemision"].tolist(), ["0", "42", "20"])
+
+    def test_target_bonds_skip_zero_coupon_corporates_without_underlying(self):
+        frame = pd.DataFrame(
+            [
+                {
+                    "unique_identifier": "I_CORP_MISSING",
+                    "tipovalor": "I",
+                    "emisora": "CORP",
+                    "serie": "A",
+                    "monedaemision": "MPS",
+                    "subyacente": None,
+                    "fechaemision": "2024-01-01",
+                },
+                {
+                    "unique_identifier": "I_CORP_READY",
+                    "tipovalor": "I",
+                    "emisora": "CORP",
+                    "serie": "B",
+                    "monedaemision": "MPS",
+                    "subyacente": "D1",
+                    "fechaemision": "2024-01-01",
+                },
+            ]
+        )
+
+        result = ImportValmer._get_target_bonds(frame)
+
+        self.assertEqual(result["unique_identifier"].tolist(), ["I_CORP_READY"])
+
     def test_metatable_source_uses_registered_binding_and_cursor_pushdown(self):
         source = MetaTableValmerSourceConfig(
             source_name="government",
