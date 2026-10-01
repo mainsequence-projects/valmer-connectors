@@ -4,6 +4,12 @@
 
 Accepted / Implemented
 
+Amended on 2026-10-01 for Main Sequence SDK 9: MetaTable migrations moved from
+the `mainsequence migrations ...` CLI to the `metatables migrations ...` CLI of
+the `mainsequence-metatable` client. `valmer-connectors migrations commands`
+prints the `metatables` commands below, with `PYTHONPATH=src` for the Valmer
+provider because ms-markets also installs a top-level `migrations` package.
+
 ## Date
 
 2026-06-04
@@ -24,7 +30,7 @@ The project package is now `valmer_connectors`, so any project-owned CLI should
 live inside that package and be exposed through Python packaging metadata.
 
 The CLI must not reimplement Main Sequence migration behavior. Main Sequence
-migrations remain owned by the canonical `mainsequence migrations ...` CLI and
+migrations remain owned by the canonical `metatables migrations ...` CLI and
 the migration providers:
 
 - `msm.migrations:migration`
@@ -81,10 +87,10 @@ This command is offline and should not require platform credentials.
 Print the canonical migration sequence for this project:
 
 ```bash
-mainsequence migrations current --provider msm.migrations:migration
-mainsequence migrations upgrade --provider msm.migrations:migration head
-mainsequence migrations current --provider migrations:migration
-mainsequence migrations upgrade --provider migrations:migration head
+metatables migrations current --provider msm.migrations:migration
+metatables migrations upgrade --provider msm.migrations:migration head
+PYTHONPATH=src metatables migrations current --provider migrations:migration
+PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head
 ```
 
 This command must not run migrations. It is a discovery/help command only.
@@ -314,7 +320,7 @@ promoted into the CLI.
 
 This ADR does not:
 
-- reimplement `mainsequence migrations`;
+- reimplement `metatables migrations`;
 - add Alembic table-creation migration files;
 - run live platform updates during installation;
 - introduce a new CLI framework dependency;

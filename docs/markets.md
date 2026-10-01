@@ -457,12 +457,16 @@ Alembic autogenerate, but DDL emission is filtered to Valmer-owned tables only.
 Run project migrations after core `ms-markets` migrations:
 
 ```bash
-mainsequence migrations current --provider msm.migrations:migration
-mainsequence migrations upgrade --provider msm.migrations:migration head
+metatables migrations current --provider msm.migrations:migration
+metatables migrations upgrade --provider msm.migrations:migration head
 
-mainsequence migrations current --provider migrations:migration
-mainsequence migrations upgrade --provider migrations:migration head
+PYTHONPATH=src metatables migrations current --provider migrations:migration
+PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head
 ```
+
+ms-markets also installs a top-level `migrations` package for its core
+provider, so the Valmer provider in `src/migrations` is selected with
+`PYTHONPATH=src`; run the ms-markets provider without it.
 
 ## What This Page Does Not Own
 

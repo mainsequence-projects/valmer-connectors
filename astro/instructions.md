@@ -11,7 +11,7 @@ You are working on this project and must always follow these instructions as per
 - If a failure may be caused by the MainSequence library or SDK, state that explicitly and suggest a concrete improvement to the SDK.
 - Before starting any work, upgrade to the latest MainSequence SDK version using the CLI.
 - Always compare the implementation against the latest MainSequence SDK behavior and public documentation.
-- Before running validations, run `mainsequence code-repository refresh-token`.
+- Before running validations, run `mainsequence refresh-token`.
 - Verify all relevant resources using the CLI: `TimeIndexTableUpdaters`, updates, stored data, jobs, dashboards, assets, portfolios, and related platform objects.
 - For `TimeIndexTableUpdaters` that may contain a large amount of data, always test first in a test namespace and with a smaller time range before running a full update or backfill.
 - Any new implementation must be compared against the documentation and verified to ensure nothing breaks.
@@ -181,7 +181,7 @@ Use the CLI to verify the actual state of the project, including at minimum:
 Before verification:
 
 1. Upgrade to the latest MainSequence SDK with the CLI.
-2. Run `mainsequence code-repository refresh-token`.
+2. Run `mainsequence refresh-token`.
 
 If live verification is not possible, state that clearly and provide the exact CLI commands that must be run.
 

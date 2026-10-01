@@ -80,8 +80,8 @@ latest observation. Missing source values are omitted and never forward-filled.
 Apply core ms-markets migrations before the project provider:
 
 ```bash
-mainsequence migrations upgrade --provider msm.migrations:migration head
-PYTHONPATH=src mainsequence migrations upgrade --provider migrations:migration head
+metatables migrations upgrade --provider msm.migrations:migration head
+PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head
 ```
 
 Project revision `0001` is a clean current-schema baseline. It creates the

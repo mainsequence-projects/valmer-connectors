@@ -394,8 +394,9 @@ not the core Valmer storage read API.
 - empty identifier input avoids governed execution;
 - lookup by `ValmerAssetDetailsTable.valmer_unique_identifier`;
 - lookup by `AssetTable.unique_identifier`;
-- governed SQL compilation with `operation="select"` and `access="read"`;
-- model list includes both `ValmerAssetDetailsTable` and `AssetTable`;
+- governed SQL compilation with `operation="select"` (read execution) and no
+  retired table-scope arguments (`compile_markets_statement` in ms-markets 2
+  takes only `context` and `operation`);
 - alias expansion emits both Valmer identifier and canonical AssetTable
   identifier rows;
 - duplicate aliases collapse deterministically with first row retained;

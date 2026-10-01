@@ -7,8 +7,9 @@ verification:
 
 ```bash
 mainsequence code-repository update-sdk --path .
-mainsequence code-repository refresh-token --path .
+mainsequence refresh-token
 mainsequence code-repository update-agent-skills --path .
+metatables copy-metatables-skills --path .
 mainsequence code-repository update AGENTS.md --path .
 mainsequence code-repository sync --path . -m "Sync Valmer control-plane backend"
 ```
@@ -41,7 +42,7 @@ After sync and image creation, verify the deployed state with:
 ```bash
 mainsequence code-repository current --debug
 mainsequence code-repository jobs list --path . --timeout 60
-mainsequence code-repository time-index-table-updates list --timeout 60
+metatables code-repository time-index-table-updates list --timeout 60
 mainsequence code-repository resources list --path . --timeout 60
 mainsequence code-repository images list --path . --timeout 60
 mainsequence markets portfolios list --timeout 60

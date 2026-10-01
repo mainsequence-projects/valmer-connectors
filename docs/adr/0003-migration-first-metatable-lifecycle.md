@@ -4,6 +4,19 @@
 
 Accepted / Implemented Locally; Live Validation Pending
 
+Amended on 2026-10-01 for Main Sequence SDK 9 and ms-markets 2: SDK 9 no
+longer ships MetaTables. The provider helpers now come from the `metatables`
+client (`mainsequence-metatable`): `metatables.migrations` replaces
+`mainsequence.meta_tables.migrations`, and `metatables.migrations.env` replaces
+`mainsequence.meta_tables.migrations.env`. The admin commands are
+`metatables migrations ... --provider <provider>`; run the Valmer provider as
+`PYTHONPATH=src metatables migrations ... --provider migrations:migration`
+because ms-markets also installs a top-level `migrations` package. The provider
+package, namespace, model registry, version table, and revision history are
+unchanged. The `mainsequence.meta_tables` imports and `mainsequence migrations`
+commands quoted below are historical; see `README.md` and `docs/markets.md` for
+the current commands.
+
 ## Date
 
 2026-06-02

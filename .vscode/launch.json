@@ -25,7 +25,7 @@
       "type": "python",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
-      "module": "mainsequence",
+      "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
         "migrations",
         "current",
@@ -51,7 +51,7 @@
       "type": "python",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
-      "module": "mainsequence",
+      "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
         "migrations",
         "revision",
@@ -80,7 +80,7 @@
       "type": "python",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
-      "module": "mainsequence",
+      "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
         "migrations",
         "upgrade",

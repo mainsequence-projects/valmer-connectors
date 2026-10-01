@@ -676,7 +676,7 @@ Before live checks:
 
 ```bash
 mainsequence code-repository current --debug
-mainsequence code-repository refresh-token --path .
+mainsequence refresh-token
 valmer-connectors runtime validate
 ```
 

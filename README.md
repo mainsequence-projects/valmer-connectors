@@ -119,7 +119,10 @@ Detailed guides:
 ### Requirements
 
 - CPython 3.13.x (the repository currently excludes Python 3.14)
-- A working MainSequence environment
+- A working MainSequence environment: `mainsequence>=9.0.1,<10` for identity,
+  CodeRepository, Job, and Artifact APIs, plus the `mainsequence-metatable`
+  client (imported and run as `metatables`) for MetaTables, updaters, and
+  migrations, and `ms-markets>=2,<3`
 - Access to the Valmer artifact bucket and to the Valmer benchmark CSV endpoint
 
 ### Install
@@ -135,20 +138,25 @@ uv pip install -e .
 Run the core ms-markets provider first, then the Valmer project provider:
 
 ```bash
-mainsequence migrations current --provider msm.migrations:migration
-mainsequence migrations upgrade --provider msm.migrations:migration head
+metatables migrations current --provider msm.migrations:migration
+metatables migrations upgrade --provider msm.migrations:migration head
 
-mainsequence migrations current --provider migrations:migration
-mainsequence migrations upgrade --provider migrations:migration head
+PYTHONPATH=src metatables migrations current --provider migrations:migration
+PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head
 ```
 
 The Valmer provider uses the top-level `migrations:migration` package exposed
-from `src/migrations`.
+from `src/migrations`. ms-markets also installs a top-level `migrations`
+package for its core provider (re-exported as `msm.migrations`), and
+`metatables migrations` only prepends the current directory to `sys.path`.
+Run the Valmer provider with `PYTHONPATH=src` and the ms-markets provider
+without it; otherwise `migrations:migration` resolves to the ms-markets
+provider.
 
-Do not run `mainsequence migrations revision` during normal setup. Use
+Do not run `metatables migrations revision` during normal setup. Use
 `revision` only after changing the Valmer SQLAlchemy table contract and
 expecting an in-place Alembic DDL delta. Project table DDL and MetaTable
-catalog registration are applied by `mainsequence migrations upgrade` through
+catalog registration are applied by `metatables migrations upgrade` through
 the Valmer migration provider. Do not hand-author DDL for built-in ms-markets
 tables in this project.
 

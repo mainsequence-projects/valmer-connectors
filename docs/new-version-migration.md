@@ -1,7 +1,8 @@
 # New Version Migration
 
 This page tracks the project migration to the current `mainsequence-sdk`,
-`ms-markets`, and `msm_pricing` architecture.
+`mainsequence-metatable` (`metatables`), `ms-markets`, and `msm_pricing`
+architecture.
 
 The architecture now has four separate boundaries:
 
@@ -31,8 +32,10 @@ Relevant Main Sequence documentation checked for this migration:
 
 Relevant repository skills:
 
-- `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
-- `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
+- `.agents/skills/metatables/metatables-time-index-table-updates/SKILL.md`
+- `.agents/skills/metatables/metatables-meta-tables/SKILL.md`
+- `.agents/skills/metatables/metatables-migrations/SKILL.md`
+- `.agents/skills/metatables/metatables-upgrade-legacy-app/SKILL.md`
 - `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
 - `.agents/skills/ms_markets/assets/asset_indexed_data_nodes/SKILL.md`
 - `.agents/skills/ms_markets/platform/bootstrap_registration/SKILL.md`
@@ -42,10 +45,18 @@ Relevant repository skills:
 
 Current declared package constraints:
 
-- `mainsequence>=4.3.18`
-- `ms-markets>=0.0.65`
+- `mainsequence>=9.0.1,<10`
+- `mainsequence-metatable>=0.1.5,<0.2`
+- `ms-markets>=2,<3`
 - `streamlit>=1.58.0`
 - `xlrd>=2.0.2`
+
+Main Sequence SDK 9 no longer ships MetaTables. MetaTable, time-index table,
+updater, compiled SQL, and migration interfaces are imported from `metatables`
+(`metatables.updaters`, `metatables.migrations`, `metatables.compiled_sql.v1`).
+Identity, CodeRepository, Job, Secret, and Artifact APIs stay in `mainsequence`.
+`ms-markets` 2 compiles governed SQL without the retired table scope:
+`compile_markets_statement(statement, context=..., operation=...)`.
 
 ## Migration Status
 
@@ -57,7 +68,7 @@ Current declared package constraints:
 | Static details | `ValmerAssetDetailsTable.asset_uid` is a 1:1 FK to `AssetTable.uid` | live row link validation |
 | Pricing hydration | `prepare_for_update()` calls `_sync_asset_registry_and_pricing(...)` before `run()` and writes through `msm_pricing.api.add_many_pricing_details(...)` | live pricing-details write validation, including incomplete-result failure behavior |
 | Runtime bootstrap | `bootstrap_runtime()` is the single project runtime entry point | live idempotency validation |
-| Project migrations | `migrations:migration` uses SDK migration helper machinery | live revision/current/upgrade check |
+| Project migrations | `migrations:migration` uses `metatables.migrations` helper machinery | live revision/current/upgrade check |
 | Curves | Valmer TIIE and MXN government curves publish through `DiscountCurvesNode` | live curve updates |
 | Fixings | no project-owned fixing ETL exists | remains out of scope |
 | Dashboard | monitors source, pricing hydration, and curve health | run with valid credentials |
@@ -150,18 +161,22 @@ for instrument selectors and conventions, then binds those selectors to
 Run core `ms-markets` migrations before project migrations:
 
 ```bash
-mainsequence migrations current --provider msm.migrations:migration
-mainsequence migrations upgrade --provider msm.migrations:migration head
+metatables migrations current --provider msm.migrations:migration
+metatables migrations upgrade --provider msm.migrations:migration head
 
-mainsequence migrations current --provider migrations:migration
-mainsequence migrations upgrade --provider migrations:migration head
+PYTHONPATH=src metatables migrations current --provider migrations:migration
+PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head
 ```
 
+ms-markets also installs a top-level `migrations` package for its core
+provider, so the Valmer provider in `src/migrations` is selected with
+`PYTHONPATH=src`; run the ms-markets provider without it.
+
 Generate a project revision only after changing Valmer SQLAlchemy table
-contracts:
+contracts (`revision` autogenerates by default):
 
 ```bash
-mainsequence migrations revision --provider migrations:migration
+PYTHONPATH=src metatables migrations revision --provider migrations:migration
 ```
 
 ## Runtime Checks
