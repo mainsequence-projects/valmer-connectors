@@ -40,9 +40,27 @@ pricing targets from columns in the latest vector observation.
 The data-product catalog contains only product names, descriptions, approved identity filters, and
 freshness thresholds. Runtime table identifiers are derived from the installed SQLAlchemy storage
 models and resolved against registered MetaTables. Cadence, observation time, current row count,
-Organization Environment, asset fields, pricing-detail coverage, Job state, and JobRun state come
-from live platform resources. The API does not publish synthetic identity counts or `unknown`
-fallback states.
+asset fields, pricing-detail coverage, Job state, and JobRun state come from live platform
+resources. The API does not publish synthetic identity counts or `unknown` fallback states.
+
+### Organization Environment
+
+The overview's `environment` is the display name of the Organization Environment of the
+CodeRepositoryBranch that runs the API. The Environment belongs to that branch, not to the tables
+the control plane reads: MetaTables carry no Environment, and the MetaTables client selects its API
+deployment in the Environment the SDK resolves for the same branch. The gateway therefore reads the
+SDK's process CodeRepository context, the Git-resolved branch that also scopes the Jobs queries.
+`require_code_repository_branch_context()` and `resolve_organization_environment_uid()` establish
+the branch and its Environment UID. The name is the resolved branch's read-only
+`organization_environment_name` projection, or the `OrganizationEnvironment` read for that UID
+when the branch omits it. Like the rest of the SDK context, it is a process snapshot: a renamed
+Environment appears after the API restarts.
+
+No table is consulted and there is no Environment override or fallback. On an unregistered branch,
+or a registered branch without an Environment, `environment` is null and the overview reports the
+SDK's own CodeRepositoryBranch or Environment error as an `Environment:` failure. A loopback
+`METATABLES_API_URL` development API bypasses MetaTables Environment discovery; data products then
+come from that development API while the header still names the branch's Environment.
 
 ## Human Authorization
 

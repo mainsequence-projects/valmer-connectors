@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
+import pathlib
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 from metatables import MetaTable, MetaTableCompiledSQLOperation
 from msm.models import AssetTable
@@ -11,6 +14,15 @@ from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
+from mainsequence import code_repository_context as sdk_code_repository_context
+from mainsequence.client.models_foundry import CodeRepositoryBranch
+from mainsequence.client.models_user import OrganizationEnvironment
+from mainsequence.code_repository_context import (
+    CodeRepositoryBranchContextRequiredError,
+    CodeRepositoryContext,
+    CodeRepositoryEnvironmentContextRequiredError,
+    GitCodeRepositorySourceContext,
+)
 from valmer_connectors.control_plane import service as control_plane_service
 from valmer_connectors.control_plane.api import _request_user_uid, create_app
 from valmer_connectors.control_plane.catalog import (
@@ -359,13 +371,158 @@ def test_overview_reports_missing_pipeline_jobs_as_a_failure() -> None:
     )
 
 
-def test_environment_name_comes_from_registered_time_index_tables() -> None:
-    gateway = PlatformControlPlaneGateway()
-    gateway._time_index_tables = lambda: {
-        "vector": SimpleNamespace(organization_environment_name="Production")
-    }
+ENVIRONMENT_UID = "0b9a4f8e-7c2d-4e51-9a63-5d2f1c7e8b40"
 
-    assert gateway.environment_name() == "Production"
+
+def _git_source(branch: str) -> GitCodeRepositorySourceContext:
+    return GitCodeRepositorySourceContext(
+        repository_root=pathlib.Path("/workspace/valmer-connectors"),
+        canonical_repository_identity="github.com/example/valmer-connectors",
+        repository_branch=branch,
+        repository_ref=f"refs/heads/{branch}",
+        commit_sha="a" * 40,
+    )
+
+
+def _registered_branch_context(
+    *,
+    environment_uid: str | None = ENVIRONMENT_UID,
+    environment_name: str | None = "Production",
+) -> CodeRepositoryContext:
+    return CodeRepositoryContext(
+        source_context=_git_source("main"),
+        code_repository_uid="code-repository-1",
+        code_repository_branch_uid="code-repository-branch-1",
+        organization_environment_uid=environment_uid,
+        status="resolved",
+        process_id=os.getpid(),
+        code_repository_branch=CodeRepositoryBranch.model_construct(
+            uid="code-repository-branch-1",
+            code_repository_uid="code-repository-1",
+            repository_branch="main",
+            organization_environment_uid=environment_uid,
+            organization_environment_name=environment_name,
+        ),
+    )
+
+
+def _unregistered_branch_context() -> CodeRepositoryContext:
+    source = _git_source("feature/rates")
+    return CodeRepositoryContext(
+        source_context=source,
+        code_repository_uid=None,
+        code_repository_branch_uid=None,
+        organization_environment_uid=None,
+        status="code_repository_branch_not_registered",
+        process_id=os.getpid(),
+        code_repository_branch=None,
+        detail=(
+            "No visible CodeRepositoryBranch matches Git repository "
+            f"{source.canonical_repository_identity!r} and branch "
+            f"{source.repository_branch!r}."
+        ),
+    )
+
+
+def _use_code_repository_context(monkeypatch, context: CodeRepositoryContext) -> None:
+    """Install an offline SDK process context; Environment reads fail fast."""
+    # The SDK guards read the process context through this function, so the
+    # SDK's own guard logic and errors stay in place.
+    monkeypatch.setattr(
+        sdk_code_repository_context,
+        "get_code_repository_context",
+        lambda **_kwargs: context,
+    )
+
+    def unexpected_lookup(cls, uid, timeout=None):
+        raise AssertionError("The resolved branch already names its Environment.")
+
+    monkeypatch.setattr(OrganizationEnvironment, "get_by_uid", classmethod(unexpected_lookup))
+
+
+class BranchEnvironmentGateway(PlatformControlPlaneGateway):
+    """SDK-resolved Environment, fixed read models, and no MetaTable access."""
+
+    def _time_index_tables(self):
+        raise AssertionError("MetaTables do not carry an Organization Environment.")
+
+    def data_products(self) -> list[dict[str, object]]:
+        return FakeControlPlaneGateway().data_products()
+
+    def jobs(self) -> list[dict[str, object]]:
+        return FakeControlPlaneGateway().jobs()
+
+
+def test_environment_name_comes_from_the_running_code_repository_branch(
+    monkeypatch,
+) -> None:
+    _use_code_repository_context(monkeypatch, _registered_branch_context())
+
+    assert BranchEnvironmentGateway().environment_name() == "Production"
+
+
+def test_environment_name_reads_the_environment_when_the_branch_omits_its_name(
+    monkeypatch,
+) -> None:
+    _use_code_repository_context(
+        monkeypatch,
+        _registered_branch_context(environment_name=None),
+    )
+    lookups: list[tuple[str, object]] = []
+
+    def get_by_uid(cls, uid, timeout=None):
+        lookups.append((uid, timeout))
+        return OrganizationEnvironment(
+            uid=uid,
+            name="Production",
+            organization_owner_uid="organization-1",
+            required_repository_branch="main",
+            is_production=True,
+        )
+
+    monkeypatch.setattr(OrganizationEnvironment, "get_by_uid", classmethod(get_by_uid))
+
+    assert BranchEnvironmentGateway().environment_name() == "Production"
+    assert lookups == [(ENVIRONMENT_UID, 60)]
+
+
+def test_overview_names_the_environment_of_the_running_branch(monkeypatch) -> None:
+    _use_code_repository_context(monkeypatch, _registered_branch_context())
+
+    overview = ControlPlaneService(gateway=BranchEnvironmentGateway()).overview()
+
+    assert overview.environment == "Production"
+    assert overview.status == "healthy"
+    assert overview.failures == []
+
+
+@pytest.mark.parametrize(
+    ("context", "expected_error"),
+    [
+        (_unregistered_branch_context(), CodeRepositoryBranchContextRequiredError),
+        (
+            _registered_branch_context(environment_uid=None, environment_name=None),
+            CodeRepositoryEnvironmentContextRequiredError,
+        ),
+    ],
+    ids=["unregistered-branch", "branch-without-environment"],
+)
+def test_overview_reports_an_unresolved_environment_with_the_sdk_error(
+    monkeypatch,
+    context: CodeRepositoryContext,
+    expected_error: type[Exception],
+) -> None:
+    _use_code_repository_context(monkeypatch, context)
+    with pytest.raises(expected_error) as sdk_error:
+        BranchEnvironmentGateway().environment_name()
+
+    overview = ControlPlaneService(gateway=BranchEnvironmentGateway()).overview()
+
+    assert type(sdk_error.value) is expected_error
+    assert overview.environment is None
+    assert overview.status == "failed"
+    assert overview.failures == [f"Environment: {sdk_error.value}"]
+    assert repr(context.repository_branch) in overview.failures[0]
 
 
 def test_platform_gateway_reads_current_pricing_details() -> None:

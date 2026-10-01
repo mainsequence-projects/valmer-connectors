@@ -23,6 +23,11 @@ from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 from sqlalchemy import func, select
 
 from mainsequence.client.models_helpers import Job, JobRun
+from mainsequence.client.models_user import OrganizationEnvironment
+from mainsequence.code_repository_context import (
+    require_code_repository_branch_context,
+    resolve_organization_environment_uid,
+)
 from valmer_connectors.control_plane.catalog import (
     DATA_PRODUCTS,
     JOB_LAUNCH_PROFILES,
@@ -60,6 +65,10 @@ DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 250
 MAX_ASSET_DETAIL_ROWS = 100_000
 SAFE_SQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Prefixes the SDK's own CodeRepositoryBranch and Environment context errors.
+OVERVIEW_ENVIRONMENT_OPERATION = "The Valmer control-plane overview"
+
+
 class ControlPlaneError(RuntimeError):
     """Base error for user-safe control-plane failures."""
 
@@ -306,6 +315,30 @@ def _sort(items: list[dict[str, Any]], ordering: str | None, allowed: set[str]) 
     return sorted(items, key=lambda item: (item.get(key) is None, item.get(key)), reverse=descending)
 
 
+def _code_repository_environment_name(operation: str) -> str:
+    """Name the Organization Environment of the CodeRepositoryBranch running this process.
+
+    The SDK resolves the branch once per process from Git, as it does for the
+    branch-scoped Job queries; the MetaTables client selects its API deployment in
+    this same Environment, and MetaTables themselves carry none. An unregistered
+    branch or a branch without an Environment raises the SDK's own error.
+    """
+    context = require_code_repository_branch_context(operation)
+    environment_uid = resolve_organization_environment_uid(operation)
+    name = str(
+        getattr(context.code_repository_branch, "organization_environment_name", None) or ""
+    ).strip()
+    if name:
+        return name
+    environment = OrganizationEnvironment.get_by_uid(environment_uid, timeout=60)
+    name = str(environment.name or "").strip()
+    if not name:
+        raise ControlPlaneError(
+            f"Organization Environment {environment_uid!r} has no display name."
+        )
+    return name
+
+
 class PlatformControlPlaneGateway:
     """Read and operate on the branch-owned Main Sequence resources."""
 
@@ -353,22 +386,10 @@ class PlatformControlPlaneGateway:
         return self._cache.get_or_load("time-index-tables", load)
 
     def environment_name(self) -> str:
-        names = {
-            str(table.organization_environment_name).strip()
-            for table in self._time_index_tables().values()
-            if table.organization_environment_name
-        }
-        if not names:
-            raise ControlPlaneError(
-                "Registered control-plane TimeIndexMetaTables do not report an "
-                "Organization Environment name."
-            )
-        if len(names) != 1:
-            raise ControlPlaneError(
-                "Control-plane TimeIndexMetaTables span multiple Organization "
-                f"Environments: {', '.join(sorted(names))}."
-            )
-        return names.pop()
+        return self._cache.get_or_load(
+            "organization-environment",
+            lambda: _code_repository_environment_name(OVERVIEW_ENVIRONMENT_OPERATION),
+        )
 
     def _registered_valmer_asset_count(self) -> int:
         def load() -> int:

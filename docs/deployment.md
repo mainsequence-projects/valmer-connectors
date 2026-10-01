@@ -74,6 +74,8 @@ Use the dashboard after deployment to confirm:
 Use the Vite control plane after both ResourceReleases are ready to confirm:
 
 - SDK iframe initialization and host theme propagation;
+- the overview names the Organization Environment of the backend release's
+  CodeRepositoryBranch and reports no `Environment:` failure;
 - data-product and asset resource pagination;
 - viewer read access and viewer launch denial;
 - operator Job discovery, preflight, typed confirmation, and execution; and
