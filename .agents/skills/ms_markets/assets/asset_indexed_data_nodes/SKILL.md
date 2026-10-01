@@ -1,6 +1,6 @@
 ---
 name: mainsequence-markets-asset-indexed-data-nodes
-description: Use this skill when creating, extending, reviewing, or documenting ms-markets AssetIndexedDataNode implementations, especially timestamped market tables keyed by (time_index, asset_identifier). This skill owns ms-markets asset identity conventions, AssetTable foreign keys, namespace behavior, storage metadata, and frame insertion patterns. It does not own the full Main Sequence updater lifecycle, orchestration, hashing theory, scheduling, or generic TimeIndexTableUpdater API behavior.
+description: Use this skill when creating, extending, reviewing, or documenting ms-markets AssetIndexedDataNode implementations, especially timestamped market tables keyed by (time_index, asset_identifier). This skill owns ms-markets asset identity conventions, AssetTable foreign keys, namespace behavior, output metadata, and frame insertion patterns. It does not own the full Main Sequence TimeIndexTableUpdater lifecycle, orchestration, hashing theory, scheduling, or generic TimeIndexTableUpdater API behavior.
 ---
 
 # Main Sequence Markets Asset-Indexed TimeIndexTableUpdaters
@@ -21,7 +21,7 @@ conventions added around asset identity.
 
 Use the generic TimeIndexTableUpdater skill when the task depends on Main Sequence behavior:
 
-- `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
+- `.agents/skills/metatables/metatables-time-index-table-updates/SKILL.md`
 
 Then use this skill for the ms-markets-specific parts:
 
@@ -53,7 +53,7 @@ Use the asset model extension skill instead when the task is about `AssetTable`,
   foreign keys.
 - Deriving published identifiers from the migrated and registered storage table and active
   markets namespace.
-- Deriving validation from `_required_storage_table()` and the instance's bound
+- Deriving validation from `_required_output_table()` and the instance's bound
   `output_table`.
 - Returning validated `datetime64[ns, UTC]` frames with a
   `["time_index", "asset_identifier"]` index for timestamped asset facts.
@@ -87,7 +87,7 @@ Before changing code, inspect the current local implementation:
 7. `docs/knowledge/msm/assets/asset_indexed_data_nodes.md`
 8. `docs/knowledge/msm/migrations/index.md`
 
-For generic SDK behavior, verify against the latest Main Sequence time-index updater docs
+For generic SDK behavior, verify against the latest Main Sequence TimeIndexTableUpdater docs
 and the `mainsequence-data-nodes` skill.
 
 ## Core Contract
@@ -130,10 +130,10 @@ should explain the table's market intention, row grain, and downstream use, not
 only the schema. For asset-indexed tables, say what the asset row represents and
 why it is published over time.
 
-Storage must be migrated and registered by the SDK migration
+Storage must be migrated and registered by the MetaTables migration
 provider before a process writes through the TimeIndexTableUpdater. The runtime path,
 usually `msm.start_engine(models=[...])`, attaches the already-finalized
-storage metadata from the backend registered table. Do not manually bind a UID,
+output metadata from the backend registered table. Do not manually bind a UID,
 reconstruct a generic `MetaTable`, call storage `.register()` from runtime
 startup, or use manual bind helpers as an authoring step.
 
@@ -147,7 +147,7 @@ identity. `MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace for
 isolated tests and examples.
 
 Changing the namespace or storage app after migration finalization is a logical
-or physical table-name rotation and must go through the normal SDK migration and
+or physical table-name rotation and must go through the normal MetaTables migration and
 registration path.
 
 Minimal storage-first pattern:
@@ -208,7 +208,7 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
     configuration_class = ExampleAssetMetricConfiguration
 
     @classmethod
-    def _required_storage_table(cls) -> type[ExampleAssetMetricStorage]:
+    def _required_output_table(cls) -> type[ExampleAssetMetricStorage]:
         return ExampleAssetMetricStorage
 
     @classmethod
@@ -220,7 +220,7 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
 ```
 
 The `asset_identifier` foreign key belongs on the storage class. Do not recreate
-the old TimeIndexTableUpdater-side foreign-key or records pattern.
+the old updater-side foreign-key or records pattern.
 
 ## TimeIndexTableUpdater Class Pattern
 
@@ -233,7 +233,7 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
     configuration_class = ExampleAssetMetricConfiguration
 
     @classmethod
-    def _required_storage_table(cls) -> type[ExampleAssetMetricStorage]:
+    def _required_output_table(cls) -> type[ExampleAssetMetricStorage]:
         return ExampleAssetMetricStorage
 
     @classmethod
@@ -249,7 +249,7 @@ Rules:
 - config subclasses carry update-scoped fields only
 - do not write an explicit constructor unless the node has real runtime fields
   beyond config and `hash_namespace`
-- class owns `_required_storage_table()`
+- class owns `_required_output_table()`
 - `_default_identifier()` and `_default_description()` derive from the storage
   table identifier and `__metatable_description__`
 - class methods build validated frames
@@ -277,7 +277,7 @@ Use one rule for markets MetaTables and markets TimeIndexTableUpdaters:
   `asset_snapshots`
 - when `MSM_AUTO_REGISTER_NAMESPACE` is set to a non-default namespace, prefix
   logical identifiers with that namespace
-- use `markets_data_node_identifier(...)` for time-index table identifiers
+- use `markets_data_node_identifier(...)` for TimeIndexTableUpdater identifiers
 - let `AssetIndexedDataNode` apply the default markets `hash_namespace`
 - pass explicit `hash_namespace` only for tests, isolated experiments, or
   parallel runs that must not collide
@@ -286,7 +286,7 @@ Do not hardcode `mainsequence.markets.*` or `mainsequence.examples.*` in a new
 TimeIndexTableUpdater class.
 
 Do not add a class-owned `__data_node_identifier__`; default identifiers derive
-from the storage MetaTable identifier through `_required_storage_table()`.
+from the storage MetaTable identifier through `_required_output_table()`.
 
 ## Asset Scope
 
@@ -307,7 +307,7 @@ from typing import ClassVar
 
 from pydantic import Field
 
-from mainsequence.meta_tables import TimeIndexTableUpdateConfig
+from metatables import TimeIndexTableUpdateConfig
 
 
 class AssetIndexedDataNodeConfiguration(TimeIndexTableUpdateConfig):
@@ -385,7 +385,7 @@ representations of an asset.
 - Do not put `time_index_name`, `index_names`, `records`, `node_metadata`,
   `column_dtypes_map`, nullable-column maps, or foreign keys on a
   `TimeIndexTableUpdateConfig`.
-- Do not add TimeIndexTableUpdater-side constants for index names, time-index names, dtype
+- Do not add updater-side constants for index names, time-index names, dtype
   maps, nullable columns, or source-table foreign keys.
 - Do not add fake or placeholder rows for schema setup.
 - Do not add `build_schema_bootstrap_frame(...)`,
@@ -415,7 +415,7 @@ Before marking work complete:
   `ASSET_IDENTIFIER_DIMENSION`.
 - The storage table declares the canonical `asset_identifier ->
   AssetTable.unique_identifier` SQLAlchemy `ForeignKey`.
-- The storage table is migrated and registered by the SDK migration
+- The storage table is migrated and registered by the MetaTables migration
   provider before writes.
 - `asset_list` is updater scope, not part of table meaning.
 - Identifier generation derives from the migrated and registered storage table.

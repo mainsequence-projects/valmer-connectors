@@ -173,7 +173,7 @@ Formula publication uses:
 ```python
 FormulaIndexDataNodeConfiguration(
     formula_definition_uids=(...),
-    source_storage_tables=(...),
+    source_output_tables=(...),
 )
 FormulaIndexDataNode(config, target_storage)
 ```

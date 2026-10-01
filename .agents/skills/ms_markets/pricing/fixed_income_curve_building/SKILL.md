@@ -33,9 +33,9 @@ Use these skills first when the task crosses their boundaries:
   behavior:
   `.agents/skills/ms_markets/pricing/general_pricing/SKILL.md`
 - Generic Main Sequence TimeIndexTableUpdater behavior:
-  `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
+  `.agents/skills/metatables/metatables-time-index-table-updates/SKILL.md`
 - Generic Main Sequence MetaTable behavior:
-  `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
+  `.agents/skills/metatables/metatables-meta-tables/SKILL.md`
 - Asset identity or bond asset detail tables:
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
 - Asset-indexed market data:
@@ -178,8 +178,8 @@ order is resolved before runtime binding. The dependency order includes
 `AssetTable`, `IndexTypeTable`, `IndexTable`, `IndexConventionDetailsTable`,
 `CurveTable`, `CurveBuildingDetailsTable`, then pricing details,
 `PricingMarketDataSetTable`, `PricingMarketDataSetBindingTable`,
-`PricingMarketDataSetCurveBindingTable`, and pricing updater output tables.
-Missing MetaTables indicate SDK migration/provider work still needs to run
+`PricingMarketDataSetCurveBindingTable`, and pricing time-index-table output tables.
+Missing MetaTables indicate MetaTables migration/provider work still needs to run
 before pricing startup.
 
 ## Creation Workflow
@@ -322,9 +322,9 @@ Rules:
   `calendar.name()`: for Mexico BMV, store
   `{"name": "Mexican stock exchange"}`, not `{"name": "Mexico"}` and not
   `{"name": "Mexico-BMV"}`.
-- Use `index_identifier` for index-stamped TimeIndexTableUpdater rows. It stores
+- Use `index_identifier` for index-stamped time-index-table output rows. It stores
   `IndexTable.unique_identifier`.
-- Use `curve_identifier` for curve TimeIndexTableUpdater rows. It stores
+- Use `curve_identifier` for curve time-index-table output rows. It stores
   `Curve.unique_identifier`.
 - Do not use Main Sequence Constant names as curve or index identity.
 - Use `MSDataInterface.get_latest_discount_curve(curve.unique_identifier, ...)`
@@ -533,7 +533,7 @@ Resolver expectations:
   `PricingMarketDataSetCurveBinding.resolve_index_curve_uid(...)`.
 - `CurveBuildingDetails` exists for the selected curve.
 - `PricingMarketDataSetBinding` resolves the active
-  `(market_data_set_uid, concept_key)` to the backend updater output table UID
+  `(market_data_set_uid, concept_key)` to the backend time-index-table output table UID
   for the published curve and fixing TimeIndexTableUpdaters.
 - Use `PRICING_CONCEPT_DISCOUNT_CURVES` and
   `PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS` instead of hard-coded TimeIndexTableUpdater
@@ -601,10 +601,10 @@ Before finishing a change:
   `curve_uid`.
 - Runtime curve reads have a `PricingMarketDataSetBinding` for
   `PRICING_CONCEPT_DISCOUNT_CURVES`.
-- Fixing TimeIndexTableUpdater rows use `time_index`, `index_identifier`, and `rate`.
-- Curve TimeIndexTableUpdater rows use `time_index`, `curve_identifier`, and `curve`.
+- Fixing time-index-table output rows use `time_index`, `index_identifier`, and `rate`.
+- Curve time-index-table output rows use `time_index`, `curve_identifier`, and `curve`.
 - Instrument payloads store backend index UUIDs and reject raw index-name
   relationship fields.
-- Tests cover payload validation, resolver selection, and updater frame shape
+- Tests cover payload validation, resolver selection, and TimeIndexTableUpdater frame shape
   for the changed behavior.
 - Docs, examples, tutorial, and changelog are updated for user-facing changes.

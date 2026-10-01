@@ -28,7 +28,7 @@ Use the active widget id:
 main-sequence-markets__asset-screener
 ```
 
-## Required CodeRepository Commands
+## Required Project Commands
 
 Run commands from the project root.
 
@@ -41,7 +41,7 @@ Never run:
 Refresh authentication before live platform checks:
 
 ```bash
-.venv/bin/mainsequence code-repository refresh-token --path .
+.venv/bin/mainsequence refresh-token
 .venv/bin/mainsequence code-repository current --debug
 ```
 
@@ -305,5 +305,6 @@ Stop and report the exact failing command if:
 - the API route returns provider-native JSON instead of `TabularFrameResponse`
 
 Do not hide these by changing widget props.
+
 
 
