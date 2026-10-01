@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, List, Literal, Union
 
 import pandas as pd
+from metatables import MetaTable
 from msm.api.assets import Asset as MarketsAsset
 from msm.api.base import operation_result_rows
 from msm.constants import ASSET_TYPE_BOND
@@ -23,7 +24,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from tqdm import tqdm
 
-from mainsequence.client.metatables import MetaTable
 from mainsequence.client.models_foundry import Artifact
 from valmer_connectors.asset_classification import classify_valmer_asset_type
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
@@ -1827,8 +1827,6 @@ class ImportValmer(AssetIndexedDataNode):
                 statement,
                 context=context,
                 operation="select",
-                models=[AssetCurrentPricingDetails.__table__],
-                access="read",
             )
             result = execute_markets_operation(operation, context=context)
             for row in operation_result_rows(result):

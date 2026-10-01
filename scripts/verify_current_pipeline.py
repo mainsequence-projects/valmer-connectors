@@ -53,7 +53,7 @@ KEY_NODE_VALIDATORS = {
 }
 
 
-def _rows(statement: Any, *, models: list[type[Any]]) -> list[dict[str, Any]]:
+def _rows(statement: Any) -> list[dict[str, Any]]:
     context = MarketsRepositoryContext(
         limits={"max_rows": 100_000, "statement_timeout_ms": 120_000},
         timeout=180,
@@ -62,8 +62,6 @@ def _rows(statement: Any, *, models: list[type[Any]]) -> list[dict[str, Any]]:
         statement,
         context=context,
         operation="select",
-        models=models,
-        access="read",
     )
     result = execute_markets_operation(operation, context=context)
     if result.get("truncated"):
@@ -179,7 +177,6 @@ def main() -> None:
         )
         .group_by(daily_table.c.index_identifier)
         .order_by(daily_table.c.index_identifier),
-        models=[DailyIndexValuesStorage],
     )
     quote_rows = _rows(
         select(
@@ -189,7 +186,6 @@ def main() -> None:
         )
         .where(daily_table.c.index_identifier.like("VALMER_CURVE_QUOTE.%"))
         .order_by(daily_table.c.time_index, daily_table.c.index_identifier),
-        models=[DailyIndexValuesStorage],
     )
     quote_lookup = {
         (_utc(row["time_index"]), str(row["index_identifier"])): float(row["value"])
@@ -221,7 +217,6 @@ def main() -> None:
         )
         .group_by(fixing_table.c.index_identifier)
         .order_by(fixing_table.c.index_identifier),
-        models=[IndexFixingsStorage],
     )
     fixing_observations = sum(int(row["row_count"]) for row in fixing_stats)
     if fixing_observations == 0:
@@ -246,7 +241,6 @@ def main() -> None:
         )
         .where(curve_table.c.curve_identifier.in_(CURVE_IDENTIFIERS))
         .order_by(curve_table.c.time_index, curve_table.c.curve_identifier),
-        models=[DiscountCurvesStorage],
     )
     curve_counts = _validate_curve_coverage(government_source, curve_rows)
 

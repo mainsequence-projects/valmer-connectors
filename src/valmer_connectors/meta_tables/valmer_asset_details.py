@@ -360,8 +360,6 @@ def resolve_valmer_asset_detail_versions(
             statement,
             context=context,
             operation="select",
-            models=[ValmerAssetDetailsTable],
-            access="read",
         )
         result = execute_markets_operation(operation, context=context)
         for row in operation_result_rows(result):

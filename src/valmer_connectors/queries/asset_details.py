@@ -100,8 +100,6 @@ def _read_valmer_asset_detail_rows(
         statement,
         context=context,
         operation="select",
-        models=[ValmerAssetDetailsTable, AssetTable],
-        access="read",
     )
     result = execute_markets_operation(operation, context=context)
     return [dict(row) for row in operation_result_rows(result)]

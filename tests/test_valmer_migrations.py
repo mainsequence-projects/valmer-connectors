@@ -1,5 +1,6 @@
 import unittest
 
+from metatables.migrations import namespace_version_location
 from msm.base import markets_table_name
 from msm.data_nodes.indices import index_values_output_table_name
 from msm.models.assets import AssetTable
@@ -7,9 +8,6 @@ from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import markets_auto_register_namespace
 
-from mainsequence.meta_tables.migrations import (
-    namespace_version_location,
-)
 from migrations import (
     VALMER_MIGRATION_MODELS,
     VALMER_REFERENCE_MODELS,

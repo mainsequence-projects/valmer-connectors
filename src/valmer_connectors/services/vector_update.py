@@ -294,8 +294,6 @@ def _latest_vector_storage_time_index() -> dt.datetime | None:
         statement,
         context=context,
         operation="select",
-        models=[ValmerVectorPricesStorage],
-        access="read",
     )
     result = execute_markets_operation(operation, context=context)
     rows = list(operation_result_rows(result))

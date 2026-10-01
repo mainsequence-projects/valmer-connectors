@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+from metatables import PlatformTimeIndexMetaTable
 from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
 from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from pydantic import Field
 
-from mainsequence.meta_tables import PlatformTimeIndexMetaTable
 from valmer_connectors.data_nodes.canonical_index_values import (
     DailyIndexValuesStorage,
 )

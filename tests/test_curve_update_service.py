@@ -387,7 +387,6 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
             data_source_uid="data-source",
             timeout=30,
             namespace="mainsequence.markets",
-            reserved_policy="reject",
         )
 
         with (

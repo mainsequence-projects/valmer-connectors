@@ -10,8 +10,9 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "arch>=8.0.0",
     "fastapi>=0.141.1",
-    "mainsequence",
-    "ms-markets==1.0.2",
+    "mainsequence>=9.0.1,<10",
+    "mainsequence-metatable>=0.1.5,<0.2",
+    "ms-markets>=2,<3",
     "pandas-market-calendars>=5.4.0",
     "plotly>=6.8.0",
     "quantlib>=1.42.1",
@@ -39,7 +40,8 @@ valmer_connectors = [
 line-length = 100                 # Max line length for Ruff/Black.
 target-version = "py313"          # Check and modernize for the supported Python runtime.
 extend-exclude = [                # Extra paths to ignore.
-  "build", "dist", ".venv", ".tox", ".mypy_cache", ".ruff_cache"
+  "build", "dist", ".venv", ".tox", ".mypy_cache", ".ruff_cache",
+  ".agents",                      # Vendored agent skills are copied verbatim.
 ]
 src = ["src", "agents"]
 fix = true                        # Apply fixes on `ruff check` without --fix.
@@ -86,6 +88,12 @@ ignore = ["E203", "E501"]
 [tool.ruff.lint.isort]
 # Treat these as your own packages so they sort as "first-party".
 known-first-party = ["mainsequence","valmer_connectors","banxico","fred","migrations","agents"]
+
+[tool.pytest.ini_options]
+# Resolve the repository's own top-level packages before installed ones:
+# ms-markets installs a top-level `migrations` and mainsequence-metatable a
+# top-level `api` that would otherwise shadow `src/migrations` and `api/`.
+pythonpath = ["src", "."]
 
 [dependency-groups]
 dev = [

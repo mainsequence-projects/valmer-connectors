@@ -6,9 +6,9 @@ from typing import Any
 
 import pandas as pd
 import structlog
+from metatables import UpdateStatistics
 from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
 
-from mainsequence.client import UpdateStatistics
 from valmer_connectors.data_nodes.canonical_index_values import (
     DailyIndexValuesStorage,
 )
@@ -367,7 +367,6 @@ def load_mxn_government_curve_source_from_vector_storage(
         data_source_uid=runtime_context.data_source_uid,
         timeout=timeout if timeout is not None else runtime_context.timeout,
         namespace=runtime_context.namespace,
-        reserved_policy=runtime_context.reserved_policy,
     )
     vector_table = ValmerVectorPricesStorage.__table__
     details_table = ValmerAssetDetailsTable.__table__
@@ -417,8 +416,6 @@ def load_mxn_government_curve_source_from_vector_storage(
                 latest_statement,
                 context=context,
                 operation="select",
-                models=[ValmerVectorPricesStorage, ValmerAssetDetailsTable],
-                access="read",
             )
             latest_result = execute_markets_operation(latest_operation, context=context)
             latest_rows = list(operation_result_rows(latest_result))
@@ -470,8 +467,6 @@ def load_mxn_government_curve_source_from_vector_storage(
         statement,
         context=context,
         operation="select",
-        models=[ValmerVectorPricesStorage, ValmerAssetDetailsTable],
-        access="read",
     )
     result = execute_markets_operation(operation, context=context)
     if result.get("truncated"):

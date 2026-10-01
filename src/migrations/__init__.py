@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from metatables.migrations import (
+    build_alembic_version_metatable,
+    build_metatable_migration_provider,
+    metadata_for_models,
+)
 from msm.base import MARKETS_SCHEMA, markets_table_name
 from msm.models.assets import AssetTable
 from msm.models.index_formulas import IndexFormulaDefinitionTable
@@ -9,11 +14,6 @@ from msm.settings import (
     markets_identifier,
 )
 
-from mainsequence.meta_tables.migrations import (
-    build_alembic_version_metatable,
-    build_metatable_migration_provider,
-    metadata_for_models,
-)
 from migrations.registry import metatable_provider_models
 from valmer_connectors.markets import (
     VALMER_MARKETS_NAMESPACE,

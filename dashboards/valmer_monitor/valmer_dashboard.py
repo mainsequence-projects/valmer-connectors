@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 import streamlit as st
+from metatables import TimeIndexTableRef
 from msm.api.base import operation_result_rows
 from msm.repositories.crud import search_model
 from msm.settings import ASSET_IDENTIFIER_DIMENSION, markets_data_node_identifier
@@ -14,7 +15,6 @@ from msm_pricing.data_interface.data_interface import dimension_range_for_identi
 from msm_pricing.data_nodes.curve_codec import decompress_string_to_curve
 from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER_DIMENSION
 
-from mainsequence.meta_tables import TimeIndexTableRef
 from valmer_connectors.data_nodes.nodes import ImportValmer
 from valmer_connectors.instruments.asset_identity import resolve_valmer_assets
 from valmer_connectors.instruments.curve_bootstrap import (

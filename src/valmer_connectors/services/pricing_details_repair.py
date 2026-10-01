@@ -682,8 +682,6 @@ def _execute_pricing_details_select(
         statement,
         context=context,
         operation="select",
-        models=[pricing_table, asset_table, detail_table],
-        access="read",
     )
     return execute_markets_operation(operation, context=context)
 
@@ -726,8 +724,6 @@ def _load_index_uid_by_identifier() -> dict[str, uuid.UUID]:
         statement,
         context=context,
         operation="select",
-        models=[IndexTable],
-        access="read",
     )
     result = execute_markets_operation(operation, context=context)
     return {

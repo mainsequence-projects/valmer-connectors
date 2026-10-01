@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+# ms-markets also installs a top-level ``migrations`` package (its core provider,
+# re-exported as ``msm.migrations``). ``metatables migrations`` only prepends the
+# current directory to ``sys.path``, so the Valmer provider under ``src/migrations``
+# is selected with ``PYTHONPATH=src`` and the ms-markets provider runs without it.
 CANONICAL_MIGRATION_COMMANDS = (
-    "mainsequence migrations current --provider msm.migrations:migration",
-    "mainsequence migrations upgrade --provider msm.migrations:migration head",
-    "mainsequence migrations current --provider migrations:migration",
-    "mainsequence migrations upgrade --provider migrations:migration head",
+    "metatables migrations current --provider msm.migrations:migration",
+    "metatables migrations upgrade --provider msm.migrations:migration head",
+    "PYTHONPATH=src metatables migrations current --provider migrations:migration",
+    "PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head",
 )
 
 REVISION_COMMAND_NOTE = "Use this only after changing Valmer SQLAlchemy table contracts:"
-REVISION_COMMAND = "mainsequence migrations revision --provider migrations:migration"
+REVISION_COMMAND = "PYTHONPATH=src metatables migrations revision --provider migrations:migration"
 
 
 def migration_command_lines() -> list[str]:

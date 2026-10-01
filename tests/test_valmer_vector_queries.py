@@ -40,7 +40,7 @@ class ValmerVectorQueriesTest(unittest.TestCase):
             "valmer_connectors.queries.vector_quotes.ValmerVectorPricesStorage.get_time_index_meta_table",
             return_value=meta_table,
         ) as get_time_index_meta_table, patch(
-            "mainsequence.meta_tables.TimeIndexTableRef.from_meta_table",
+            "metatables.TimeIndexTableRef.from_meta_table",
             return_value=table_ref,
         ) as from_meta_table:
             result = valmer_vector_table_ref()
@@ -56,10 +56,10 @@ class ValmerVectorQueriesTest(unittest.TestCase):
             "valmer_connectors.queries.vector_quotes.ValmerVectorPricesStorage.get_time_index_meta_table",
             return_value=None,
         ), patch(
-            "mainsequence.meta_tables.TimeIndexTableRef.from_identifier",
+            "metatables.TimeIndexTableRef.from_identifier",
             side_effect=AssertionError("must not look up the vector by string identifier"),
         ), patch(
-            "mainsequence.meta_tables.TimeIndexTableRef.from_meta_table",
+            "metatables.TimeIndexTableRef.from_meta_table",
             side_effect=AssertionError("must not build without a bound MetaTable"),
         ):
             with self.assertRaisesRegex(RuntimeError, "Valmer vector storage is not bound"):

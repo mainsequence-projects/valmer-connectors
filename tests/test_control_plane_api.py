@@ -5,12 +5,12 @@ from types import SimpleNamespace
 
 import pandas as pd
 from fastapi.testclient import TestClient
+from metatables import MetaTable, MetaTableCompiledSQLOperation
 from msm.models import AssetTable
 from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
-from mainsequence.client.metatables import MetaTable
 from valmer_connectors.control_plane import service as control_plane_service
 from valmer_connectors.control_plane.api import _request_user_uid, create_app
 from valmer_connectors.control_plane.catalog import (
@@ -191,9 +191,10 @@ def test_health_is_available_for_release_checks() -> None:
     assert response.json() == {"status": "ok", "service": "valmer-control-plane"}
 
 
-def test_registry_reads_use_scoped_compiled_metatable_operations(monkeypatch) -> None:
+def test_registry_reads_use_compiled_metatable_operations(monkeypatch) -> None:
     table = SimpleNamespace(
         uid="table-1",
+        data_source_uid="data-source-1",
         identifier="ValmerAssetDetails",
         physical_schema="public",
         physical_table_name="valmer_asset_details",
@@ -212,9 +213,14 @@ def test_registry_reads_use_scoped_compiled_metatable_operations(monkeypatch) ->
     )
 
     assert rows == [{"asset_count": 12}]
-    assert captured[0][0]["scope"] == {
-        "tables": [{"meta_table_uid": "table-1", "access": "read"}]
-    }
+    operation = MetaTableCompiledSQLOperation(**captured[0][0])
+    assert operation.operation == "select"
+    assert operation.data_source_uid == "data-source-1"
+    assert operation.statement.sql == (
+        'SELECT COUNT(*) AS asset_count FROM "public"."valmer_asset_details"'
+    )
+    assert operation.limits.max_rows == 1
+    assert operation.limits.statement_timeout_ms == 60_000
     assert captured[0][1] == 90
 
 
@@ -567,7 +573,6 @@ def test_pricing_target_query_requests_the_complete_persisted_relation(
         context=SimpleNamespace(
             data_source_uid=None,
             namespace=None,
-            reserved_policy=None,
         )
     )
     captured: dict[str, object] = {}
@@ -578,8 +583,9 @@ def test_pricing_target_query_requests_the_complete_persisted_relation(
         lambda **kwargs: runtime,
     )
 
-    def compile_statement(statement, *, context, **kwargs):
+    def compile_statement(statement, *, context, operation):
         captured["limits"] = context.limits
+        captured["operation"] = operation
         return {"compiled": True}
 
     monkeypatch.setattr(
@@ -599,6 +605,7 @@ def test_pricing_target_query_requests_the_complete_persisted_relation(
     identifiers = PlatformControlPlaneGateway()._pricing_target_identifiers()
 
     assert identifiers == {"persisted-target"}
+    assert captured["operation"] == "select"
     assert captured["limits"] == {
         "max_rows": 100_000,
         "statement_timeout_ms": 60_000,

@@ -2,9 +2,6 @@ import unittest
 import uuid
 from unittest.mock import patch
 
-from msm.models.assets import AssetTable
-
-from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 from valmer_connectors.queries.asset_details import (
     expand_valmer_asset_detail_alias_frame,
     read_valmer_asset_detail_alias_frame,
@@ -111,7 +108,7 @@ class ValmerAssetDetailQueriesTest(unittest.TestCase):
             ],
         )
 
-    def test_governed_select_declares_read_scope_for_both_tables(self):
+    def test_governed_select_uses_read_operation(self):
         row = self._detail_row(
             asset_table_identifier="M_BONOS_241205",
             valmer_unique_identifier="M_BONOS_241205",
@@ -121,9 +118,8 @@ class ValmerAssetDetailQueriesTest(unittest.TestCase):
             read_valmer_asset_detail_alias_frame(["M_BONOS_241205"])
 
         kwargs = compile_statement.call_args.kwargs
+        self.assertEqual(set(kwargs), {"context", "operation"})
         self.assertEqual(kwargs["operation"], "select")
-        self.assertEqual(kwargs["access"], "read")
-        self.assertEqual(kwargs["models"], [ValmerAssetDetailsTable, AssetTable])
 
     def _patched_governed_select(self, rows):
         context = object()

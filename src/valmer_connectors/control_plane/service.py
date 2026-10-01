@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
 import pandas as pd
+from metatables import MetaTable, TimeIndexMetaTable, TimeIndexTableRef
 from msm.api.base import operation_result_rows
 from msm.models import AssetTable
 from msm.repositories.base import (
@@ -21,9 +22,7 @@ from msm_pricing.bootstrap import resolve_pricing_runtime
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 from sqlalchemy import func, select
 
-from mainsequence.client.metatables import MetaTable, TimeIndexMetaTable
 from mainsequence.client.models_helpers import Job, JobRun
-from mainsequence.meta_tables import TimeIndexTableRef
 from valmer_connectors.control_plane.catalog import (
     DATA_PRODUCTS,
     JOB_LAUNCH_PROFILES,
@@ -248,14 +247,7 @@ def _select_meta_table_rows(
         {
             "operation": "select",
             "statement": {"sql": sql, "parameters": {}},
-            "scope": {
-                "tables": [
-                    {
-                        "meta_table_uid": table.uid,
-                        "access": "read",
-                    }
-                ]
-            },
+            "data_source_uid": table.data_source_uid,
             "limits": {
                 "max_rows": max_rows,
                 "statement_timeout_ms": 60_000,
@@ -417,8 +409,6 @@ class PlatformControlPlaneGateway:
                 statement,
                 context=runtime.context,
                 operation="select",
-                models=[AssetCurrentPricingDetailsTable],
-                access="read",
             )
             rows = operation_result_rows(
                 execute_markets_operation(operation, context=runtime.context)
@@ -445,7 +435,6 @@ class PlatformControlPlaneGateway:
                 data_source_uid=runtime.context.data_source_uid,
                 timeout=90,
                 namespace=runtime.context.namespace,
-                reserved_policy=runtime.context.reserved_policy,
             )
             statement = (
                 select(AssetTable.unique_identifier)
@@ -459,8 +448,6 @@ class PlatformControlPlaneGateway:
                 statement,
                 context=query_context,
                 operation="select",
-                models=[AssetTable, AssetCurrentPricingDetailsTable],
-                access="read",
             )
             result = execute_markets_operation(operation, context=query_context)
             if result.get("truncated"):

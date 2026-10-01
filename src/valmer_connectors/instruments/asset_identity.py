@@ -166,8 +166,6 @@ def resolve_valmer_asset_refs(
             statement,
             context=context,
             operation="select",
-            models=[Asset.__table__],
-            access="read",
         )
         result = execute_markets_operation(operation, context=context)
         for row in operation_result_rows(result):
@@ -231,8 +229,6 @@ def resolve_valmer_asset_uids(
             statement,
             context=context,
             operation="select",
-            models=[Asset.__table__],
-            access="read",
         )
         result = execute_markets_operation(operation, context=context)
         for row in operation_result_rows(result):

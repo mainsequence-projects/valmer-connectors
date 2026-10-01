@@ -38,7 +38,7 @@ def valmer_vector_table_identifier() -> str:
 def valmer_vector_table_ref() -> Any:
     """Return a read-only reference to the Valmer vector time-index table."""
 
-    from mainsequence.meta_tables import TimeIndexTableRef
+    from metatables import TimeIndexTableRef
 
     meta_table = ValmerVectorPricesStorage.get_time_index_meta_table()
     if meta_table is None:

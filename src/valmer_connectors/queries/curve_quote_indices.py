@@ -194,8 +194,6 @@ def load_discount_curve_key_nodes(
         statement,
         context=context,
         operation="select",
-        models=[output_table],
-        access="read",
     )
     result = execute_markets_operation(operation, context=context)
     rows = list(operation_result_rows(result))
@@ -237,8 +235,6 @@ def _read_quote_rows(
         statement,
         context=context,
         operation="select",
-        models=[output_table],
-        access="read",
     )
     result = execute_markets_operation(operation, context=context)
     return pd.DataFrame(list(operation_result_rows(result)), columns=_QUOTE_COLUMNS)

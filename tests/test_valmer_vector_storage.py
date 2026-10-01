@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, PropertyMock, patch
 
 import pandas as pd
+from metatables.updaters.runner import UpdateRunner
 from msm.base import markets_table_name
 from msm.constants import ASSET_TYPE_BOND
 from msm.data_nodes.assets import AssetSnapshot as CoreAssetSnapshot
@@ -15,7 +16,6 @@ from msm.models.assets import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION, markets_auto_register_namespace
 from sqlalchemy import Float
 
-from mainsequence.meta_tables.time_index_table_updates.runner import UpdateRunner
 from valmer_connectors.data_nodes.nodes import (
     VALMER_ASSET_DETAIL_SOURCE_COLUMNS,
     VALMER_SOURCE_COLUMN_SPECS,
