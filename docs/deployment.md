@@ -9,10 +9,16 @@ verification:
 mainsequence code-repository update-sdk --path .
 mainsequence refresh-token
 mainsequence code-repository update-agent-skills --path .
+mainsequence code-repository update-platform-skills --path .
 metatables copy-metatables-skills --path .
 mainsequence code-repository update AGENTS.md --path .
 mainsequence code-repository sync --path . -m "Sync Valmer control-plane backend"
 ```
+
+`update-agent-skills` copies the SDK-owned skills offline and replaces
+`.agents/skills/mainsequence/`; `update-platform-skills` needs the signed-in
+session and installs the platform skills under
+`.agents/skills/mainsequence_platform/`.
 
 The control-plane Jobs and their platform-owned descriptions are declared in
 `.mainsequence/workflows/valmer-control-plane-jobs.yaml`. The standard pipeline

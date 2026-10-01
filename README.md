@@ -119,10 +119,11 @@ Detailed guides:
 ### Requirements
 
 - CPython 3.13.x (the repository currently excludes Python 3.14)
-- A working MainSequence environment: `mainsequence>=9.0.1,<10` for identity,
-  CodeRepository, Job, and Artifact APIs, plus the `mainsequence-metatable`
-  client (imported and run as `metatables`) for MetaTables, updaters, and
-  migrations, and `ms-markets>=2,<3`
+- A working MainSequence environment: `mainsequence>=9.0.2,<10` for identity,
+  CodeRepository, Job, and Artifact APIs, plus the
+  `mainsequence-metatable>=0.1.6,<0.2` client (imported and run as
+  `metatables`) for MetaTables, updaters, and migrations, and
+  `ms-markets>=2,<3`
 - Access to the Valmer artifact bucket and to the Valmer benchmark CSV endpoint
 
 ### Install

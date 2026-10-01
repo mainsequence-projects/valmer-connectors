@@ -45,8 +45,8 @@ Relevant repository skills:
 
 Current declared package constraints:
 
-- `mainsequence>=9.0.1,<10`
-- `mainsequence-metatable>=0.1.5,<0.2`
+- `mainsequence>=9.0.2,<10`
+- `mainsequence-metatable>=0.1.6,<0.2`
 - `ms-markets>=2,<3`
 - `streamlit>=1.58.0`
 - `xlrd>=2.0.2`
