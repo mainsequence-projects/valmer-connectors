@@ -10,8 +10,8 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "arch>=8.0.0",
     "fastapi>=0.141.1",
-    "mainsequence>=9.0.1,<10",
-    "mainsequence-metatable>=0.1.5,<0.2",
+    "mainsequence>=9.0.2,<10",
+    "mainsequence-metatable>=0.1.6,<0.2",
     "ms-markets>=2,<3",
     "pandas-market-calendars>=5.4.0",
     "plotly>=6.8.0",
@@ -91,8 +91,9 @@ known-first-party = ["mainsequence","valmer_connectors","banxico","fred","migrat
 
 [tool.pytest.ini_options]
 # Resolve the repository's own top-level packages before installed ones:
-# ms-markets installs a top-level `migrations` and mainsequence-metatable a
-# top-level `api` that would otherwise shadow `src/migrations` and `api/`.
+# ms-markets installs a top-level `migrations` that would otherwise shadow
+# `src/migrations`. The repository root keeps `scripts/` importable when a
+# single test file runs through the `pytest` console script.
 pythonpath = ["src", "."]
 
 [dependency-groups]
