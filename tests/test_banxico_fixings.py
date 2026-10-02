@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from banxico.fixings import (
+from valmer_connectors.banxico.fixings import (
     DEFAULT_SERIES_DEFINITIONS,
     BanxicoFixingError,
     BanxicoFixingsNode,
@@ -17,7 +17,7 @@ from banxico.fixings import (
     select_series_definitions,
     validate_series_metadata,
 )
-from banxico.settings import (
+from valmer_connectors.banxico.settings import (
     CETE_28_INDEX_IDENTIFIER,
     TIIE_28_INDEX_IDENTIFIER,
     TIIE_91_INDEX_IDENTIFIER,
@@ -193,10 +193,10 @@ class BanxicoFixingsTests(unittest.TestCase):
     def test_run_banxico_fixings_update_wires_node(self):
         with (
             patch("valmer_connectors.instruments.bootstrap.bootstrap_runtime") as bootstrap,
-            patch("banxico.fixings.resolve_banxico_token", return_value="token"),
-            patch("banxico.fixings.BanxicoSieClient") as client_class,
-            patch("banxico.fixings.make_banxico_fixing_builders") as make_builders,
-            patch("banxico.fixings.BanxicoFixingsNode") as node_class,
+            patch("valmer_connectors.banxico.fixings.resolve_banxico_token", return_value="token"),
+            patch("valmer_connectors.banxico.fixings.BanxicoSieClient") as client_class,
+            patch("valmer_connectors.banxico.fixings.make_banxico_fixing_builders") as make_builders,
+            patch("valmer_connectors.banxico.fixings.BanxicoFixingsNode") as node_class,
         ):
             builders = {TIIE_28_INDEX_IDENTIFIER: Mock()}
             make_builders.return_value = builders
@@ -267,7 +267,7 @@ class BanxicoFixingsCliTests(unittest.TestCase):
             ]
         )
 
-        with patch("banxico.fixings.run_banxico_fixings_update") as run_update:
+        with patch("valmer_connectors.banxico.fixings.run_banxico_fixings_update") as run_update:
             result = args.func(args)
 
         self.assertEqual(result, 0)

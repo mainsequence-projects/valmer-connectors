@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from banxico.policy_rates import run_banxico_policy_rates_update
+from valmer_connectors.banxico.policy_rates import run_banxico_policy_rates_update
 
 
 def main(argv: Sequence[str] | None = None) -> None:

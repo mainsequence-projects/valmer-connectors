@@ -17,6 +17,18 @@ unchanged. The `mainsequence.meta_tables` imports and `mainsequence migrations`
 commands quoted below are historical; see `README.md` and `docs/markets.md` for
 the current commands.
 
+Amended on 2026-10-02: the Valmer provider moved from the top-level
+`migrations` package (`src/migrations`) to `valmer_connectors.migrations`
+(`src/valmer_connectors/migrations`). The wheel now installs only the
+`valmer_connectors` import package and no longer overwrites the top-level
+`migrations` package that backs `msm.migrations`. The provider reference is
+`valmer_connectors.migrations:migration` and needs no `PYTHONPATH`. The
+provider sets `script_location` and `version_location_prefix` to the new
+package explicitly. The `package`, migration namespace, version table, and
+revision `0001` are unchanged, so no database migration is required. The
+`PYTHONPATH=src` command above, the `migrations:migration` references, and the
+`src/migrations` paths below are historical.
+
 ## Date
 
 2026-06-02

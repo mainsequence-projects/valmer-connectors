@@ -4,6 +4,15 @@
 
 Implemented locally; live Banxico metadata validation pending.
 
+Amended on 2026-10-02: the Banxico package moved from the top-level `banxico`
+package to `src/valmer_connectors/banxico` (`valmer_connectors.banxico`), and
+the FRED package moved to `valmer_connectors.fred`. The wheel installs only the
+`valmer_connectors` import package. The `src/banxico/` paths below are
+historical. Because the updater class import path is part of the TimeIndexTableUpdater
+`update_hash`, `BanxicoFixingsNode`, `BanxicoPolicyRatesNode`, and
+`FredReferenceRatesNode` receive new update hashes on their first run after the
+move; their output tables and update statistics are unchanged.
+
 ## Date
 
 2026-07-01

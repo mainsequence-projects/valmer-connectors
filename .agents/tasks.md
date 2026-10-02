@@ -1,18 +1,30 @@
 # Open Tasks
 
-## Finish the SDK 8 integration and migration-package validation
+## Verify the namespaced packages against the backend
 
-- Scope: restore or provide the project-owned `migrations` package expected by
-  `tests/test_valmer_migrations.py`, then run the complete repository suite and
-  one updater lifecycle against the migrated backend. `ms-markets==1.0.2` is
-  now the first adopted release that declares Main Sequence SDK 8 compatibility;
-  updater imports and all tests outside the missing migration package pass.
-- Owning skills: `mainsequence-time-index-table-updates` and the relevant
-  `mainsequence-markets-*` domain skills.
-- Expected output: the project imports cleanly with Main Sequence SDK 8.0.4 or
-  newer, all tests pass, and one project updater completes a backend run.
-- Required evidence: dependency lock, clean legacy-name scan, passing full test
-  suite and Ruff check, successful updater run, and persisted output readback.
+- Scope: run `metatables migrations current --provider
+  valmer_connectors.migrations:migration` against the backend, then run the
+  Banxico fixings, Banxico policy, and FRED updaters once. They now register
+  under new update hashes because their class import paths changed; retire the
+  stale updater records for the old `banxico.*` and `fred.*` import paths.
+- Owning skills: `metatables-migrations` and `metatables-time-index-table-updates`.
+- Expected output: the provider reports revision `0001` on
+  `valmer_connectors__alembic_version`, and each updater continues incrementally
+  from its existing output table without a backfill.
+- Required evidence: `current` output, updater exits, before/after governed row
+  counts, and the updater record list.
+
+## Roll valmer-connectors 0.1.47 out to consumers
+
+- Scope: replace the vendored 0.1.46 wheel in marketsanalytics and move the
+  mexicofundcompetition git pin to the 0.1.47 commit. Uninstalling 0.1.46 also
+  deletes the shared top-level `migrations` files that ms-markets needs, so
+  reinstall ms-markets in each consumer afterwards.
+- Expected output: each consumer has no top-level `migrations`, `banxico`,
+  `fred`, or `agents` files from valmer-connectors, and `import msm.migrations`
+  succeeds.
+- Required evidence: the site-packages listing and the import check in each
+  consumer environment.
 
 ## Publish and verify the two-repository control plane
 

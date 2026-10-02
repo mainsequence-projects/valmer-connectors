@@ -12,7 +12,7 @@ from typing import Any
 import pandas as pd
 from msm_pricing.data_nodes import FixingRatesNode, IndexFixingConfiguration
 
-from banxico.settings import (
+from valmer_connectors.banxico.settings import (
     BANXICO_FIXING_INDEX_IDENTIFIERS,
     BANXICO_TOKEN_SECRET_NAME,
     CETE_28_INDEX_IDENTIFIER,
@@ -23,7 +23,7 @@ from banxico.settings import (
     TIIE_182_INDEX_IDENTIFIER,
     TIIE_OVERNIGHT_INDEX_IDENTIFIER,
 )
-from banxico.sie import BanxicoSieClient
+from valmer_connectors.banxico.sie import BanxicoSieClient
 
 BANXICO_FIXING_OFFSET_START = dt.datetime(2010, 1, 1, tzinfo=dt.UTC)
 

@@ -12,16 +12,6 @@ from typing import Any
 
 import pandas as pd
 
-from fred.client import FredApiError, FredClient
-from fred.settings import (
-    FED_FUNDS_TARGET_UPPER_INDEX_IDENTIFIER,
-    FRED_API_KEY_SECRET_NAME,
-    FRED_REFERENCE_RATE_INDEX_IDENTIFIERS,
-    US_TREASURY_CMT_2Y_INDEX_IDENTIFIER,
-    US_TREASURY_CMT_5Y_INDEX_IDENTIFIER,
-    US_TREASURY_CMT_10Y_INDEX_IDENTIFIER,
-    US_TREASURY_CMT_30Y_INDEX_IDENTIFIER,
-)
 from valmer_connectors.data_nodes.canonical_index_values import (
     ReferenceRateIndexDefinition,
     ReferenceRateIndexValuesNode,
@@ -31,6 +21,16 @@ from valmer_connectors.data_nodes.canonical_index_values import (
     normalize_index_value_rows,
     resolve_reference_rate_update_window,
     upsert_reference_rate_indexes,
+)
+from valmer_connectors.fred.client import FredApiError, FredClient
+from valmer_connectors.fred.settings import (
+    FED_FUNDS_TARGET_UPPER_INDEX_IDENTIFIER,
+    FRED_API_KEY_SECRET_NAME,
+    FRED_REFERENCE_RATE_INDEX_IDENTIFIERS,
+    US_TREASURY_CMT_2Y_INDEX_IDENTIFIER,
+    US_TREASURY_CMT_5Y_INDEX_IDENTIFIER,
+    US_TREASURY_CMT_10Y_INDEX_IDENTIFIER,
+    US_TREASURY_CMT_30Y_INDEX_IDENTIFIER,
 )
 
 

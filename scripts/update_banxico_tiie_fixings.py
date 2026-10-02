@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from banxico.fixings import run_banxico_fixings_update
-from banxico.settings import (
+from valmer_connectors.banxico.fixings import run_banxico_fixings_update
+from valmer_connectors.banxico.settings import (
     TIIE_28_INDEX_IDENTIFIER,
     TIIE_91_INDEX_IDENTIFIER,
     TIIE_182_INDEX_IDENTIFIER,

@@ -3,14 +3,14 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from banxico.policy_rates import (
+from valmer_connectors.banxico.policy_rates import (
     BANXICO_POLICY_TARGET_DEFINITION,
     BanxicoPolicyRateError,
     normalize_banxico_policy_observations,
     run_banxico_policy_rates_update,
     validate_banxico_policy_metadata,
 )
-from banxico.settings import BANXICO_POLICY_TARGET_INDEX_IDENTIFIER
+from valmer_connectors.banxico.settings import BANXICO_POLICY_TARGET_INDEX_IDENTIFIER
 from valmer_connectors.cli.main import build_parser
 
 
@@ -87,9 +87,9 @@ class BanxicoPolicyRateTests(unittest.TestCase):
     def test_runner_wires_runtime_indexes_config_and_node(self):
         with (
             patch("valmer_connectors.instruments.bootstrap.bootstrap_runtime") as bootstrap,
-            patch("banxico.policy_rates.upsert_reference_rate_indexes") as upsert_indexes,
-            patch("banxico.policy_rates.BanxicoSieClient") as client_class,
-            patch("banxico.policy_rates.BanxicoPolicyRatesNode") as node_class,
+            patch("valmer_connectors.banxico.policy_rates.upsert_reference_rate_indexes") as upsert_indexes,
+            patch("valmer_connectors.banxico.policy_rates.BanxicoSieClient") as client_class,
+            patch("valmer_connectors.banxico.policy_rates.BanxicoPolicyRatesNode") as node_class,
         ):
             node = Mock()
             node.set_source.return_value = node
@@ -123,7 +123,7 @@ class BanxicoPolicyRateCliTests(unittest.TestCase):
                 "update-banxico-policy",
             ]
         )
-        with patch("banxico.policy_rates.run_banxico_policy_rates_update") as run_update:
+        with patch("valmer_connectors.banxico.policy_rates.run_banxico_policy_rates_update") as run_update:
             result = args.func(args)
 
         self.assertEqual(result, 0)

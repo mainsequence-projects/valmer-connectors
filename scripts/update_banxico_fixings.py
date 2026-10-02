@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from banxico.fixings import run_banxico_fixings_update
+from valmer_connectors.banxico.fixings import run_banxico_fixings_update
 
 
 def main(argv: Sequence[str] | None = None) -> None:

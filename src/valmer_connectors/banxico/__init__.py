@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from banxico.fixings import (
+from valmer_connectors.banxico.fixings import (
     BANXICO_FIXING_INDEX_IDENTIFIERS,
     DEFAULT_SERIES_DEFINITIONS,
     BanxicoFixingError,
@@ -10,7 +10,7 @@ from banxico.fixings import (
     build_banxico_fixing_frame,
     run_banxico_fixings_update,
 )
-from banxico.policy_rates import (
+from valmer_connectors.banxico.policy_rates import (
     BANXICO_POLICY_TARGET_DEFINITION,
     BanxicoPolicyRateError,
     BanxicoPolicyRatesNode,

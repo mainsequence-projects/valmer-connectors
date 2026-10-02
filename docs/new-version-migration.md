@@ -68,7 +68,7 @@ Identity, CodeRepository, Job, Secret, and Artifact APIs stay in `mainsequence`.
 | Static details | `ValmerAssetDetailsTable.asset_uid` is a 1:1 FK to `AssetTable.uid` | live row link validation |
 | Pricing hydration | `prepare_for_update()` calls `_sync_asset_registry_and_pricing(...)` before `run()` and writes through `msm_pricing.api.add_many_pricing_details(...)` | live pricing-details write validation, including incomplete-result failure behavior |
 | Runtime bootstrap | `bootstrap_runtime()` is the single project runtime entry point | live idempotency validation |
-| Project migrations | `migrations:migration` uses `metatables.migrations` helper machinery | live revision/current/upgrade check |
+| Project migrations | `valmer_connectors.migrations:migration` uses `metatables.migrations` helper machinery | live revision/current/upgrade check |
 | Curves | Valmer TIIE and MXN government curves publish through `DiscountCurvesNode` | live curve updates |
 | Fixings | no project-owned fixing ETL exists | remains out of scope |
 | Dashboard | monitors source, pricing hydration, and curve health | run with valid credentials |
@@ -164,19 +164,19 @@ Run core `ms-markets` migrations before project migrations:
 metatables migrations current --provider msm.migrations:migration
 metatables migrations upgrade --provider msm.migrations:migration head
 
-PYTHONPATH=src metatables migrations current --provider migrations:migration
-PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head
+metatables migrations current --provider valmer_connectors.migrations:migration
+metatables migrations upgrade --provider valmer_connectors.migrations:migration head
 ```
 
-ms-markets also installs a top-level `migrations` package for its core
-provider, so the Valmer provider in `src/migrations` is selected with
-`PYTHONPATH=src`; run the ms-markets provider without it.
+The Valmer provider lives in `src/valmer_connectors/migrations`, so its
+reference cannot collide with the ms-markets core provider and needs no
+`PYTHONPATH`.
 
 Generate a project revision only after changing Valmer SQLAlchemy table
 contracts (`revision` autogenerates by default):
 
 ```bash
-PYTHONPATH=src metatables migrations revision --provider migrations:migration
+metatables migrations revision --provider valmer_connectors.migrations:migration
 ```
 
 ## Runtime Checks

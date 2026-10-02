@@ -9,7 +9,7 @@ import urllib.request
 from collections.abc import Iterable
 from typing import Any
 
-from banxico.settings import BANXICO_SIE_BASE_URL
+from valmer_connectors.banxico.settings import BANXICO_SIE_BASE_URL
 
 
 class BanxicoSieError(RuntimeError):

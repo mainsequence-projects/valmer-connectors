@@ -11,11 +11,11 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
-from banxico.settings import (
+from valmer_connectors.banxico.settings import (
     BANXICO_FIXING_INDEX_IDENTIFIERS,
     BANXICO_POLICY_TARGET_INDEX_IDENTIFIER,
 )
-from fred.settings import FRED_REFERENCE_RATE_INDEX_IDENTIFIERS
+from valmer_connectors.fred.settings import FRED_REFERENCE_RATE_INDEX_IDENTIFIERS
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
     VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
@@ -147,7 +147,7 @@ def _curves_update_mxn_government_command(args: argparse.Namespace) -> int:
 
 
 def _fixings_update_banxico_command(args: argparse.Namespace) -> int:
-    from banxico.fixings import run_banxico_fixings_update
+    from valmer_connectors.banxico.fixings import run_banxico_fixings_update
 
     run_banxico_fixings_update(
         index_identifiers=args.index_identifier or None,
@@ -160,7 +160,7 @@ def _fixings_update_banxico_command(args: argparse.Namespace) -> int:
 
 
 def _reference_rates_update_fred_command(args: argparse.Namespace) -> int:
-    from fred.reference_rates import run_fred_reference_rates_update
+    from valmer_connectors.fred.reference_rates import run_fred_reference_rates_update
 
     run_fred_reference_rates_update(
         index_identifiers=args.index_identifier or None,
@@ -173,7 +173,7 @@ def _reference_rates_update_fred_command(args: argparse.Namespace) -> int:
 
 
 def _reference_rates_update_banxico_command(args: argparse.Namespace) -> int:
-    from banxico.policy_rates import run_banxico_policy_rates_update
+    from valmer_connectors.banxico.policy_rates import run_banxico_policy_rates_update
 
     run_banxico_policy_rates_update(
         index_identifiers=args.index_identifier or None,

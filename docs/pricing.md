@@ -262,7 +262,7 @@ the current `msm_pricing` calendar JSON codec.
 
 TIIE and CETE fixing observations come from Banco de Mexico SIE, not Valmer.
 Banxico source-specific client, metadata validation, parsing, and fixing
-builder logic lives under `src/banxico/`. Valmer curve and valuation workflows
+builder logic lives under `src/valmer_connectors/banxico/`. Valmer curve and valuation workflows
 consume the resulting `IndexFixingsStorage` observations through the normal
 pricing market-data binding.
 

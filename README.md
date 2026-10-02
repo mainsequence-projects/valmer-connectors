@@ -142,17 +142,15 @@ Run the core ms-markets provider first, then the Valmer project provider:
 metatables migrations current --provider msm.migrations:migration
 metatables migrations upgrade --provider msm.migrations:migration head
 
-PYTHONPATH=src metatables migrations current --provider migrations:migration
-PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head
+metatables migrations current --provider valmer_connectors.migrations:migration
+metatables migrations upgrade --provider valmer_connectors.migrations:migration head
 ```
 
-The Valmer provider uses the top-level `migrations:migration` package exposed
-from `src/migrations`. ms-markets also installs a top-level `migrations`
-package for its core provider (re-exported as `msm.migrations`), and
-`metatables migrations` only prepends the current directory to `sys.path`.
-Run the Valmer provider with `PYTHONPATH=src` and the ms-markets provider
-without it; otherwise `migrations:migration` resolves to the ms-markets
-provider.
+The Valmer provider is `valmer_connectors.migrations:migration`, exposed from
+`src/valmer_connectors/migrations`. The wheel installs only the
+`valmer_connectors` import package, so the provider cannot collide with the
+top-level `migrations` package that ms-markets installs for `msm.migrations`,
+and it resolves from an installed or editable package without `PYTHONPATH`.
 
 Do not run `metatables migrations revision` during normal setup. Use
 `revision` only after changing the Valmer SQLAlchemy table contract and

@@ -9,7 +9,7 @@ import urllib.request
 from collections.abc import Mapping
 from typing import Any
 
-from fred.settings import FRED_API_BASE_URL
+from valmer_connectors.fred.settings import FRED_API_BASE_URL
 
 
 class FredApiError(RuntimeError):

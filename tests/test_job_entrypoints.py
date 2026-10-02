@@ -4,8 +4,8 @@ import runpy
 import sys
 from pathlib import Path
 
-from banxico import fixings
-from banxico.settings import (
+from valmer_connectors.banxico import fixings
+from valmer_connectors.banxico.settings import (
     TIIE_28_INDEX_IDENTIFIER,
     TIIE_91_INDEX_IDENTIFIER,
     TIIE_182_INDEX_IDENTIFIER,

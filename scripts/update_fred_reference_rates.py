@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from fred.reference_rates import run_fred_reference_rates_update
+from valmer_connectors.fred.reference_rates import run_fred_reference_rates_update
 
 
 def main(argv: Sequence[str] | None = None) -> None:

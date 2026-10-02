@@ -11,12 +11,12 @@ from typing import Any
 
 import pandas as pd
 
-from banxico.fixings import BanxicoFixingError, resolve_banxico_token
-from banxico.settings import (
+from valmer_connectors.banxico.fixings import BanxicoFixingError, resolve_banxico_token
+from valmer_connectors.banxico.settings import (
     BANXICO_POLICY_TARGET_INDEX_IDENTIFIER,
     BANXICO_TOKEN_SECRET_NAME,
 )
-from banxico.sie import BanxicoSieClient
+from valmer_connectors.banxico.sie import BanxicoSieClient
 from valmer_connectors.data_nodes.canonical_index_values import (
     ReferenceRateIndexDefinition,
     ReferenceRateIndexValuesNode,

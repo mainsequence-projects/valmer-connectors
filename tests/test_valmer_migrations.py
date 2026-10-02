@@ -8,14 +8,6 @@ from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import markets_auto_register_namespace
 
-from migrations import (
-    VALMER_MIGRATION_MODELS,
-    VALMER_REFERENCE_MODELS,
-    VALMER_TABLE_APP,
-    ValmerAlembicVersion,
-    migration,
-)
-from migrations.registry import METATABLE_PROVIDER_MODELS, metatable_provider_models
 from valmer_connectors.data_nodes.canonical_index_values import (
     DailyIndexValuesStorage,
 )
@@ -25,18 +17,29 @@ from valmer_connectors.markets import (
     VALMER_MARKETS_STORAGE_APP,
 )
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
+from valmer_connectors.migrations import (
+    VALMER_MIGRATION_MODELS,
+    VALMER_REFERENCE_MODELS,
+    VALMER_TABLE_APP,
+    ValmerAlembicVersion,
+    migration,
+)
+from valmer_connectors.migrations.registry import (
+    METATABLE_PROVIDER_MODELS,
+    metatable_provider_models,
+)
 
 
 class ValmerMigrationProviderTests(unittest.TestCase):
     def test_provider_uses_real_project_package(self):
         expected_version_location = namespace_version_location(
             VALMER_MARKETS_NAMESPACE,
-            prefix="migrations:versions",
+            prefix="valmer_connectors.migrations:versions",
         )
 
         self.assertEqual(migration.package, "valmer_connectors")
         self.assertEqual(migration.migration_namespace, VALMER_MARKETS_NAMESPACE)
-        self.assertEqual(migration.script_location, "migrations:")
+        self.assertEqual(migration.script_location, "valmer_connectors.migrations:")
         self.assertEqual(
             migration.resolved_version_locations(),
             (expected_version_location,),

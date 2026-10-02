@@ -7,8 +7,11 @@ Accepted / Implemented
 Amended on 2026-10-01 for Main Sequence SDK 9: MetaTable migrations moved from
 the `mainsequence migrations ...` CLI to the `metatables migrations ...` CLI of
 the `mainsequence-metatable` client. `valmer-connectors migrations commands`
-prints the `metatables` commands below, with `PYTHONPATH=src` for the Valmer
-provider because ms-markets also installs a top-level `migrations` package.
+prints the `metatables` commands below.
+
+Amended on 2026-10-02: the Valmer provider moved from the top-level
+`migrations` package to `valmer_connectors.migrations`, so its commands no
+longer need `PYTHONPATH=src`.
 
 ## Date
 
@@ -34,7 +37,7 @@ migrations remain owned by the canonical `metatables migrations ...` CLI and
 the migration providers:
 
 - `msm.migrations:migration`
-- `migrations:migration`
+- `valmer_connectors.migrations:migration`
 
 ## Decision
 
@@ -89,8 +92,8 @@ Print the canonical migration sequence for this project:
 ```bash
 metatables migrations current --provider msm.migrations:migration
 metatables migrations upgrade --provider msm.migrations:migration head
-PYTHONPATH=src metatables migrations current --provider migrations:migration
-PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head
+metatables migrations current --provider valmer_connectors.migrations:migration
+metatables migrations upgrade --provider valmer_connectors.migrations:migration head
 ```
 
 This command must not run migrations. It is a discovery/help command only.

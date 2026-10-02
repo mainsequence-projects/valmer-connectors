@@ -3,7 +3,8 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from fred.reference_rates import (
+from valmer_connectors.cli.main import build_parser
+from valmer_connectors.fred.reference_rates import (
     DEFAULT_FRED_REFERENCE_RATE_DEFINITIONS,
     FredReferenceRateError,
     normalize_fred_observations,
@@ -11,8 +12,7 @@ from fred.reference_rates import (
     run_fred_reference_rates_update,
     validate_fred_series_metadata,
 )
-from fred.settings import US_TREASURY_CMT_2Y_INDEX_IDENTIFIER
-from valmer_connectors.cli.main import build_parser
+from valmer_connectors.fred.settings import US_TREASURY_CMT_2Y_INDEX_IDENTIFIER
 
 
 class FredReferenceRateTests(unittest.TestCase):
@@ -123,9 +123,9 @@ class FredReferenceRateTests(unittest.TestCase):
     def test_runner_wires_runtime_indexes_config_and_node(self):
         with (
             patch("valmer_connectors.instruments.bootstrap.bootstrap_runtime") as bootstrap,
-            patch("fred.reference_rates.upsert_reference_rate_indexes") as upsert_indexes,
-            patch("fred.reference_rates.FredClient") as client_class,
-            patch("fred.reference_rates.FredReferenceRatesNode") as node_class,
+            patch("valmer_connectors.fred.reference_rates.upsert_reference_rate_indexes") as upsert_indexes,
+            patch("valmer_connectors.fred.reference_rates.FredClient") as client_class,
+            patch("valmer_connectors.fred.reference_rates.FredReferenceRatesNode") as node_class,
         ):
             node = Mock()
             node.set_source.return_value = node
@@ -162,7 +162,7 @@ class FredReferenceRateCliTests(unittest.TestCase):
                 US_TREASURY_CMT_2Y_INDEX_IDENTIFIER,
             ]
         )
-        with patch("fred.reference_rates.run_fred_reference_rates_update") as run_update:
+        with patch("valmer_connectors.fred.reference_rates.run_fred_reference_rates_update") as run_update:
             result = args.func(args)
 
         self.assertEqual(result, 0)

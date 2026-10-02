@@ -448,7 +448,7 @@ That applies to:
 The project migration provider is:
 
 ```text
-migrations:migration
+valmer_connectors.migrations:migration
 ```
 
 The provider metadata includes `AssetTable` so foreign keys can resolve during
@@ -460,13 +460,13 @@ Run project migrations after core `ms-markets` migrations:
 metatables migrations current --provider msm.migrations:migration
 metatables migrations upgrade --provider msm.migrations:migration head
 
-PYTHONPATH=src metatables migrations current --provider migrations:migration
-PYTHONPATH=src metatables migrations upgrade --provider migrations:migration head
+metatables migrations current --provider valmer_connectors.migrations:migration
+metatables migrations upgrade --provider valmer_connectors.migrations:migration head
 ```
 
-ms-markets also installs a top-level `migrations` package for its core
-provider, so the Valmer provider in `src/migrations` is selected with
-`PYTHONPATH=src`; run the ms-markets provider without it.
+The Valmer provider lives in `src/valmer_connectors/migrations`, so its
+reference cannot collide with the ms-markets core provider and needs no
+`PYTHONPATH`.
 
 ## What This Page Does Not Own
 

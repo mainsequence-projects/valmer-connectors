@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valmer-connectors"
-version = "0.1.46"
+version = "0.1.47"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -26,14 +26,16 @@ dependencies = [
 valmer-connectors = "valmer_connectors.cli.main:main"
 
 [tool.setuptools.packages.find]
-where = ["src", "."]
-include = ["valmer_connectors*", "banxico*", "fred*", "migrations*", "agents*"]
+# Ship one top-level import package. Everything else (repo-level `agents/`,
+# `scripts/`, `api/`) is repository code and never installed.
+where = ["src"]
+include = ["valmer_connectors*"]
 
 [tool.setuptools.package-data]
-migrations = ["script.py.mako"]
 valmer_connectors = [
     "agent_skills/valmer-connectors/*/SKILL.md",
     "config/*.json",
+    "migrations/script.py.mako",
 ]
 
 [tool.ruff]
@@ -87,13 +89,12 @@ ignore = ["E203", "E501"]
 
 [tool.ruff.lint.isort]
 # Treat these as your own packages so they sort as "first-party".
-known-first-party = ["mainsequence","valmer_connectors","banxico","fred","migrations","agents"]
+known-first-party = ["mainsequence","valmer_connectors","agents"]
 
 [tool.pytest.ini_options]
-# Resolve the repository's own top-level packages before installed ones:
-# ms-markets installs a top-level `migrations` that would otherwise shadow
-# `src/migrations`. The repository root keeps `scripts/` importable when a
-# single test file runs through the `pytest` console script.
+# `src` resolves `valmer_connectors` from the checkout without an install. The
+# repository root keeps `scripts/` importable when a single test file runs
+# through the `pytest` console script.
 pythonpath = ["src", "."]
 
 [dependency-groups]

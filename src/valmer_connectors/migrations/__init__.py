@@ -14,11 +14,11 @@ from msm.settings import (
     markets_identifier,
 )
 
-from migrations.registry import metatable_provider_models
 from valmer_connectors.markets import (
     VALMER_MARKETS_NAMESPACE,
     VALMER_MARKETS_STORAGE_APP,
 )
+from valmer_connectors.migrations.registry import metatable_provider_models
 
 VALMER_MIGRATION_MODELS = tuple(metatable_provider_models())
 VALMER_REFERENCE_MODELS = (
@@ -106,7 +106,8 @@ ValmerAlembicVersion = build_alembic_version_metatable(
 migration = build_metatable_migration_provider(
     package="valmer_connectors",
     migration_namespace=VALMER_MARKETS_NAMESPACE,
-    script_location="migrations:",
+    script_location="valmer_connectors.migrations:",
+    version_location_prefix="valmer_connectors.migrations:versions",
     target_metadata=VALMER_TARGET_METADATA,
     alembic_registry=ValmerAlembicVersion,
     metatable_models=VALMER_MIGRATION_MODELS,

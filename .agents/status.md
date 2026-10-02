@@ -1,7 +1,29 @@
 # Project Status
 
-Last local verification: 2026-08-30
+Last local verification: 2026-10-02
 Last complete backend lifecycle verification: 2026-08-21
+
+## Wheel Packaging (Verified Locally 2026-10-02)
+
+- `valmer-connectors` 0.1.47 installs exactly one top-level import package,
+  `valmer_connectors`. The Valmer migration provider is
+  `valmer_connectors.migrations:migration`; Banxico and FRED live under
+  `valmer_connectors.banxico` and `valmer_connectors.fred`; the repo-level
+  `agents/` scaffold is not installed.
+- Earlier wheels (through 0.1.46) installed top-level `migrations`, `banxico`,
+  `fred`, and `agents`. Next to ms-markets, the Valmer `migrations` files
+  overwrote the ms-markets ones, and `import msm.migrations` failed with
+  `ImportError: MarketsAlembicVersion` in the marketsanalytics venv.
+- A clean venv with the 0.1.47 wheel and ms-markets imports both
+  `msm.migrations` and `valmer_connectors.migrations`. Alembic resolves
+  `env.py`, the template, and the single head `0001` from the new package. The
+  version table is still `valmer_connectors__alembic_version`.
+- Full suite: 295 tests and 39 subtests pass. Ruff passes.
+- Setuptools copies a stale `build/lib` into new wheels; remove `build/` before
+  building a release wheel.
+- Not yet verified live: `metatables migrations current` against the backend
+  with the new provider reference, and the first Banxico/FRED updater runs
+  under their new update hashes.
 
 ## SDK 8 Migration Status
 
@@ -17,9 +39,6 @@ Last complete backend lifecycle verification: 2026-08-21
   The normally resolved environment imports the Valmer updater modules, and
   the suite excluding `tests/test_valmer_migrations.py` passes: 254 tests and
   36 subtests.
-- Full collection is now blocked only because the project-owned `migrations`
-  package expected by `tests/test_valmer_migrations.py` is absent; Python resolves
-  an unrelated installed package named `migrations` instead.
 - Managed Main Sequence skills and `AGENTS.md` were refreshed on 2026-08-30 and
   are pinned to SDK `8.0.4` plus the authenticated platform manifest. The local
   CLI authentication and exact Git-derived CodeRepositoryBranch context now
