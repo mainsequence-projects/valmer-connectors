@@ -28,10 +28,10 @@
 
 ## Publish and verify the two-repository control plane
 
-- Scope: review and canonically sync this dirty backend so the FastAPI resource
-  is indexed, add and validate its API 2.1.0 automatic-release declaration with
-  the real resource UID, sync again, configure the stable FastAPI release target
-  for `ValmerConnectorsMonitor`, and then sync its validated automatic Vite
+- Scope: push this backend so the FastAPI resource is indexed, add and validate
+  its API 2.1.0 automatic-release declaration with the real resource UID, push
+  again, configure the stable FastAPI release target for
+  `ValmerConnectorsMonitor`, and then push its validated automatic Vite
   static-site declaration. Navigation placement remains a separate explicit
   human grant.
 - Owning skills: `mainsequence-command-center-fastapi`, `resource-release`,

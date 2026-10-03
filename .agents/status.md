@@ -1,7 +1,26 @@
 # Project Status
 
-Last local verification: 2026-10-02
+Last local verification: 2026-10-03
 Last complete backend lifecycle verification: 2026-08-21
+
+## Dependency And Skill Pins (Verified Locally 2026-10-03)
+
+- Installed: `mainsequence` 9.0.5, `mainsequence-metatable` 0.1.8, ms-markets
+  2.0.1. Declared floors: `mainsequence>=9.0.4,<10` (required by MetaTables
+  0.1.8) and `mainsequence-metatable>=0.1.8,<0.2`.
+- `.agents/skills/metatables/` is pinned to MetaTables 0.1.8. The code follows
+  its provider-placement rules (owned module, explicit `script_location` and
+  `version_location_prefix`, prefixed version table, wheel lists only owned
+  top-level entries) and sets no Timescale policies in contracts or revisions.
+- SDK skills are pinned to 9.0.5 and ms-markets skills to 2.0.1, matching the
+  installed packages. Platform skills (`.agents/skills/mainsequence_platform/`)
+  are not installed.
+- The managed `AGENTS.md` block still differs from the SDK 9.0.5 template: it
+  says "canonical CodeRepository sync" and lacks the `mainsequence-inference`
+  route. Refreshing it requires an explicit `update AGENTS.md` request.
+- Since SDK 9.0.5, `code-repository sync` only refreshes dependency files;
+  publishing is `git commit` and `git push`. Every workflow declares
+  `tag_regex: null`, so every push deploys the API and the Jobs.
 
 ## Wheel Packaging (Verified Locally 2026-10-02)
 
@@ -43,9 +62,7 @@ Last complete backend lifecycle verification: 2026-08-21
   are pinned to SDK `8.0.4` plus the authenticated platform manifest. The local
   CLI authentication and exact Git-derived CodeRepositoryBranch context now
   resolve successfully.
-- No SDK 8 commit, tag, push, ResourceRelease, or backend updater-lifecycle
-  success is claimed; the backend worktree still contains extensive unreviewed
-  changes and canonical sync would stage all of them.
+- No backend updater-lifecycle success is claimed under SDK 8.
 
 ## Command Center Control Plane
 

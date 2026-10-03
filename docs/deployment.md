@@ -11,14 +11,23 @@ mainsequence refresh-token
 mainsequence code-repository update-agent-skills --path .
 mainsequence code-repository update-platform-skills --path .
 metatables copy-metatables-skills --path .
+msm copy-msm-skills --path .
 mainsequence code-repository update AGENTS.md --path .
-mainsequence code-repository sync --path . -m "Sync Valmer control-plane backend"
+mainsequence code-repository sync --path .
+git add <reviewed paths>
+git commit -m "<specific commit message>"
+git push
 ```
 
 `update-agent-skills` copies the SDK-owned skills offline and replaces
 `.agents/skills/mainsequence/`; `update-platform-skills` needs the signed-in
 session and installs the platform skills under
 `.agents/skills/mainsequence_platform/`.
+
+Since SDK 9.0.5, `code-repository sync` only refreshes `uv.lock`, the local
+environment and `requirements.txt` after a dependency change. It does not
+commit, tag or push. Publish with Git. Every workflow here declares
+`tag_regex: null`, so every push to the branch deploys the API and the Jobs.
 
 The control-plane Jobs and their platform-owned descriptions are declared in
 `.mainsequence/workflows/valmer-control-plane-jobs.yaml`. The standard pipeline
@@ -27,23 +36,23 @@ operations. The platform catalog deliberately excludes launch configurations tha
 depend on a developer workstation or exist only to run UI, debugging, examples,
 or migration administration.
 
-The first backend sync indexes `api/valmer_control_plane/main.py`. Resolve that
+The first backend push indexes `api/valmer_control_plane/main.py`. Resolve that
 FastAPI resource's public UID, add the API `resource_release` declaration using
-that real UID, validate it through the branch workflow endpoint, and run a
-second canonical sync. The declaration must enable every-commit automatic
+that real UID, validate it through the branch workflow endpoint, and push
+again. The declaration must enable every-commit automatic
 redeployment and retain three immutable revisions. The backend then owns exact
 image creation; do not select a caller image for this workflow-owned release.
 
 The Vite repository contains
 `.mainsequence/workflows/valmer-control-plane-static-site.yaml`. It uses the
-same every-commit promotion policy and retains three revisions. Synchronize the
+same every-commit promotion policy and retains three revisions. Push the
 static repository only after the FastAPI release exists and the installed
 Command Center SDK's exact stable release target has been configured. See
 `docs/control-plane.md` for the two-repository release order.
 
 ## Verification Commands
 
-After sync and image creation, verify the deployed state with:
+After the push and image creation, verify the deployed state with:
 
 ```bash
 mainsequence code-repository current --debug
@@ -82,7 +91,7 @@ Use the Vite control plane after both ResourceReleases are ready to confirm:
 - the accepted JobRun link after a launch.
 
 For both releases, verify that `automatic_deployment` is enabled, the nested
-tag policy is null (every synchronized commit), `revision_retention_count` is
+tag policy is null (every pushed commit), `revision_retention_count` is
 three, and `active_revision` advances only after the desired revision is ready.
 Inspect the correlated DeploymentRun; a successful Git push is not deployment
 evidence.

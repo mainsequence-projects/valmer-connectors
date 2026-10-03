@@ -169,21 +169,21 @@ The platform injects the reserved exact `VITE_COMMAND_CENTER_ORIGIN`. The static
 
 The two repositories must be released in dependency order:
 
-1. sync `valmer-connectors` so the platform indexes `api/valmer_control_plane/main.py` as a FastAPI
+1. push `valmer-connectors` so the platform indexes `api/valmer_control_plane/main.py` as a FastAPI
    CodeRepositoryResource;
 2. resolve that resource's public UID and add a backend API 2.1.0 workflow declaration using the
    real UID, every-commit automatic redeployment, three retained revisions, and the platform's
    default static-site CORS policy;
-3. sync the backend again and wait until the FastAPI release has a ready `active_revision`;
+3. push the backend again and wait until the FastAPI release has a ready `active_revision`;
 4. configure the installed SDK's exact stable FastAPI release target for the Vite application;
-5. validate and sync the existing `ValmerConnectorsMonitor` static-site workflow, which deploys
-   the root Vite SPA on every synchronized commit and retains three revisions;
+5. validate and push the existing `ValmerConnectorsMonitor` static-site workflow, which deploys
+   the root Vite SPA on every pushed commit and retains three revisions;
 6. add a Command Center navigation link only with an explicit human audience grant; and
 7. verify the embedded handshake, dark/light themes, overview reads, resource pagination, viewer
    denial, operator preflight, Job execution, and JobRun polling in Command Center.
 
 Do not invent the FastAPI resource or release UID in a workflow before the backend repository has
-been synchronized. Do not grant organization-wide navigation visibility as a deployment default.
+been pushed. Do not grant organization-wide navigation visibility as a deployment default.
 The release URLs remain stable: repository events create desired immutable revisions and traffic
 switches only when the desired revision becomes the ready `active_revision`.
 
