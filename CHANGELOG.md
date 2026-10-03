@@ -18,10 +18,22 @@
 
 ### Dependencies
 
-- Requires `mainsequence>=9.0.5,<10`, `mainsequence-metatable>=0.1.14,<0.2`
-  and `ms-markets>=2.1.1,<3`. The lock selects mainsequence 9.0.5,
-  mainsequence-metatable 0.1.14 and ms-markets 2.1.1. Nothing here imports the
-  `cli` or `command_center` packages that ms-markets 2.1 renamed.
+- Requires `mainsequence>=9.0.5,<10`, `mainsequence-metatable>=0.1.18,<0.2`
+  and `ms-markets>=2.2.2,<3`. The lock selects mainsequence 9.0.5,
+  mainsequence-metatable 0.1.18 and ms-markets 2.2.2.
+- MetaTables registers tables with cascading foreign keys since 0.1.17, so
+  revision `0001` finalizes with its asset-details key to
+  `ms_markets__asset.uid` (`ON DELETE CASCADE`): deleting an Asset deletes its
+  Valmer details row. The floor is 0.1.18 because it makes write on a table
+  depend only on that table's own grants; under 0.1.17, writing
+  `ms_markets__asset` also required write access to
+  `valmer_connectors__valmerassetdetails`.
+- ms-markets 2.2.2 requires MetaTables 0.1.17 and names the long
+  portfolio-ledger index explicitly, so its provider applies to a new
+  environment. Nothing here imports the `cli` or `command_center` packages that
+  ms-markets 2.1 renamed, or what 2.2.0 removed: `msm_command_center`, the
+  asset-monitor builders, pricing `response_mappings` and the `apps.v1`
+  re-export modules.
 
 ### Deployment and migrations
 
@@ -37,7 +49,9 @@
   `valmer-connectors migrations commands` output, the documentation and the
   VS Code launchers use `metatables --local ...` for local development, and
   nothing here applies the ms-markets provider any more: the ms-markets
-  deployment migrates its own schema.
+  deployment migrates its own schema. The Valmer foreign keys reference
+  ms-markets tables, so the Job succeeds only in a DataSource where the
+  ms-markets deployment has migrated that schema.
 - The control plane lists the migration Job but refuses to launch it by hand.
 - `.gitignore` ignores `.local/`, where the MetaTables local launcher keeps its
   private client token.
@@ -47,13 +61,6 @@
 
 ### Agent skills
 
-- Refreshed the SDK 9.0.5, MetaTables 0.1.14 and ms-markets 2.1.1 skills and
-  the managed `AGENTS.md` block.
-
-### Known issues
-
-- MetaTables 0.1.14 refuses to finalize revision `0001`
-  (`cascading_foreign_key_unsupported`) because its
-  `valmer_connectors__valmerassetdetails.asset_uid` foreign key uses
-  `ON DELETE CASCADE`. Until a new revision replaces it, the `migrate-valmer`
-  Job is expected to fail and block the API deployment. See `.agents/tasks.md`.
+- Refreshed the SDK 9.0.5, MetaTables 0.1.18 and ms-markets 2.2.2 skills and
+  the managed `AGENTS.md` block. The ms-markets refresh drops the asset-monitor
+  skills that 2.2.0 removed.

@@ -343,6 +343,13 @@ Relationship:
 `asset_uid` is both the primary key and the foreign key to `AssetTable.uid`.
 There is intentionally no separate `uid` column.
 
+The key is `ON DELETE CASCADE`: deleting an Asset deletes its Valmer details
+row. The foreign key belongs to this table, so the database applies it for any
+caller allowed to delete the Asset; on the MetaTables local SQLite runtime that
+caller also needs access to this table. Valmer vector observations reference
+`AssetTable.unique_identifier` with `ON DELETE RESTRICT` instead, so an Asset
+with stored vector history cannot be deleted until that history is removed.
+
 ## Public Valmer Detail Query API
 
 Downstream projects should read static Valmer detail fields through:

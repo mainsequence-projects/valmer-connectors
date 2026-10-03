@@ -5,13 +5,21 @@ Last complete backend lifecycle verification: 2026-08-21
 
 ## Dependency And Skill Pins (Verified Locally 2026-10-03)
 
-- Locked and installed: `mainsequence` 9.0.5, `mainsequence-metatable` 0.1.14,
-  ms-markets 2.1.1. Declared floors: `mainsequence>=9.0.5,<10`,
-  `mainsequence-metatable>=0.1.14,<0.2` and `ms-markets>=2.1.1,<3`.
+- Locked and installed: `mainsequence` 9.0.5, `mainsequence-metatable` 0.1.18,
+  ms-markets 2.2.2. Declared floors: `mainsequence>=9.0.5,<10`,
+  `mainsequence-metatable>=0.1.18,<0.2` and `ms-markets>=2.2.2,<3`.
+- MetaTables registers cascading foreign keys since 0.1.17, and 0.1.18 makes
+  write on a table depend only on that table's own grants (0.1.17 also required
+  write on every table a cascade modifies). The asset-details key to
+  `ms_markets__asset.uid` keeps the `ON DELETE CASCADE` of revision `0001`,
+  the only Valmer revision.
 - ms-markets 2.1 renamed its `cli` and `command_center` packages to `msm_cli`
-  and `msm_command_center` and ships its provider as `msm_migrations`. Nothing
-  in this repository imports the old names.
-- Skills are pinned to SDK 9.0.5, MetaTables 0.1.14 and ms-markets 2.1.1.
+  and `msm_command_center` and ships its provider as `msm_migrations`; 2.2.0
+  removed `msm_command_center`, the asset-monitor builders, pricing
+  `response_mappings` and the `apps.v1` re-export modules. Nothing in this
+  repository uses any of them. The ms-markets models the Valmer provider
+  references are unchanged since 2.1.1.
+- Skills are pinned to SDK 9.0.5, MetaTables 0.1.18 and ms-markets 2.2.2.
   Platform skills (`.agents/skills/mainsequence_platform/`) are not installed.
   The managed `AGENTS.md` block matches the SDK 9.0.5 template.
 - Since SDK 9.0.5, `code-repository sync` only refreshes dependency files;
@@ -36,29 +44,34 @@ Last complete backend lifecycle verification: 2026-08-21
   CodeRepositoryBranch for this repository.
 - The control plane lists the migration Job but its preflight refuses to launch
   it by hand.
-- Local proof against an isolated MetaTables 0.1.14 SQLite runtime:
-  - `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`
-    applied revision `0001` (`current` reports `0001 (head)`), then finalization
-    failed: `400 POST /meta-tables/finalize-managed/:
-    {"code": "cascading_foreign_key_unsupported"}`. The cause is
-    `fk__valmer_connectors__valmerassetdetails__asset_uid_cc247d13d3`
-    (`ON DELETE CASCADE` to `ms_markets__asset.uid`) in revision `0001`.
-    MetaTables refuses any active table that has, or is referenced by, a
-    foreign key whose delete or update rule is not `RESTRICT` or `NO ACTION`;
-    its PostgreSQL access layer has the same rule.
-  - With that foreign key rebuilt as `RESTRICT` in the scratch database only,
-    the asset-details and version tables became active; the two time-index
-    tables then failed with `foreign_key_target_columns_not_unique`, because
-    the referenced ms-markets tables did not exist locally.
-  - The ms-markets 2.1.1 provider could not create them: its reservation fails
-    with `422 POST /time-index-meta-tables/: secondary index name must be a
-    valid PostgreSQL identifier` (`ms_markets__portfolioeventledgerts` derives
-    the 70-character name
-    `portfolio_identifier_event_identifier_event_revision_record_identifier`),
-    and its revision `0018` declares 29 `ON DELETE CASCADE` foreign keys.
-  - Expect the hosted `migrate-valmer` Job to fail the same way, which blocks
-    the API deployment, until a new Valmer revision replaces the cascading
-    foreign key and ms-markets fixes its schema.
+- Local proof on 2026-10-03 against a fresh, isolated MetaTables 0.1.18 SQLite
+  runtime (`metatables --local runtime initialize`: `ready`, system revision
+  `0010_cascade_targets`, DataSource `22451dae-c994-5937-a6f4-fc378592e955`),
+  at commit `75f1342`; later commits change only documentation and tests:
+  - The runtime held the ms-markets 2.2.2 schema first (revision `0018`, 62
+    active catalog tables), standing in for the ms-markets deployment.
+  - `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`:
+    Alembic ran `-> 0001, current_schema_baseline`, then `ok: True`,
+    `finalized_count: 4`, `active_count: 4`, `reserved_count: 0`,
+    `failed_count: 0` (`valmer_connectors__alembic_version`,
+    `valmer_connectors__valmerassetdetails`,
+    `valmer_connectors__vector_de_precios_valmer`,
+    `ms_markets__index_values__t_1d`). `current` printed `0001 (head)`, and all
+    66 catalog tables were `active`.
+  - `PRAGMA foreign_key_list` and the catalog show
+    `fk__valmer_connectors__valmerassetdetails__asset_uid_cc247d13d3` as
+    `ON DELETE CASCADE`; the other three keys on Valmer-owned tables stay
+    `RESTRICT`. `MetaTable.get_impact(action="delete_rows")` on
+    `ms_markets__asset` returned `allowed: True` with no blockers, a
+    `cascade_delete` edge from the details table and a `restrict` edge from the
+    vector table.
+  - `scripts/migrate_valmer.py` after `metatables.configure_local_client()`
+    printed `valmer_connectors.migrations:migration: 0001 (already current) on
+    22451dae-c994-5937-a6f4-fc378592e955` and exited 0. After `downgrade base`
+    (three tables `deleted`, the version table kept), it printed
+    `0001 (migrated)`, exited 0, and the four tables were `active` again.
+  - Alembic autogenerate comparison of the provider metadata with that schema:
+    no differences.
 
 ## Wheel Packaging (Verified Locally 2026-10-03)
 
@@ -71,12 +84,13 @@ Last complete backend lifecycle verification: 2026-08-21
   `fred`, and `agents`. Next to ms-markets, the Valmer `migrations` files
   overwrote the ms-markets ones, and `import msm.migrations` failed with
   `ImportError: MarketsAlembicVersion` in the marketsanalytics venv.
-- A clean venv with the 0.1.47 wheel and ms-markets 2.1.1 imports both
-  `msm_migrations` and `valmer_connectors.migrations` and has no top-level
-  `migrations`, `banxico`, `fred`, `agents`, `cli` or `command_center`. Alembic
+- A clean venv with the 0.1.47 wheel, mainsequence-metatable 0.1.18 and
+  ms-markets 2.2.2 imports both `msm_migrations` and
+  `valmer_connectors.migrations` and has no top-level `migrations`, `banxico`,
+  `fred`, `agents`, `cli`, `command_center` or `msm_command_center`. Alembic
   resolves the single head `0001` from the installed package. The version table
   is still `valmer_connectors__alembic_version`.
-- Full suite: 303 tests and 39 subtests pass. Ruff passes.
+- Full suite: 305 tests and 39 subtests pass. Ruff passes.
 - Setuptools copies a stale `build/lib` into new wheels; remove `build/` before
   building a release wheel.
 - Not yet verified live: the first `migrate-valmer` Job run, and the first

@@ -41,6 +41,15 @@ The "Core ms-markets Provider", "Migration Workflow", "Implementation Tasks"
 and "Validation Evidence Required" sections below state this procedure; the
 operator commands they listed before are historical.
 
+Amended again on 2026-10-03 for MetaTables 0.1.18 and ms-markets 2.2.2:
+MetaTables registers cascading foreign keys since 0.1.17, and 0.1.18 makes
+write on a table depend only on that table's own grants. The asset-details key
+to `AssetTable.uid` keeps the `ON DELETE CASCADE` that revision `0001`
+declares, so deleting an Asset deletes its Valmer details row. ms-markets ships
+its provider as `msm_migrations:migration`; `msm.migrations` is only a
+compatibility alias. The ownership statements below use the new name; the
+reviewed-contracts list is historical.
+
 ## Date
 
 2026-06-02
@@ -76,7 +85,7 @@ The relevant Main Sequence SDK contract is now:
 The relevant ms-markets contract is now:
 
 - built-in ms-markets, msm_pricing, and portfolio models are owned by
-  `msm.migrations:migration`;
+  `msm_migrations:migration`;
 - `msm.start_engine(...)` performs runtime attachment only;
 - `msm.start_engine(...)` does not create schemas, run migrations, refresh catalog
   rows, or repair schema drift;
@@ -90,7 +99,7 @@ This project currently has project-owned ms-markets extension tables:
 - `src/valmer_connectors/data_nodes/valmer_vector_storage.py::ValmerVectorPricesStorage`
 
 These are not built-in ms-markets tables. They must not be added to the core
-`msm.migrations:migration` provider. They need a project migration provider.
+`msm_migrations:migration` provider. They need a project migration provider.
 
 ## Architecture References Reviewed
 
@@ -308,7 +317,7 @@ The project provider must not include:
 
 - built-in ms-markets asset, index, curve, pricing, or portfolio tables;
 - built-in ms-markets updater output table;
-- any table already owned by `msm.migrations:migration`.
+- any table already owned by `msm_migrations:migration`.
 
 ## Project Catalog Refresh
 
@@ -384,7 +393,7 @@ step.
 ## Asset Details Implications
 
 `ValmerAssetDetailsTable.asset_uid` must remain a foreign key to
-`AssetTable.uid`.
+`AssetTable.uid`, with `ON DELETE CASCADE`: a details row belongs to its Asset.
 
 The project migration must preserve the one-to-one asset detail contract:
 

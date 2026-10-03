@@ -1,12 +1,19 @@
+import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 
-from metatables.migrations import namespace_version_location
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from alembic.script import ScriptDirectory
+from metatables.migrations import alembic_config_for_provider, namespace_version_location
 from msm.base import markets_table_name
 from msm.data_nodes.indices import index_values_output_table_name
 from msm.models.assets import AssetTable
 from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import markets_auto_register_namespace
+from sqlalchemy import create_engine
 
 from valmer_connectors.data_nodes.canonical_index_values import (
     DailyIndexValuesStorage,
@@ -180,6 +187,76 @@ class ValmerMigrationProviderTests(unittest.TestCase):
                 {"schema_name": index_table.schema},
             )
         )
+
+
+ASSET_DETAILS_TABLE = "valmer_connectors__valmerassetdetails"
+
+
+class ValmerAssetDetailsCascadeTests(unittest.TestCase):
+    """A Valmer details row belongs to its Asset: deleting the Asset deletes it.
+
+    MetaTables registers cascading foreign keys since 0.1.17, so the model and
+    revision 0001 keep ON DELETE CASCADE.
+    """
+
+    def test_model_cascades_asset_deletes_to_details(self):
+        (key,) = ValmerAssetDetailsTable.__table__.c.asset_uid.foreign_keys
+
+        self.assertEqual(key.target_fullname, f"{AssetTable.__table__.fullname}.uid")
+        self.assertEqual(key.ondelete, "CASCADE")
+
+    def test_revision_0001_deletes_details_with_their_asset_on_sqlite(self):
+        scripts = ScriptDirectory.from_config(
+            alembic_config_for_provider(migration, sqlalchemy_url="sqlite://")
+        )
+        self.assertEqual(scripts.get_heads(), ["0001"])
+        baseline = scripts.get_revision("0001").module
+        asset_uid = "a" * 32
+
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "valmer.sqlite"
+            engine = create_engine(f"sqlite:///{database}")
+            try:
+                with engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "CREATE TABLE ms_markets__asset ("
+                        "uid CHAR(32) PRIMARY KEY, unique_identifier VARCHAR(255) NOT NULL UNIQUE)"
+                    )
+                    with Operations.context(MigrationContext.configure(connection)):
+                        baseline.upgrade()
+            finally:
+                engine.dispose()
+
+            connection = sqlite3.connect(database)
+            try:
+                # PRAGMA foreign_key_list rows: id, seq, table, from, to,
+                # on_update, on_delete, match.
+                (key,) = connection.execute(
+                    f"PRAGMA foreign_key_list({ASSET_DETAILS_TABLE})"
+                ).fetchall()
+                self.assertEqual(
+                    key[2:7], ("ms_markets__asset", "asset_uid", "uid", "NO ACTION", "CASCADE")
+                )
+
+                connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute(
+                    "INSERT INTO ms_markets__asset VALUES (?, 'VALMER_ASSET')", (asset_uid,)
+                )
+                connection.execute(
+                    f"INSERT INTO {ASSET_DETAILS_TABLE} (asset_uid, valmer_unique_identifier) "
+                    "VALUES (?, 'V1')",
+                    (asset_uid,),
+                )
+                connection.commit()
+                connection.execute("DELETE FROM ms_markets__asset WHERE uid = ?", (asset_uid,))
+                connection.commit()
+
+                self.assertEqual(
+                    connection.execute(f"SELECT COUNT(*) FROM {ASSET_DETAILS_TABLE}").fetchone(),
+                    (0,),
+                )
+            finally:
+                connection.close()
 
 
 if __name__ == "__main__":

@@ -121,9 +121,9 @@ Detailed guides:
 - CPython 3.13.x (the repository currently excludes Python 3.14)
 - A working MainSequence environment: `mainsequence>=9.0.5,<10` for identity,
   CodeRepository, Job, and Artifact APIs, plus the
-  `mainsequence-metatable>=0.1.14,<0.2` client (imported and run as
+  `mainsequence-metatable>=0.1.18,<0.2` client (imported and run as
   `metatables`) for MetaTables, updaters, and migrations, and
-  `ms-markets>=2.1.1,<3`
+  `ms-markets>=2.2.2,<3`
 - Access to the Valmer artifact bucket and to the Valmer benchmark CSV endpoint
 
 ### Install
@@ -153,7 +153,10 @@ rollout while the previous release keeps serving. Do not run
 not migrate at application startup.
 
 The Job applies only the Valmer provider. The ms-markets tables that the Valmer
-tables reference are owned and migrated by the ms-markets deployment.
+tables reference are owned and migrated by the ms-markets deployment, so they
+must already exist in the same DataSource. The asset-details key to
+`ms_markets__asset.uid` is `ON DELETE CASCADE`: deleting an Asset deletes its
+Valmer details row.
 
 Local development applies the provider to the MetaTables local runtime. See
 `.agents/skills/metatables/metatables-local-development/SKILL.md` for the

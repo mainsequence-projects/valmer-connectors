@@ -46,8 +46,8 @@ Relevant repository skills:
 Current declared package constraints:
 
 - `mainsequence>=9.0.5,<10`
-- `mainsequence-metatable>=0.1.14,<0.2`
-- `ms-markets>=2.1.1,<3`
+- `mainsequence-metatable>=0.1.18,<0.2`
+- `ms-markets>=2.2.2,<3`
 - `streamlit>=1.58.0`
 - `xlrd>=2.0.2`
 
@@ -58,8 +58,11 @@ Identity, CodeRepository, Job, Secret, and Artifact APIs stay in `mainsequence`.
 `ms-markets` 2 compiles governed SQL without the retired table scope:
 `compile_markets_statement(statement, context=..., operation=...)`.
 `ms-markets` 2.1 renamed its `cli` and `command_center` packages to `msm_cli`
-and `msm_command_center` and moved its provider to `msm_migrations`; this
-project imports none of them.
+and `msm_command_center` and moved its provider to `msm_migrations`, and 2.2.0
+removed `msm_command_center`; this project imports none of them.
+MetaTables registers cascading foreign keys since 0.1.17, and 0.1.18 makes write
+on a table depend only on that table's own grants, so the asset-details key
+keeps the `ON DELETE CASCADE` that revision `0001` declares.
 
 ## Migration Status
 
@@ -68,7 +71,7 @@ project imports none of them.
 | Source import | `ImportValmer.prepare_source_data()` selects platform Artifact bucket or local `DEBUG_ARTIFACT_PATH` | run both paths with representative files |
 | updater output table | `ValmerVectorPricesStorage` owns the time-series table contract | live namespaced write |
 | Asset registration | `valmer_connectors.assets.register_valmer_assets_from_rows(...)` is the public batch row-registration API; the minimal `AssetTable` write helper is private and requires explicit asset types | live row-registration run with representative Valmer rows |
-| Static details | `ValmerAssetDetailsTable.asset_uid` is a 1:1 FK to `AssetTable.uid` | live row link validation |
+| Static details | `ValmerAssetDetailsTable.asset_uid` is a 1:1 FK to `AssetTable.uid`, `ON DELETE CASCADE` | live row link validation |
 | Pricing hydration | `prepare_for_update()` calls `_sync_asset_registry_and_pricing(...)` before `run()` and writes through `msm_pricing.api.add_many_pricing_details(...)` | live pricing-details write validation, including incomplete-result failure behavior |
 | Runtime bootstrap | `bootstrap_runtime()` is the single project runtime entry point | live idempotency validation |
 | Project migrations | `valmer_connectors.migrations:migration` uses `metatables.migrations` helper machinery; the `migrate-valmer` deployment Job applies it before the API rolls out | first successful hosted Job run |

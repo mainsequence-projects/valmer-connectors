@@ -59,7 +59,15 @@ deployment and the previous release keeps serving; fix the revision and push
 again. Redeploying an older image does not roll the schema back.
 
 The Job applies only the Valmer provider. The ms-markets schema that the Valmer
-tables reference is migrated by the ms-markets deployment.
+tables reference is migrated by the ms-markets deployment, and it must be in
+the same DataSource first: the Valmer foreign keys need active
+`ms_markets__asset`, `ms_markets__index` and `ms_markets__indexformuladefinition`
+tables, so `migrate-valmer` fails, and blocks the API, until the ms-markets
+deployment's migration Job has succeeded there.
+
+The asset-details key to `ms_markets__asset.uid` is `ON DELETE CASCADE`, as
+revision `0001` declares; MetaTables registers cascading foreign keys since
+0.1.17.
 
 Do not run `metatables migrations upgrade` or `downgrade` against a hosted
 runtime, and do not migrate at application startup. The control plane lists the
@@ -145,27 +153,37 @@ For the API, read the branch's workflow runs (MCP `code_repository_branch.get`
 with `include: "workflow_runs"`) and confirm the `migrate` step's JobRun
 succeeded before the `deploy_api` DeploymentRun started. The Job's log has one
 line per provider, for example
-`valmer_connectors.migrations:migration: 0001 (already current) on <DataSource UID>`.
+`valmer_connectors.migrations:migration: 0001 (migrated) on <DataSource UID>`
+the first time and `0001 (already current)` afterwards.
 `metatables migrations current` only reads the deployed revision.
 
-## MetaTables 0.1.14 Local Migration Check (2026-10-03)
+## MetaTables 0.1.18 Local Migration Check (2026-10-03)
 
-The Valmer provider was applied to an isolated MetaTables 0.1.14 local SQLite
-runtime. Alembic applied revision `0001`, and `migrations current` reports
-`0001 (head)`, but catalog finalization was refused with
-`400 POST /meta-tables/finalize-managed/: cascading_foreign_key_unsupported`.
-Revision `0001` declares
-`fk__valmer_connectors__valmerassetdetails__asset_uid_cc247d13d3` with
-`ON DELETE CASCADE`, and MetaTables rejects any active table that has, or is
-referenced by, a foreign key whose delete or update rule is not `RESTRICT` or
-`NO ACTION`. The same rule exists in its PostgreSQL access layer, so the hosted
-`migrate-valmer` Job is expected to fail the same way, which blocks the API
-deployment, until the foreign key is changed by a new revision. The ms-markets
-2.1.1 provider could not be applied to the same runtime either (secondary index
-name longer than 63 characters on `ms_markets__portfolioeventledgerts`, plus
-cascading foreign keys of its own), so the ms-markets tables that the Valmer
-foreign keys reference were missing locally. See `.agents/status.md` and
-`.agents/tasks.md`.
+The Valmer provider was applied to a fresh, isolated MetaTables 0.1.18 local
+SQLite runtime (system migrations through `0010_cascade_targets`) that already
+held the ms-markets 2.2.2 schema (revision `0018`, 62 active tables), as a
+hosted DataSource does once the ms-markets deployment has migrated it:
+
+- `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`
+  applied revision `0001` and finalized all four Valmer catalog tables as
+  `active`: `valmer_connectors__alembic_version`,
+  `valmer_connectors__valmerassetdetails`,
+  `valmer_connectors__vector_de_precios_valmer` and
+  `ms_markets__index_values__t_1d`. `migrations current` reports `0001 (head)`.
+- `fk__valmer_connectors__valmerassetdetails__asset_uid_cc247d13d3` is
+  `ON DELETE CASCADE` in the SQLite schema and in the catalog.
+  `get_impact(action="delete_rows")` on `ms_markets__asset` lists it as a
+  `cascade_delete` edge, reports the action allowed and has no blockers.
+- `scripts/migrate_valmer.py`, run through `metatables.configure_local_client()`,
+  printed `valmer_connectors.migrations:migration: 0001 (already current) on
+  <DataSource UID>`. After `downgrade base`, it printed `0001 (migrated)` and
+  finalized the same four tables as `active`. Both runs exited 0.
+- Alembic autogenerate finds no difference between the provider metadata and
+  the migrated schema.
+
+SQLite does not exercise PostgreSQL. The hosted `migrate-valmer` Job is
+unverified until its first workflow run. See `.agents/status.md` for the
+runtime identifiers.
 
 ## Current Platform Verification
 
