@@ -39,6 +39,8 @@
   nothing here applies the ms-markets provider any more: the ms-markets
   deployment migrates its own schema.
 - The control plane lists the migration Job but refuses to launch it by hand.
+- `.gitignore` ignores `.local/`, where the MetaTables local launcher keeps its
+  private client token.
 - Documentation describes publishing with `git push`:
   `mainsequence code-repository sync` only refreshes dependency files since
   SDK 9.0.5.

@@ -22,6 +22,12 @@ JOBS_WORKFLOW_PATH = ".mainsequence/workflows/valmer-control-plane-jobs.yaml"
 
 # Spec fields that workflow API 2.3.0 accepts for these kinds. The backend
 # rejects unknown fields, including the retired resource_uid and release_kind.
+# Copied by hand from CodeRepositoryWorkflowService.FASTAPI_FIELDS and
+# .JOB_FIELDS, plus env_vars (WORKFLOW_ENV_VARS_API_VERSIONS), in tdag-django
+# timeseries_orm/tdag/pod_manager/services/code_repository_workflows.py at
+# a618e4140 (2026-10-03, WORKFLOW_API_VERSION "2.3.0"). They do not follow
+# backend changes: refresh them with every workflow API bump, and validate the
+# file through the branch validate-workflow endpoint before pushing.
 FASTAPI_FIELDS = {
     "min_scale",
     "source_path",
