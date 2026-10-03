@@ -2,15 +2,17 @@
 
 ## Publishing
 
-A plain `git push` publishes this repository. The workflow files under
-`.mainsequence/workflows/` decide what deploys. Every resource in them declares
+A plain `git push` publishes this repository. `.mainsequence/workflows/` holds
+one workflow file, `valmer-control-plane-api.yaml` (workflow API 2.3.0), and it
+decides what deploys. It declares the control-plane FastAPI release, the
+`migrate-valmer` Job and the sixteen pipeline Jobs. Every resource declares
 `tag_regex: null`, so every push to the branch is eligible:
 
-- `valmer-control-plane-api.yaml` (workflow API 2.3.0) prepares the code
-  repository image, runs the `migrate-valmer` Job from it, and only then deploys
-  the control-plane FastAPI release (`needs: [migrate]`).
-- `valmer-control-plane-jobs.yaml` (workflow API 2.1.0) declares the pipeline
-  Jobs. They are outside the execution graph and redeploy on their own.
+- the execution graph prepares the code repository image, runs the
+  `migrate-valmer` Job from it, and only then deploys the API
+  (`needs: [migrate]`);
+- no step references the pipeline Jobs, so each one redeploys on every push by
+  itself (see [Workflow Declarations](#workflow-declarations)).
 
 ```bash
 git add <reviewed paths>
@@ -77,18 +79,26 @@ provider with
 
 ## Workflow Declarations
 
-The control-plane Jobs and their platform-owned descriptions are declared in
-`.mainsequence/workflows/valmer-control-plane-jobs.yaml`. The standard pipeline
-is the only scheduled Job; leaf Jobs and source/rebuild variants are manual
-operations. The platform catalog deliberately excludes launch configurations that
-depend on a developer workstation or exist only to run UI, debugging, examples,
-or migration administration.
+`.mainsequence/workflows/valmer-control-plane-api.yaml` is the only workflow
+file. Besides the API and `migrate-valmer`, it declares the control-plane Jobs
+and their platform-owned descriptions. The standard pipeline is the only
+scheduled Job; leaf Jobs and source/rebuild variants are manual operations. The
+platform catalog deliberately excludes launch configurations that depend on a
+developer workstation or exist only to run UI, debugging, examples, or
+migration administration.
+
+The pipeline Jobs stay out of `execution.steps` on purpose. The backend
+prepares the image of every Job that a step references when it admits the
+workflow run, before any `run_job` step, so a step cannot make a schedule wait
+for the migration. A Job that no step references keeps its own every-push
+redeployment. A scheduled or manual run can therefore start on a new image
+before `migrate-valmer` has finished.
 
 The API is declared as `kind: fastapi` with
 `source_path: api/valmer_control_plane/main.py`. Workflow API 2.3.0 files carry
-no resource or release UIDs; the backend binds the existing release through the
-workflow file path, the resource key `valmer-control-plane-api`, and the release
-kind, so neither the file nor the key may be renamed. Validate an edited
+no resource, release or Job UIDs. The backend binds each target through the
+workflow file path and its resource key (the API also through its release
+kind), so neither the file nor a key may be renamed. Validate an edited
 workflow against the branch workflow template
 (`POST /api/v1/code-repository-branches/{uid}/validate-workflow/`) before
 committing it. The release enables every-commit automatic redeployment and
@@ -101,6 +111,85 @@ same every-commit promotion policy and retains three revisions. Push the
 static repository only after the FastAPI release exists and the installed
 Command Center SDK's exact stable release target has been configured. See
 `docs/control-plane.md` for the two-repository release order.
+
+## Cleanup After The Push: The Removed Jobs Workflow
+
+Until this release the sixteen pipeline Jobs were declared in
+`.mainsequence/workflows/valmer-control-plane-jobs.yaml` (workflow API 2.1.0).
+They now live in `valmer-control-plane-api.yaml` with the same keys and the
+same settings; only the file and its `api_version` changed. The backend
+identifies a workflow target by CodeRepositoryBranch, workflow file path and
+resource key, assigned once, and a declaration in another file is a new
+target. The push therefore creates sixteen new Jobs with new UIDs and never
+reuses the old ones, which stay bound to the removed file.
+
+What happens to the old Jobs depends on the backend that processes the push:
+
+- tdag-django with ADR-077 (`4a2833f12`, on `development` since 2026-10-03)
+  deletes them in the same workflow action, after it has created the new ones.
+  The action result lists each one under `deletions` as `deleted`, or as
+  `deletion_blocked` with a reason. A blocked Job keeps its last image and its
+  schedule, and the next push retries the deletion.
+- An older backend keeps them. Their image stays at the last commit that
+  declared them, and the old `standard-pipeline-refresh` keeps its schedule, so
+  the standard pipeline runs twice every weekday (old and new image) until the
+  old Job is deleted.
+
+ADR-077 deletes the old Jobs even when `valmer-control-plane-api.yaml` is
+invalid, because their file is gone, while an invalid file creates no new Jobs
+and deploys nothing. Validate the file through the branch `validate-workflow`
+route before the push.
+
+After the push, list the branch's Jobs
+(`mainsequence code-repository jobs list --path . --timeout 60`). Exactly one
+Job must remain for each display name below, besides `Valmer migrations`.
+Delete each older duplicate by hand, in the Main Sequence UI or with
+`DELETE /api/v1/jobs/{uid}/`; the SDK CLI has no delete command. A backend
+with ADR-077 also has a read-only report of the targets still bound to the
+removed file:
+`python manage.py report_undeclared_workflow_targets --code-repository-branch-uid <uid>`.
+
+| Old workflow file | Key | Kind | Display name |
+| --- | --- | --- | --- |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `vector-refresh` | job | Valmer Vector Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `vector-onedrive-refresh` | job | Valmer Vector Refresh — OneDrive Graph |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `vector-metatable-refresh` | job | Valmer Vector Refresh — MetaTable |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `irs-mxn-quotes-refresh` | job | Valmer IRS MXN Quotes Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `irs-usd-quotes-refresh` | job | Valmer IRS USD Quotes Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `banxico-fixings-refresh` | job | Banxico Fixings Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `banxico-tiie-fixings-refresh` | job | Banxico TIIE Fixings Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `fred-reference-rates-refresh` | job | FRED Reference Rates Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `banxico-policy-refresh` | job | Banxico Policy Target Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `tiie-curve-refresh` | job | Valmer TIIE Curve Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `sofr-curve-refresh` | job | Valmer SOFR Curve Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `xccy-curve-refresh` | job | Valmer USD/MXN XCCY Curve Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `xccy-curve-rebuild` | job | Valmer USD/MXN XCCY Curve Rebuild |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `government-curve-refresh` | job | Valmer MXN Government Curve Refresh |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `standard-pipeline-refresh` | job | Valmer Standard Pipeline Refresh (scheduled `0 13 * * 1-5`) |
+| `.mainsequence/workflows/valmer-control-plane-jobs.yaml` | `pipeline-verification` | job | Valmer Pipeline Verification |
+
+What refers to the old identities:
+
+- Nothing in this repository or in `ValmerConnectorsMonitor` stores a Job UID.
+  The control plane looks Jobs up on every request by execution path (the
+  `JOB_LAUNCH_PROFILES` catalog, and the preflight that refuses
+  `scripts/migrate_valmer.py`), so it follows the new Jobs unchanged. While both
+  copies exist, its Jobs collection lists each moved Job twice with the same
+  name and execution path, and the pipeline view binds each action to whichever
+  copy the Jobs query returns last.
+- Deleting a Job deletes its JobRuns, because the JobRun foreign key cascades.
+  The old Jobs' run history goes with them, and a saved link to one of their
+  JobRun UIDs stops resolving. With ADR-077 that happens at the push; record
+  any run you still need before pushing.
+- Settings changed on an old Job outside the workflow file do not carry over:
+  custom environment variables, scheduled command arguments (for example from
+  `mainsequence code-repository jobs update`) and the schedule timezone. The
+  declarations set none of them, so the new standard pipeline runs at
+  `0 13 * * 1-5` in UTC with no arguments.
+- The FastAPI release keeps its identity, because its file and key did not
+  change, so `ValmerConnectorsMonitor`'s `VITE_FASTAPI_RESOURCE_RELEASE_UID`
+  still names the same release. `migrate-valmer` is new in this release and
+  has been declared in that file from the start.
 
 ## Verification Commands
 

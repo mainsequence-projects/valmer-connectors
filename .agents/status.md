@@ -23,8 +23,8 @@ Last complete backend lifecycle verification: 2026-08-21
   Platform skills (`.agents/skills/mainsequence_platform/`) are not installed.
   The managed `AGENTS.md` block matches the SDK 9.0.5 template.
 - Since SDK 9.0.5, `code-repository sync` only refreshes dependency files;
-  publishing is `git commit` and `git push`, and the workflow files decide what
-  deploys. Every workflow resource declares `tag_regex: null`.
+  publishing is `git commit` and `git push`, and the single workflow file
+  decides what deploys. Every workflow resource declares `tag_regex: null`.
 
 ## Deployment Migration Job (2026-10-03, Not Yet Pushed)
 
@@ -36,18 +36,26 @@ Last complete backend lifecycle verification: 2026-08-21
   `valmer_connectors.migrations:migration` only. Graph: `image`
   (prepare_image API) -> `migrate` (run_job, image_from image) -> `deploy_api`
   (deploy API, image_from image, needs migrate).
-- `.mainsequence/workflows/valmer-control-plane-jobs.yaml` is unchanged:
-  workflow API 2.1.0, sixteen Jobs, outside the graph.
-- The file passes tdag-django's own `validate_execution` and 2.3.0 spec field
-  sets, run offline. It was not validated through the branch
-  `validate-workflow` endpoint: the backend at `127.0.0.1:8000` lists no
-  CodeRepositoryBranch for this repository.
+- It is the only workflow file. The sixteen pipeline Jobs moved into it from
+  `.mainsequence/workflows/valmer-control-plane-jobs.yaml` (workflow API
+  2.1.0, now deleted) with keys and specs unchanged, and no execution step
+  references them. Moved declarations are new backend targets: the push
+  creates sixteen new Jobs, and the old ones, still bound to the removed file,
+  are deleted by a backend running ADR-077 (tdag-django `4a2833f12`) or by
+  hand. The list is in `docs/deployment.md`, "Cleanup After The Push".
+- The 18-resource file passes, offline at tdag-django `122a395fe`, the
+  backend's own `validate_execution`, the 2.3.0 root, resource and spec field
+  sets, `_validate_task_schedule` and the Job compute limits. It was not
+  validated through the branch `validate-workflow` endpoint: on 2026-10-03 the
+  backend at `127.0.0.1:8000` sent an empty reply after 136 seconds, and
+  earlier it listed no CodeRepositoryBranch for this repository.
 - The control plane lists the migration Job but its preflight refuses to launch
   it by hand.
 - Local proof on 2026-10-03 against a fresh, isolated MetaTables 0.1.18 SQLite
   runtime (`metatables --local runtime initialize`: `ready`, system revision
   `0010_cascade_targets`, DataSource `22451dae-c994-5937-a6f4-fc378592e955`),
-  at commit `75f1342`; later commits change only documentation and tests:
+  at commit `75f1342`; later commits change only documentation, tests and the
+  workflow file:
   - The runtime held the ms-markets 2.2.2 schema first (revision `0018`, 62
     active catalog tables), standing in for the ms-markets deployment.
   - `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`:
@@ -120,7 +128,7 @@ Last complete backend lifecycle verification: 2026-08-21
 
 - `valmer-connectors` now contains the request-authenticated FastAPI backend,
   operational resource contracts, fail-closed approved-Job actions, and the
-  backend-managed Job workflow.
+  single backend-managed workflow that declares the API and every Job.
 - The separate `ValmerConnectorsMonitor` repository contains the Vite/React UI
   built on Command Center SDK 0.1.15 navigation, layout, resource, action,
   iframe transport, and theme contracts.

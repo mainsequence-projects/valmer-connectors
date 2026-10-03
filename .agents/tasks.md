@@ -32,7 +32,7 @@
 
 ## Publish and verify the two-repository control plane
 
-- Scope: validate the API 2.3.0 workflow through
+- Scope: validate the API 2.3.0 workflow, now the only workflow file, through
   `POST /api/v1/code-repository-branches/{uid}/validate-workflow/` (it was
   validated offline only, because the backend had no CodeRepositoryBranch for
   this repository), confirm that the ms-markets deployment's migration Job has
@@ -54,6 +54,22 @@
   with null tag policies and three retained revisions, repository-event
   DeploymentRuns, iframe/theme verification, viewer denial, operator preflight
   and launch, JobRun polling, and application logs.
+
+## Retire the Jobs of the removed jobs workflow
+
+- Scope: after the push, make sure the sixteen Jobs still bound to the removed
+  `.mainsequence/workflows/valmer-control-plane-jobs.yaml` are gone. A backend
+  running ADR-077 deletes them in the push's workflow action; delete any that
+  remain by hand (Main Sequence UI or `DELETE /api/v1/jobs/{uid}/`). Their
+  JobRuns are deleted with them, so record any run worth keeping before the
+  push. The keys and names are in `docs/deployment.md`, "Cleanup After The
+  Push".
+- Owning skill: `mainsequence-orchestration-and-releases`.
+- Expected output: one Job per pipeline Job name plus `Valmer migrations`, all
+  declared by `valmer-control-plane-api.yaml`, and one standard-pipeline run
+  per weekday.
+- Required evidence: the workflow action's `deletions` list or
+  `report_undeclared_workflow_targets` for the branch, and the branch Job list.
 
 ## Correct the invalid `F_BINVEX_24484` source schedule
 

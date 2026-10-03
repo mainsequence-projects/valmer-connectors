@@ -43,9 +43,17 @@
   `migrate-valmer` Job runs `scripts/migrate_valmer.py`, which applies
   `valmer_connectors.migrations:migration` with
   `metatables.upgrade_application`, and the API deploys only after it
-  succeeds: `image` -> `migrate` -> `deploy_api`, all from the same image. The
-  Jobs workflow is unchanged and stays outside the graph.
-- Hosted environments are migrated only by that Job. The
+  succeeds: `image` -> `migrate` -> `deploy_api`, all from the same image.
+- That file is now the repository's only workflow. The sixteen pipeline Jobs
+  moved into it from `.mainsequence/workflows/valmer-control-plane-jobs.yaml`
+  (workflow API 2.1.0), which is deleted. Keys, names, descriptions, execution
+  paths, compute, runtimes, the `0 13 * * 1-5` standard-pipeline schedule and
+  every-push redeployment are unchanged. No execution step references them, so
+  each one keeps redeploying on its own. The backend identifies a workflow Job
+  by file and key, so the push creates sixteen new Jobs; the old ones are
+  deleted by a backend with ADR-077 or must be deleted by hand. See "Cleanup
+  After The Push" in `docs/deployment.md`.
+- Hosted environments are migrated only by the `migrate-valmer` Job. The
   `valmer-connectors migrations commands` output, the documentation and the
   VS Code launchers use `metatables --local ...` for local development, and
   nothing here applies the ms-markets provider any more: the ms-markets

@@ -11,6 +11,12 @@ Project state is limited to `.agents/brief.md`, `.agents/status.md`, `.agents/ta
 durable verified context in the other state files, and rely on git history for completed work.
 Do not introduce additional historical agent-state logs.
 
+`.mainsequence/workflows/valmer-control-plane-api.yaml` is the repository's only workflow file.
+Declare every API, agent and Job in it, and keep its path and resource keys: the backend identifies
+each target by workflow file path and key, so a new file or key creates a new target. In
+`execution.steps` the API waits for the `migrate-valmer` Job; scheduled Jobs stay out of the graph.
+See `docs/deployment.md`.
+
 Do not remove the `<!-- mainsequence-agent-scaffold:start schema=1 source=agent_scaffold -->`
 or `<!-- mainsequence-agent-scaffold:end -->` markers. `mainsequence code-repository update AGENTS.md`
 uses them to update only the Main Sequence section below.

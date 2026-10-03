@@ -270,7 +270,8 @@ for MkDocs through `mkdocs.yml`.
   Main Sequence 6, Index-contract, migration, verification, and rollout task
 - `docs/agent-skills.md`: importing bundled Valmer Codex skills into host
   projects
-- `docs/deployment.md`: publishing, the deployment migration Job, verification
+- `docs/deployment.md`: publishing, the single workflow file, the deployment
+  migration Job, the post-push cleanup of the moved Jobs, verification
   commands, and backend follow-up
 - `CHANGELOG.md`: release notes
 - `docs/dashboards.md`: dashboards currently shipped by the project
@@ -289,8 +290,9 @@ This repository currently does not create:
 
 The repository now includes:
 
-- `.mainsequence/workflows/valmer-control-plane-jobs.yaml` for described manual
-  Jobs and the scheduled dependency-ordered standard pipeline
+- `.mainsequence/workflows/valmer-control-plane-api.yaml`, the only workflow
+  file: the control-plane API, the `migrate-valmer` Job that gates it, the
+  described manual Jobs and the scheduled dependency-ordered standard pipeline
 - independent FRED and Banxico analytical reference-rate producers
 - `valmer-connectors runtime validate` for runtime validation
 - a project-specific dashboard overview plus source, pricing, and curve pages

@@ -5,7 +5,8 @@
 The control plane is one application implemented across two Main Sequence CodeRepositories:
 
 - `valmer-connectors` owns the FastAPI resource, operational read models, specialized Job launch
-  profiles, job execution authorization, and backend-managed Job workflow declarations.
+  profiles, job execution authorization, and the single backend-managed workflow file that
+  declares the FastAPI release and every Job.
 - `ValmerConnectorsMonitor` owns the Vite/React static site. It is the only control-plane user
   interface and extends `@dev-mainsequence/command-center-sdk` for embedding, theme, navigation,
   page layout, resource lists, discovery, and bulk actions.
@@ -95,19 +96,22 @@ create a second JobRun presentation or polling implementation.
 
 ## Jobs And Scheduling
 
-`.mainsequence/workflows/valmer-control-plane-jobs.yaml` declares the source, fixing, curve,
-verification, and standard-pipeline Jobs, including their platform-owned display descriptions. It
-includes distinct immutable entrypoints for
-the production-safe VS Code variants: Artifact, OneDrive Graph, and MetaTable vector sources;
-the four-series TIIE-only fixing refresh; and the forced current XCCY rebuild. Only the
-dependency-ordered standard pipeline is scheduled (`0 13 * * 1-5`). Individual Jobs remain
-unscheduled recovery operations that an authorized operator can launch from the static site.
+`.mainsequence/workflows/valmer-control-plane-api.yaml`, the repository's only workflow file,
+declares the source, fixing, curve, verification, and standard-pipeline Jobs next to the FastAPI
+release, including their platform-owned display descriptions. It includes distinct immutable
+entrypoints for the production-safe VS Code variants: Artifact, OneDrive Graph, and MetaTable
+vector sources; the four-series TIIE-only fixing refresh; and the forced current XCCY rebuild.
+Only the dependency-ordered standard pipeline is scheduled (`0 13 * * 1-5`). Individual Jobs
+remain unscheduled recovery operations that an authorized operator can launch from the static
+site.
 
-The `migrate-valmer` Job is declared in `.mainsequence/workflows/valmer-control-plane-api.yaml`,
-not in the pipeline workflow. The API workflow's execution graph prepares the image, runs that Job
-(`scripts/migrate_valmer.py`), and deploys the FastAPI release only after it succeeds. The Jobs
-collection lists it like any other branch Job, but preflight blocks it: hosted migrations run only
-inside a deployment, never by hand.
+The `migrate-valmer` Job is declared in the same file. Its execution graph prepares the image,
+runs that Job (`scripts/migrate_valmer.py`), and deploys the FastAPI release only after it
+succeeds. No step references the pipeline Jobs: the backend prepares the image of a referenced
+Job when it admits the workflow run, so a step could not hold the scheduled pipeline back until
+the migration has run. The pipeline Jobs keep their own every-push redeployment. The Jobs
+collection lists the migration Job like any other branch Job, but preflight blocks it: hosted
+migrations run only inside a deployment, never by hand.
 
 `GET /api/v1/control-plane/jobs/{job_uid}/run-parameters` returns the application-owned runtime
 controls for one branch Job. Unprofiled Jobs return an empty parameter list. Vector Jobs expose
@@ -177,20 +181,23 @@ The two repositories must be released in dependency order:
 
 1. push `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI release by
    `source_path` (`api/valmer_control_plane/main.py`) with every-commit automatic redeployment,
-   three retained revisions, and the platform's default static-site CORS policy, and gates it on
-   the `migrate-valmer` Job;
+   three retained revisions, and the platform's default static-site CORS policy, gates it on
+   the `migrate-valmer` Job, and declares the pipeline Jobs outside the graph;
 2. confirm that the workflow run's `migrate` step succeeded before its `deploy_api` step;
-3. wait until the FastAPI release has a ready `active_revision`;
-4. configure the installed SDK's exact stable FastAPI release target for the Vite application;
-5. validate and push the existing `ValmerConnectorsMonitor` static-site workflow, which deploys
+3. confirm that only one Job per pipeline Job name remains, and delete the old Jobs that are
+   still bound to the removed `valmer-control-plane-jobs.yaml` (see "Cleanup After The Push"
+   in `docs/deployment.md`);
+4. wait until the FastAPI release has a ready `active_revision`;
+5. configure the installed SDK's exact stable FastAPI release target for the Vite application;
+6. validate and push the existing `ValmerConnectorsMonitor` static-site workflow, which deploys
    the root Vite SPA on every pushed commit and retains three revisions;
-6. add a Command Center navigation link only with an explicit human audience grant; and
-7. verify the embedded handshake, dark/light themes, overview reads, resource pagination, viewer
+7. add a Command Center navigation link only with an explicit human audience grant; and
+8. verify the embedded handshake, dark/light themes, overview reads, resource pagination, viewer
    denial, operator preflight, Job execution, and JobRun polling in Command Center.
 
-Workflow files carry no resource or release UIDs; the backend binds the release through the
-workflow file path and resource key, so neither may be renamed. Do not grant organization-wide
-navigation visibility as a deployment default.
+The workflow file carries no resource, release or Job UIDs; the backend binds every target
+through the workflow file path and resource key, so neither may be renamed. Do not grant
+organization-wide navigation visibility as a deployment default.
 The release URLs remain stable: repository events create desired immutable revisions and traffic
 switches only when the desired revision becomes the ready `active_revision`.
 
