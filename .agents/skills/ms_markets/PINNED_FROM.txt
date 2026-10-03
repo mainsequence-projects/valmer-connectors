@@ -1,7 +1,7 @@
 schema=1
 library_name=ms-markets
 namespace=ms_markets
-pinned_version=2.1.1
+pinned_version=2.2.2
 skills_path=/Users/jose/mainsequence-dev/main-sequence-workbench/worktrees-mt014/valmer-connectors-64338319-bd19-48db-bf14-945d8debb9be/.venv/lib/python3.13/site-packages/msm_cli/_skills/ms_markets
-copied_at_utc=2026-10-03T15:56:04Z
+copied_at_utc=2026-10-03T19:48:03Z
 command=msm copy-msm-skills
