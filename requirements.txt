@@ -116,7 +116,7 @@ mainsequence==9.0.5
     #   mainsequence-metatable
     #   ms-markets
     #   valmer-connectors
-mainsequence-metatable==0.1.14
+mainsequence-metatable==0.1.18
     # via
     #   ms-markets
     #   valmer-connectors
@@ -134,7 +134,7 @@ more-itertools==11.1.0
     # via
     #   jaraco-classes
     #   jaraco-functools
-ms-markets==2.1.1
+ms-markets==2.2.2
     # via valmer-connectors
 narwhals==2.25.0
     # via
