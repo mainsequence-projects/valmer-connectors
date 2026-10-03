@@ -111,12 +111,12 @@ keyring==25.7.0
     #   mainsequence-metatable
 korean-lunar-calendar==0.4.0
     # via exchange-calendars
-mainsequence==9.0.3
+mainsequence==9.0.5
     # via
     #   mainsequence-metatable
     #   ms-markets
     #   valmer-connectors
-mainsequence-metatable==0.1.6
+mainsequence-metatable==0.1.8
     # via
     #   ms-markets
     #   valmer-connectors
