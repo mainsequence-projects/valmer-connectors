@@ -5,8 +5,12 @@ from pathlib import Path
 
 import yaml
 
-from valmer_connectors.control_plane.catalog import JOB_LAUNCH_PROFILES
+from valmer_connectors.control_plane.catalog import (
+    DEPLOYMENT_ONLY_EXECUTION_PATHS,
+    JOB_LAUNCH_PROFILES,
+)
 from valmer_connectors.control_plane.pipeline import PIPELINE_SCRIPTS, run_pipeline
+from valmer_connectors.services.migrations import MIGRATION_WORKFLOW_PATH
 
 
 def test_control_plane_pipeline_runs_every_stage_in_dependency_order() -> None:
@@ -26,14 +30,19 @@ def test_control_plane_pipeline_runs_every_stage_in_dependency_order() -> None:
 
 def test_control_plane_workflow_declares_described_jobs_for_every_launch_profile() -> None:
     repository_root = Path(__file__).resolve().parents[1]
-    workflow_path = (
-        repository_root / ".mainsequence" / "workflows" / "valmer-control-plane-jobs.yaml"
-    )
+    workflow_path = repository_root / MIGRATION_WORKFLOW_PATH
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-    jobs = [resource for resource in workflow["resources"] if resource["kind"] == "job"]
+    jobs = [
+        resource
+        for resource in workflow["resources"]
+        if resource["kind"] == "job"
+        and resource["spec"]["execution_path"] not in DEPLOYMENT_ONLY_EXECUTION_PATHS
+    ]
     jobs_by_key = {resource["key"]: resource["spec"] for resource in jobs}
 
-    assert workflow["api_version"] == "2.1.0"
+    # The pipeline Jobs share the repository's single workflow file with the API
+    # and its migration Job.
+    assert workflow["api_version"] == "2.3.0"
     assert set(jobs_by_key) == {profile.key for profile in JOB_LAUNCH_PROFILES}
     for profile in JOB_LAUNCH_PROFILES:
         assert jobs_by_key[profile.key]["name"].strip()
@@ -45,6 +54,9 @@ def test_control_plane_workflow_declares_described_jobs_for_every_launch_profile
         }
     scheduled = [key for key, spec in jobs_by_key.items() if "task_schedule" in spec]
     assert scheduled == ["standard-pipeline-refresh"]
+    assert jobs_by_key["standard-pipeline-refresh"]["task_schedule"] == {
+        "schedule": {"type": "crontab", "expression": "0 13 * * 1-5"}
+    }
 
 
 def test_pipeline_exposes_every_approved_job_action() -> None:

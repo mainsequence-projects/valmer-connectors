@@ -1,6 +1,11 @@
 api_version: "2.3.0"
 name: valmer-control-plane-api
 
+# The repository's only workflow file: the control-plane API, the migration
+# Job that gates it, and every pipeline Job. A target's identity is this file
+# path plus its resource key, so rename neither: on the next push a new path or
+# key creates a new target, and the old one is not carried over.
+
 resources:
   - key: valmer-control-plane-api
     kind: fastapi
@@ -26,6 +31,239 @@ resources:
       cpu_request: "1"
       memory_request: "1"
       max_runtime_seconds: 1800
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  # Pipeline Jobs. No execution step references them, on purpose: a Job that a
+  # step references gets its new image when the workflow run is admitted, so a
+  # step cannot hold its schedule back until migrate-valmer has run. Each one
+  # redeploys on every push by itself. standard-pipeline-refresh is the only
+  # scheduled Job.
+  - key: vector-refresh
+    kind: job
+    spec:
+      name: Valmer Vector Refresh
+      description: Import the configured Main Sequence Artifact source and publish vector observations.
+      execution_path: scripts/update_vector_valmer.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: vector-onedrive-refresh
+    kind: job
+    spec:
+      name: Valmer Vector Refresh — OneDrive Graph
+      description: Import Valmer files from the configured Microsoft Graph drive.
+      execution_path: scripts/update_vector_valmer_onedrive.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: vector-metatable-refresh
+    kind: job
+    spec:
+      name: Valmer Vector Refresh — MetaTable
+      description: Import Valmer rows from the repository-configured MetaTable source.
+      execution_path: scripts/update_vector_valmer_metatable.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: irs-mxn-quotes-refresh
+    kind: job
+    spec:
+      name: Valmer IRS MXN Quotes Refresh
+      description: Publish the current IRS MXN quote snapshot.
+      execution_path: scripts/update_valmer_irs_mxn_quotes.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: irs-usd-quotes-refresh
+    kind: job
+    spec:
+      name: Valmer IRS USD Quotes Refresh
+      description: Publish the current IRS USD and SOFR quote snapshot.
+      execution_path: scripts/update_valmer_irs_usd_quotes.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: banxico-fixings-refresh
+    kind: job
+    spec:
+      name: Banxico Fixings Refresh
+      description: Refresh supported Banxico TIIE and CETE fixings.
+      execution_path: scripts/update_banxico_fixings.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: banxico-tiie-fixings-refresh
+    kind: job
+    spec:
+      name: Banxico TIIE Fixings Refresh
+      description: Refresh only the overnight, 28-day, 91-day, and 182-day TIIE fixings.
+      execution_path: scripts/update_banxico_tiie_fixings.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: fred-reference-rates-refresh
+    kind: job
+    spec:
+      name: FRED Reference Rates Refresh
+      description: Refresh configured FRED reference-rate observations.
+      execution_path: scripts/update_fred_reference_rates.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: banxico-policy-refresh
+    kind: job
+    spec:
+      name: Banxico Policy Target Refresh
+      description: Refresh the Banco de Mexico policy target series.
+      execution_path: scripts/update_banxico_policy_rates.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: tiie-curve-refresh
+    kind: job
+    spec:
+      name: Valmer TIIE Curve Refresh
+      description: Build the TIIE curve after MXN quotes and Banxico fixings are fresh.
+      execution_path: scripts/update_valmer_tiie_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: sofr-curve-refresh
+    kind: job
+    spec:
+      name: Valmer SOFR Curve Refresh
+      description: Build the SOFR curve after USD quotes are fresh.
+      execution_path: scripts/update_valmer_usd_sofr_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: xccy-curve-refresh
+    kind: job
+    spec:
+      name: Valmer USD/MXN XCCY Curve Refresh
+      description: Build the cross-currency curve after TIIE and SOFR are fresh.
+      execution_path: scripts/update_valmer_usd_mxn_xccy_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: xccy-curve-rebuild
+    kind: job
+    spec:
+      name: Valmer USD/MXN XCCY Curve Rebuild
+      description: Force a rebuild of the current cross-currency curve for recovery.
+      execution_path: scripts/rebuild_valmer_usd_mxn_xccy_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 7200
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: government-curve-refresh
+    kind: job
+    spec:
+      name: Valmer MXN Government Curve Refresh
+      description: Build the government curve after the Valmer vector is fresh.
+      execution_path: scripts/update_valmer_mxn_government_curve.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 10800
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: standard-pipeline-refresh
+    kind: job
+    spec:
+      name: Valmer Standard Pipeline Refresh
+      description: Execute the complete dependency-ordered production refresh.
+      execution_path: scripts/run_control_plane_pipeline.py
+      cpu_request: "1"
+      memory_request: "4"
+      max_runtime_seconds: 21600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+      task_schedule:
+        schedule:
+          type: crontab
+          expression: "0 13 * * 1-5"
+
+  - key: pipeline-verification
+    kind: job
+    spec:
+      name: Valmer Pipeline Verification
+      description: Run the persisted-data verification suite without mutating source data.
+      execution_path: scripts/verify_current_pipeline.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 3600
       spot: false
       automatic_redeployment:
         enabled: true
