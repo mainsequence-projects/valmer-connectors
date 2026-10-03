@@ -45,9 +45,9 @@ Relevant repository skills:
 
 Current declared package constraints:
 
-- `mainsequence>=9.0.4,<10`
-- `mainsequence-metatable>=0.1.8,<0.2`
-- `ms-markets>=2,<3`
+- `mainsequence>=9.0.5,<10`
+- `mainsequence-metatable>=0.1.14,<0.2`
+- `ms-markets>=2.1.1,<3`
 - `streamlit>=1.58.0`
 - `xlrd>=2.0.2`
 
@@ -57,6 +57,9 @@ updater, compiled SQL, and migration interfaces are imported from `metatables`
 Identity, CodeRepository, Job, Secret, and Artifact APIs stay in `mainsequence`.
 `ms-markets` 2 compiles governed SQL without the retired table scope:
 `compile_markets_statement(statement, context=..., operation=...)`.
+`ms-markets` 2.1 renamed its `cli` and `command_center` packages to `msm_cli`
+and `msm_command_center` and moved its provider to `msm_migrations`; this
+project imports none of them.
 
 ## Migration Status
 
@@ -68,7 +71,7 @@ Identity, CodeRepository, Job, Secret, and Artifact APIs stay in `mainsequence`.
 | Static details | `ValmerAssetDetailsTable.asset_uid` is a 1:1 FK to `AssetTable.uid` | live row link validation |
 | Pricing hydration | `prepare_for_update()` calls `_sync_asset_registry_and_pricing(...)` before `run()` and writes through `msm_pricing.api.add_many_pricing_details(...)` | live pricing-details write validation, including incomplete-result failure behavior |
 | Runtime bootstrap | `bootstrap_runtime()` is the single project runtime entry point | live idempotency validation |
-| Project migrations | `valmer_connectors.migrations:migration` uses `metatables.migrations` helper machinery | live revision/current/upgrade check |
+| Project migrations | `valmer_connectors.migrations:migration` uses `metatables.migrations` helper machinery; the `migrate-valmer` deployment Job applies it before the API rolls out | first successful hosted Job run |
 | Curves | Valmer TIIE and MXN government curves publish through `DiscountCurvesNode` | live curve updates |
 | Fixings | no project-owned fixing ETL exists | remains out of scope |
 | Dashboard | monitors source, pricing hydration, and curve health | run with valid credentials |
@@ -158,18 +161,21 @@ for instrument selectors and conventions, then binds those selectors to
 
 ## Migration Commands
 
-Run core `ms-markets` migrations before project migrations:
+Hosted environments are migrated only by the deployment workflow:
+`.mainsequence/workflows/valmer-control-plane-api.yaml` runs the
+`migrate-valmer` Job (`scripts/migrate_valmer.py`) from the candidate image and
+deploys the API with `needs: [migrate]`. The Job applies only the Valmer
+provider; the ms-markets deployment migrates the ms-markets schema.
+
+During local development, apply the provider to the MetaTables local runtime:
 
 ```bash
-metatables migrations current --provider msm.migrations:migration
-metatables migrations upgrade --provider msm.migrations:migration head
-
-metatables migrations current --provider valmer_connectors.migrations:migration
-metatables migrations upgrade --provider valmer_connectors.migrations:migration head
+metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head
+metatables --local migrations current --provider valmer_connectors.migrations:migration
 ```
 
 The Valmer provider lives in `src/valmer_connectors/migrations`, so its
-reference cannot collide with the ms-markets core provider and needs no
+reference cannot collide with the ms-markets provider and needs no
 `PYTHONPATH`.
 
 Generate a project revision only after changing Valmer SQLAlchemy table
@@ -181,7 +187,7 @@ metatables migrations revision --provider valmer_connectors.migrations:migration
 
 ## Runtime Checks
 
-After migrations and credentials are available:
+After the migrations are applied and credentials are available:
 
 ```bash
 valmer-connectors runtime validate

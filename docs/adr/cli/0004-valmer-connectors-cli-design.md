@@ -13,6 +13,12 @@ Amended on 2026-10-02: the Valmer provider moved from the top-level
 `migrations` package to `valmer_connectors.migrations`, so its commands no
 longer need `PYTHONPATH=src`.
 
+Amended on 2026-10-03 for MetaTables 0.1.14: `valmer-connectors migrations
+commands` prints only the Valmer provider's local-runtime commands
+(`metatables --local ...`), states that hosted environments are migrated only
+by the deployment workflow's `migrate-valmer` Job, and no longer prints the
+ms-markets provider, which the ms-markets deployment migrates.
+
 ## Date
 
 2026-06-04
@@ -34,10 +40,9 @@ live inside that package and be exposed through Python packaging metadata.
 
 The CLI must not reimplement Main Sequence migration behavior. Main Sequence
 migrations remain owned by the canonical `metatables migrations ...` CLI and
-the migration providers:
-
-- `msm.migrations:migration`
-- `valmer_connectors.migrations:migration`
+this project's migration provider, `valmer_connectors.migrations:migration`.
+Hosted environments receive its revisions from the deployment workflow's
+migration Job.
 
 ## Decision
 
@@ -87,13 +92,18 @@ This command is offline and should not require platform credentials.
 
 ### `valmer-connectors migrations commands`
 
-Print the canonical migration sequence for this project:
+Print the local-development migration commands for this project and the
+hosted rule:
 
-```bash
-metatables migrations current --provider msm.migrations:migration
-metatables migrations upgrade --provider msm.migrations:migration head
-metatables migrations current --provider valmer_connectors.migrations:migration
-metatables migrations upgrade --provider valmer_connectors.migrations:migration head
+```text
+Local development, against the running `metatables serve --local` runtime:
+metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head
+metatables --local migrations current --provider valmer_connectors.migrations:migration
+
+Hosted environments are migrated only by the deployment workflow's migration Job (scripts/migrate_valmer.py in .mainsequence/workflows/valmer-control-plane-api.yaml), before the control-plane API rolls out. Do not run migrations upgrade or downgrade against a hosted runtime.
+
+Use this only after changing Valmer SQLAlchemy table contracts:
+metatables migrations revision --provider valmer_connectors.migrations:migration
 ```
 
 This command must not run migrations. It is a discovery/help command only.

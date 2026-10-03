@@ -77,11 +77,13 @@ latest observation. Missing source values are omitted and never forward-filled.
 
 ## Migration
 
-Apply core ms-markets migrations before the project provider:
+The Valmer provider, `valmer_connectors.migrations:migration`, creates this
+table. Hosted environments receive its revisions from the `migrate-valmer` Job
+that the control-plane API deployment workflow runs before the API rolls out.
+During local development, apply it to the MetaTables local runtime:
 
 ```bash
-metatables migrations upgrade --provider msm.migrations:migration head
-metatables migrations upgrade --provider valmer_connectors.migrations:migration head
+metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head
 ```
 
 Project revision `0001` is a clean current-schema baseline. It creates the

@@ -5,24 +5,62 @@ Last complete backend lifecycle verification: 2026-08-21
 
 ## Dependency And Skill Pins (Verified Locally 2026-10-03)
 
-- Installed: `mainsequence` 9.0.5, `mainsequence-metatable` 0.1.8, ms-markets
-  2.0.1. Declared floors: `mainsequence>=9.0.4,<10` (required by MetaTables
-  0.1.8) and `mainsequence-metatable>=0.1.8,<0.2`.
-- `.agents/skills/metatables/` is pinned to MetaTables 0.1.8. The code follows
-  its provider-placement rules (owned module, explicit `script_location` and
-  `version_location_prefix`, prefixed version table, wheel lists only owned
-  top-level entries) and sets no Timescale policies in contracts or revisions.
-- SDK skills are pinned to 9.0.5 and ms-markets skills to 2.0.1, matching the
-  installed packages. Platform skills (`.agents/skills/mainsequence_platform/`)
-  are not installed.
-- The managed `AGENTS.md` block still differs from the SDK 9.0.5 template: it
-  says "canonical CodeRepository sync" and lacks the `mainsequence-inference`
-  route. Refreshing it requires an explicit `update AGENTS.md` request.
+- Locked and installed: `mainsequence` 9.0.5, `mainsequence-metatable` 0.1.14,
+  ms-markets 2.1.1. Declared floors: `mainsequence>=9.0.5,<10`,
+  `mainsequence-metatable>=0.1.14,<0.2` and `ms-markets>=2.1.1,<3`.
+- ms-markets 2.1 renamed its `cli` and `command_center` packages to `msm_cli`
+  and `msm_command_center` and ships its provider as `msm_migrations`. Nothing
+  in this repository imports the old names.
+- Skills are pinned to SDK 9.0.5, MetaTables 0.1.14 and ms-markets 2.1.1.
+  Platform skills (`.agents/skills/mainsequence_platform/`) are not installed.
+  The managed `AGENTS.md` block matches the SDK 9.0.5 template.
 - Since SDK 9.0.5, `code-repository sync` only refreshes dependency files;
-  publishing is `git commit` and `git push`. Every workflow declares
-  `tag_regex: null`, so every push deploys the API and the Jobs.
+  publishing is `git commit` and `git push`, and the workflow files decide what
+  deploys. Every workflow resource declares `tag_regex: null`.
 
-## Wheel Packaging (Verified Locally 2026-10-02)
+## Deployment Migration Job (2026-10-03, Not Yet Pushed)
+
+- `.mainsequence/workflows/valmer-control-plane-api.yaml` is workflow API
+  2.3.0. The API is `kind: fastapi` with
+  `source_path: api/valmer_control_plane/main.py` under the unchanged key
+  `valmer-control-plane-api`. The `migrate-valmer` Job runs
+  `scripts/migrate_valmer.py`, which calls `metatables.upgrade_application` for
+  `valmer_connectors.migrations:migration` only. Graph: `image`
+  (prepare_image API) -> `migrate` (run_job, image_from image) -> `deploy_api`
+  (deploy API, image_from image, needs migrate).
+- `.mainsequence/workflows/valmer-control-plane-jobs.yaml` is unchanged:
+  workflow API 2.1.0, sixteen Jobs, outside the graph.
+- The file passes tdag-django's own `validate_execution` and 2.3.0 spec field
+  sets, run offline. It was not validated through the branch
+  `validate-workflow` endpoint: the backend at `127.0.0.1:8000` lists no
+  CodeRepositoryBranch for this repository.
+- The control plane lists the migration Job but its preflight refuses to launch
+  it by hand.
+- Local proof against an isolated MetaTables 0.1.14 SQLite runtime:
+  - `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`
+    applied revision `0001` (`current` reports `0001 (head)`), then finalization
+    failed: `400 POST /meta-tables/finalize-managed/:
+    {"code": "cascading_foreign_key_unsupported"}`. The cause is
+    `fk__valmer_connectors__valmerassetdetails__asset_uid_cc247d13d3`
+    (`ON DELETE CASCADE` to `ms_markets__asset.uid`) in revision `0001`.
+    MetaTables refuses any active table that has, or is referenced by, a
+    foreign key whose delete or update rule is not `RESTRICT` or `NO ACTION`;
+    its PostgreSQL access layer has the same rule.
+  - With that foreign key rebuilt as `RESTRICT` in the scratch database only,
+    the asset-details and version tables became active; the two time-index
+    tables then failed with `foreign_key_target_columns_not_unique`, because
+    the referenced ms-markets tables did not exist locally.
+  - The ms-markets 2.1.1 provider could not create them: its reservation fails
+    with `422 POST /time-index-meta-tables/: secondary index name must be a
+    valid PostgreSQL identifier` (`ms_markets__portfolioeventledgerts` derives
+    the 70-character name
+    `portfolio_identifier_event_identifier_event_revision_record_identifier`),
+    and its revision `0018` declares 29 `ON DELETE CASCADE` foreign keys.
+  - Expect the hosted `migrate-valmer` Job to fail the same way, which blocks
+    the API deployment, until a new Valmer revision replaces the cascading
+    foreign key and ms-markets fixes its schema.
+
+## Wheel Packaging (Verified Locally 2026-10-03)
 
 - `valmer-connectors` 0.1.47 installs exactly one top-level import package,
   `valmer_connectors`. The Valmer migration provider is
@@ -33,16 +71,16 @@ Last complete backend lifecycle verification: 2026-08-21
   `fred`, and `agents`. Next to ms-markets, the Valmer `migrations` files
   overwrote the ms-markets ones, and `import msm.migrations` failed with
   `ImportError: MarketsAlembicVersion` in the marketsanalytics venv.
-- A clean venv with the 0.1.47 wheel and ms-markets imports both
-  `msm.migrations` and `valmer_connectors.migrations`. Alembic resolves
-  `env.py`, the template, and the single head `0001` from the new package. The
-  version table is still `valmer_connectors__alembic_version`.
-- Full suite: 295 tests and 39 subtests pass. Ruff passes.
+- A clean venv with the 0.1.47 wheel and ms-markets 2.1.1 imports both
+  `msm_migrations` and `valmer_connectors.migrations` and has no top-level
+  `migrations`, `banxico`, `fred`, `agents`, `cli` or `command_center`. Alembic
+  resolves the single head `0001` from the installed package. The version table
+  is still `valmer_connectors__alembic_version`.
+- Full suite: 303 tests and 39 subtests pass. Ruff passes.
 - Setuptools copies a stale `build/lib` into new wheels; remove `build/` before
   building a release wheel.
-- Not yet verified live: `metatables migrations current` against the backend
-  with the new provider reference, and the first Banxico/FRED updater runs
-  under their new update hashes.
+- Not yet verified live: the first `migrate-valmer` Job run, and the first
+  Banxico/FRED updater runs under their new update hashes.
 
 ## SDK 8 Migration Status
 
@@ -75,17 +113,17 @@ Last complete backend lifecycle verification: 2026-08-21
 - Focused backend validation passes with 11 tests. The static site passes its
   SDK theme audit, five Vitest tests, TypeScript build, and production Vite build.
 - The Vite repository now has a live-backend-validated API 2.1.0 static-site
-  workflow configured for every synchronized commit and three retained
+  workflow configured for every pushed commit and three retained
   revisions. It remains local and has not created a release.
 - The backend VS Code compound `Control Plane: API + Vite (local review)`
   starts the development-only API capability wrapper and the sibling Vite SDK
   host. Browser verification passed for the iframe handshake, authenticated
   viewer projection, API CORS boundary, overview, nine-row data-product page,
   and dark/light theme propagation. The production apps remain unchanged.
-- Platform inspection currently returns zero indexed backend FastAPI resources
-  and zero releases in either repository. A valid backend FastAPI workflow
-  cannot be authored until the first reviewed backend sync indexes the resource
-  and returns its real public UID, so no deployment is claimed.
+- Platform inspection returned zero indexed backend FastAPI resources and zero
+  releases in either repository at the last check, so no deployment is claimed.
+  The backend API workflow is now workflow API 2.3.0 and declares the release by
+  `source_path`, so it carries no resource UID.
 
 ## Backend Runtime and Schema Last Verified on 2026-08-21
 

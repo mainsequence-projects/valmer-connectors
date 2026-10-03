@@ -24,7 +24,8 @@
 - `docs/dashboards.md`: Streamlit dashboard pages and monitoring purpose.
 - `docs/control-plane.md`: two-repository Command Center control-plane architecture, FastAPI
   contracts, Job authorization, static-site integration, release order, and verification.
-- `docs/deployment.md`: deployment and verification commands.
+- `docs/deployment.md`: publishing with Git, the deployment migration Job, and
+  verification commands.
 - `docs/new-version-migration.md`: migration status against current SDK and
   `ms-markets` architecture.
 

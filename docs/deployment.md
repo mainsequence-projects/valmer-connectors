@@ -1,22 +1,45 @@
 # Deployment
 
-## Required Sequence
+## Publishing
 
-Run these commands in a networked, authenticated shell before backend
-verification:
+A plain `git push` publishes this repository. The workflow files under
+`.mainsequence/workflows/` decide what deploys. Every resource in them declares
+`tag_regex: null`, so every push to the branch is eligible:
+
+- `valmer-control-plane-api.yaml` (workflow API 2.3.0) prepares the code
+  repository image, runs the `migrate-valmer` Job from it, and only then deploys
+  the control-plane FastAPI release (`needs: [migrate]`).
+- `valmer-control-plane-jobs.yaml` (workflow API 2.1.0) declares the pipeline
+  Jobs. They are outside the execution graph and redeploy on their own.
 
 ```bash
-mainsequence code-repository update-sdk --path .
-mainsequence refresh-token
+git add <reviewed paths>
+git commit -m "<specific commit message>"
+git push
+```
+
+After a dependency change, refresh the dependency files and commit them with
+the change:
+
+```bash
+mainsequence code-repository sync --path .
+```
+
+Since SDK 9.0.5, `code-repository sync` only runs `uv lock`, `uv sync` and
+`uv export --locked --no-dev --no-hashes` into `requirements.txt`. It does not
+bump the version, tag, commit or push. A pushed commit is not deployment
+evidence; inspect the workflow run and its DeploymentRuns.
+
+## Skill And Scaffold Refresh
+
+Run these only when the update is explicitly requested:
+
+```bash
 mainsequence code-repository update-agent-skills --path .
 mainsequence code-repository update-platform-skills --path .
 metatables copy-metatables-skills --path .
 msm copy-msm-skills --path .
 mainsequence code-repository update AGENTS.md --path .
-mainsequence code-repository sync --path .
-git add <reviewed paths>
-git commit -m "<specific commit message>"
-git push
 ```
 
 `update-agent-skills` copies the SDK-owned skills offline and replaces
@@ -24,10 +47,27 @@ git push
 session and installs the platform skills under
 `.agents/skills/mainsequence_platform/`.
 
-Since SDK 9.0.5, `code-repository sync` only refreshes `uv.lock`, the local
-environment and `requirements.txt` after a dependency change. It does not
-commit, tag or push. Publish with Git. Every workflow here declares
-`tag_regex: null`, so every push to the branch deploys the API and the Jobs.
+## Migrations
+
+Hosted environments are migrated only by the `migrate-valmer` Job of
+`valmer-control-plane-api.yaml`. It runs `scripts/migrate_valmer.py` from the
+candidate image, which calls
+`metatables.upgrade_application("valmer_connectors.migrations:migration")` and
+prints one line with the revision, whether it migrated, and the DataSource. A
+database already at head is left unchanged. A failed Job blocks the API
+deployment and the previous release keeps serving; fix the revision and push
+again. Redeploying an older image does not roll the schema back.
+
+The Job applies only the Valmer provider. The ms-markets schema that the Valmer
+tables reference is migrated by the ms-markets deployment.
+
+Do not run `metatables migrations upgrade` or `downgrade` against a hosted
+runtime, and do not migrate at application startup. The control plane lists the
+migration Job but refuses to launch it by hand. Local development applies the
+provider with
+`metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`.
+
+## Workflow Declarations
 
 The control-plane Jobs and their platform-owned descriptions are declared in
 `.mainsequence/workflows/valmer-control-plane-jobs.yaml`. The standard pipeline
@@ -36,12 +76,16 @@ operations. The platform catalog deliberately excludes launch configurations tha
 depend on a developer workstation or exist only to run UI, debugging, examples,
 or migration administration.
 
-The first backend push indexes `api/valmer_control_plane/main.py`. Resolve that
-FastAPI resource's public UID, add the API `resource_release` declaration using
-that real UID, validate it through the branch workflow endpoint, and push
-again. The declaration must enable every-commit automatic
-redeployment and retain three immutable revisions. The backend then owns exact
-image creation; do not select a caller image for this workflow-owned release.
+The API is declared as `kind: fastapi` with
+`source_path: api/valmer_control_plane/main.py`. Workflow API 2.3.0 files carry
+no resource or release UIDs; the backend binds the existing release through the
+workflow file path, the resource key `valmer-control-plane-api`, and the release
+kind, so neither the file nor the key may be renamed. Validate an edited
+workflow against the branch workflow template
+(`POST /api/v1/code-repository-branches/{uid}/validate-workflow/`) before
+committing it. The release enables every-commit automatic redeployment and
+retains three immutable revisions. The backend owns exact image creation; do
+not select a caller image for this workflow-owned release.
 
 The Vite repository contains
 `.mainsequence/workflows/valmer-control-plane-static-site.yaml`. It uses the
@@ -60,6 +104,7 @@ mainsequence code-repository jobs list --path . --timeout 60
 metatables code-repository time-index-table-updates list --timeout 60
 mainsequence code-repository resources list --path . --timeout 60
 mainsequence code-repository images list --path . --timeout 60
+metatables migrations current --provider valmer_connectors.migrations:migration
 mainsequence markets portfolios list --timeout 60
 valmer-connectors runtime validate
 valmer-connectors reference-rates update-fred
@@ -95,6 +140,32 @@ tag policy is null (every pushed commit), `revision_retention_count` is
 three, and `active_revision` advances only after the desired revision is ready.
 Inspect the correlated DeploymentRun; a successful Git push is not deployment
 evidence.
+
+For the API, read the branch's workflow runs (MCP `code_repository_branch.get`
+with `include: "workflow_runs"`) and confirm the `migrate` step's JobRun
+succeeded before the `deploy_api` DeploymentRun started. The Job's log has one
+line per provider, for example
+`valmer_connectors.migrations:migration: 0001 (already current) on <DataSource UID>`.
+`metatables migrations current` only reads the deployed revision.
+
+## MetaTables 0.1.14 Local Migration Check (2026-10-03)
+
+The Valmer provider was applied to an isolated MetaTables 0.1.14 local SQLite
+runtime. Alembic applied revision `0001`, and `migrations current` reports
+`0001 (head)`, but catalog finalization was refused with
+`400 POST /meta-tables/finalize-managed/: cascading_foreign_key_unsupported`.
+Revision `0001` declares
+`fk__valmer_connectors__valmerassetdetails__asset_uid_cc247d13d3` with
+`ON DELETE CASCADE`, and MetaTables rejects any active table that has, or is
+referenced by, a foreign key whose delete or update rule is not `RESTRICT` or
+`NO ACTION`. The same rule exists in its PostgreSQL access layer, so the hosted
+`migrate-valmer` Job is expected to fail the same way, which blocks the API
+deployment, until the foreign key is changed by a new revision. The ms-markets
+2.1.1 provider could not be applied to the same runtime either (secondary index
+name longer than 63 characters on `ms_markets__portfolioeventledgerts`, plus
+cascading foreign keys of its own), so the ms-markets tables that the Valmer
+foreign keys reference were missing locally. See `.agents/status.md` and
+`.agents/tasks.md`.
 
 ## Current Platform Verification
 

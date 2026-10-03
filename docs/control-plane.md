@@ -103,6 +103,12 @@ the four-series TIIE-only fixing refresh; and the forced current XCCY rebuild. O
 dependency-ordered standard pipeline is scheduled (`0 13 * * 1-5`). Individual Jobs remain
 unscheduled recovery operations that an authorized operator can launch from the static site.
 
+The `migrate-valmer` Job is declared in `.mainsequence/workflows/valmer-control-plane-api.yaml`,
+not in the pipeline workflow. The API workflow's execution graph prepares the image, runs that Job
+(`scripts/migrate_valmer.py`), and deploys the FastAPI release only after it succeeds. The Jobs
+collection lists it like any other branch Job, but preflight blocks it: hosted migrations run only
+inside a deployment, never by hand.
+
 `GET /api/v1/control-plane/jobs/{job_uid}/run-parameters` returns the application-owned runtime
 controls for one branch Job. Unprofiled Jobs return an empty parameter list. Vector Jobs expose
 pricing-detail refresh and cursor-reprocessing booleans. Provider Jobs that support a cutoff expose
@@ -121,9 +127,9 @@ reader used by the Job and verifies every mapped source column. Neither path acc
 override from the launch request.
 
 The local upload-folder vector launch is intentionally not a platform Job because its configured
-path exists only on the developer workstation. Migration inspection/revision/upgrade, Streamlit,
-the example script, and the local API/Vite host are development or administration launchers, not
-production workload Jobs.
+path exists only on the developer workstation. The migration current/revision/upgrade launchers
+(current and upgrade target the MetaTables local runtime), Streamlit, the example script, and the
+local API/Vite host are development or administration launchers, not production workload Jobs.
 
 The workflow declaration is desired repository state, not proof that the Jobs exist. Overview and
 Pipeline responses reconcile all sixteen configured pipeline launch profiles with live branch
@@ -169,12 +175,12 @@ The platform injects the reserved exact `VITE_COMMAND_CENTER_ORIGIN`. The static
 
 The two repositories must be released in dependency order:
 
-1. push `valmer-connectors` so the platform indexes `api/valmer_control_plane/main.py` as a FastAPI
-   CodeRepositoryResource;
-2. resolve that resource's public UID and add a backend API 2.1.0 workflow declaration using the
-   real UID, every-commit automatic redeployment, three retained revisions, and the platform's
-   default static-site CORS policy;
-3. push the backend again and wait until the FastAPI release has a ready `active_revision`;
+1. push `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI release by
+   `source_path` (`api/valmer_control_plane/main.py`) with every-commit automatic redeployment,
+   three retained revisions, and the platform's default static-site CORS policy, and gates it on
+   the `migrate-valmer` Job;
+2. confirm that the workflow run's `migrate` step succeeded before its `deploy_api` step;
+3. wait until the FastAPI release has a ready `active_revision`;
 4. configure the installed SDK's exact stable FastAPI release target for the Vite application;
 5. validate and push the existing `ValmerConnectorsMonitor` static-site workflow, which deploys
    the root Vite SPA on every pushed commit and retains three revisions;
@@ -182,8 +188,9 @@ The two repositories must be released in dependency order:
 7. verify the embedded handshake, dark/light themes, overview reads, resource pagination, viewer
    denial, operator preflight, Job execution, and JobRun polling in Command Center.
 
-Do not invent the FastAPI resource or release UID in a workflow before the backend repository has
-been pushed. Do not grant organization-wide navigation visibility as a deployment default.
+Workflow files carry no resource or release UIDs; the backend binds the release through the
+workflow file path and resource key, so neither may be renamed. Do not grant organization-wide
+navigation visibility as a deployment default.
 The release URLs remain stable: repository events create desired immutable revisions and traffic
 switches only when the desired revision becomes the ready `active_revision`.
 

@@ -9,13 +9,13 @@ longer ships MetaTables. The provider helpers now come from the `metatables`
 client (`mainsequence-metatable`): `metatables.migrations` replaces
 `mainsequence.meta_tables.migrations`, and `metatables.migrations.env` replaces
 `mainsequence.meta_tables.migrations.env`. The admin commands are
-`metatables migrations ... --provider <provider>`; run the Valmer provider as
-`PYTHONPATH=src metatables migrations ... --provider migrations:migration`
-because ms-markets also installs a top-level `migrations` package. The provider
-package, namespace, model registry, version table, and revision history are
-unchanged. The `mainsequence.meta_tables` imports and `mainsequence migrations`
-commands quoted below are historical; see `README.md` and `docs/markets.md` for
-the current commands.
+`metatables migrations ... --provider <provider>`. At the time the Valmer
+provider still lived in a top-level `migrations` package and needed
+`PYTHONPATH=src`, because ms-markets also installed a top-level `migrations`
+package. The provider package, namespace, model registry, version table, and
+revision history are unchanged. The `mainsequence.meta_tables` imports quoted
+below are historical; see `README.md` and `docs/markets.md` for the current
+commands.
 
 Amended on 2026-10-02: the Valmer provider moved from the top-level
 `migrations` package (`src/migrations`) to `valmer_connectors.migrations`
@@ -26,8 +26,20 @@ Amended on 2026-10-02: the Valmer provider moved from the top-level
 provider sets `script_location` and `version_location_prefix` to the new
 package explicitly. The `package`, migration namespace, version table, and
 revision `0001` are unchanged, so no database migration is required. The
-`PYTHONPATH=src` command above, the `migrations:migration` references, and the
-`src/migrations` paths below are historical.
+provider references and paths below were updated to the new package on
+2026-10-03.
+
+Amended on 2026-10-03 for MetaTables 0.1.14 and ms-markets 2.1.1: hosted
+environments are migrated only by the `migrate-valmer` Job in
+`.mainsequence/workflows/valmer-control-plane-api.yaml`, which runs
+`scripts/migrate_valmer.py` from the candidate image before the control-plane
+API deploys. The Job applies only `valmer_connectors.migrations:migration`.
+The ms-markets deployment owns and migrates the ms-markets schema; this project
+no longer applies or documents the ms-markets provider. Local development runs
+`metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`.
+The "Core ms-markets Provider", "Migration Workflow", "Implementation Tasks"
+and "Validation Evidence Required" sections below state this procedure; the
+operator commands they listed before are historical.
 
 ## Date
 
@@ -130,15 +142,11 @@ commands.
 
 ### Core ms-markets Provider
 
-Before this project runs its own migrations, operators must run the canonical
-ms-markets provider:
+The ms-markets deployment migrates the built-in ms-markets tables with its own
+provider. This project neither applies nor documents that provider; its tables
+only reference the ms-markets schema that the ms-markets deployment has applied.
 
-```bash
-mainsequence migrations current --provider msm.migrations:migration
-mainsequence migrations upgrade --provider msm.migrations:migration head
-```
-
-This provider owns the built-in ms-markets tables, including:
+That provider owns the built-in ms-markets tables, including:
 
 - `AssetTable`
 - `IndexTypeTable`
@@ -159,13 +167,13 @@ This project must not generate duplicate migrations for those tables.
 Add a project migration provider exposed from the importable project package:
 
 ```text
-migrations:migration
+valmer_connectors.migrations:migration
 ```
 
 This project uses a normal src-layout package at `src/valmer_connectors`. The
-migration provider should be addressed explicitly as
-`migrations:migration`, which also matches provider
-auto-discovery from the distribution name `valmer-connectors`.
+migration provider is addressed explicitly as
+`valmer_connectors.migrations:migration`, inside the package this project owns,
+so it cannot collide with a `migrations` module from another distribution.
 
 The provider should use the SDK-owned helper machinery and include only
 project-owned models:
@@ -218,7 +226,7 @@ from msm.settings import (
 )
 
 from msm.models.assets import AssetTable
-from migrations.registry import metatable_provider_models
+from valmer_connectors.migrations.registry import metatable_provider_models
 from valmer_connectors.markets import (
     VALMER_MARKETS_NAMESPACE,
     VALMER_MARKETS_STORAGE_APP,
@@ -260,7 +268,8 @@ ValmerAlembicVersion = build_alembic_version_metatable(
 migration = build_metatable_migration_provider(
     package="valmer_connectors",
     migration_namespace=VALMER_MARKETS_NAMESPACE,
-    script_location="migrations:",
+    script_location="valmer_connectors.migrations:",
+    version_location_prefix="valmer_connectors.migrations:versions",
     target_metadata=VALMER_TARGET_METADATA,
     alembic_registry=ValmerAlembicVersion,
     metatable_models=VALMER_MIGRATION_MODELS,
@@ -269,13 +278,14 @@ migration = build_metatable_migration_provider(
 )
 ```
 
-If the Python package is renamed later, the provider path, `package`, and
-`script_location` values must be updated together.
+If the Python package is renamed later, the provider path, `package`,
+`script_location`, and `version_location_prefix` values must be updated
+together.
 
 The provider must keep revision files namespace-aware through
 `build_metatable_migration_provider(...)`. The Valmer project extension uses
 the explicit namespace `valmer_connectors`, so revisions live under
-`src/migrations/versions/valmer_connectors/`. The built-in ms-markets provider
+`src/valmer_connectors/migrations/versions/valmer_connectors/`. The built-in ms-markets provider
 keeps the library namespace `mainsequence.markets`; project-owned Valmer
 MetaTables must not use that library namespace.
 
@@ -289,7 +299,7 @@ keys can resolve during Alembic comparison. DDL emission is scoped back to
 Valmer-owned tables through `include_name_hook` and `include_object_hook`.
 
 The current baseline revision under
-`src/migrations/versions/valmer_connectors/0001_migration.py` contains
+`src/valmer_connectors/migrations/versions/valmer_connectors/0001_current_schema_baseline.py` contains
 Alembic-generated DDL for the two Valmer-owned project tables. It must not be
 expanded to built-in ms-markets tables, and future revisions should contain
 explicit DDL only when a later in-place Valmer schema evolution requires it.
@@ -390,21 +400,21 @@ instrument metadata into updater output table.
 The correct migration and runtime workflow is:
 
 1. Refresh SDK and scaffold files when required by the project instructions.
-2. Run the core ms-markets migration provider:
+2. The ms-markets deployment has applied the ms-markets schema in the target
+   environment.
+3. Apply the Valmer project migration provider,
+   `valmer_connectors.migrations:migration`:
 
-   ```bash
-   mainsequence migrations current --provider msm.migrations:migration
-   mainsequence migrations upgrade --provider msm.migrations:migration head
-   ```
+   - hosted environments: only the `migrate-valmer` deployment Job, which runs
+     before the control-plane API deploys;
+   - local development:
 
-3. Run the Valmer project migration provider:
+     ```bash
+     metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head
+     metatables --local migrations current --provider valmer_connectors.migrations:migration
+     ```
 
-   ```bash
-   mainsequence migrations current --provider migrations:migration
-   mainsequence migrations upgrade --provider migrations:migration head
-   ```
-
-   Do not run `mainsequence migrations revision` as part of normal setup. Use
+   Do not run `metatables migrations revision` as part of normal setup. Use
    it only after changing the Valmer SQLAlchemy table contract and expecting an
    in-place Alembic DDL delta. Initial table registration and physical table
    registration are driven by the project migration provider during `upgrade`;
@@ -418,8 +428,8 @@ The correct migration and runtime workflow is:
 
 ## Implementation Tasks
 
-- [x] Add `src/migrations/__init__.py` exposing the Valmer project migration
-  provider as `migrations:migration`.
+- [x] Add `src/valmer_connectors/migrations/__init__.py` exposing the Valmer
+  project migration provider as `valmer_connectors.migrations:migration`.
 - [x] Add an Alembic migration package for the Valmer project migration stream.
 - [x] Define a Valmer Alembic version MetaTable for the project migration stream.
 - [x] Configure namespace-aware Alembic version locations and version table names.
@@ -440,8 +450,9 @@ The correct migration and runtime workflow is:
   boundaries.
 - [x] Add a regression test proving direct project MetaTable registration is not
   used in runtime paths.
-- [ ] Validate both migration providers with `current`, `render`, `dry-run`, and
-  `upgrade` in a real platform context.
+- [ ] Validate the Valmer provider in a real platform context through a
+  successful `migrate-valmer` deployment Job run and a read-only
+  `metatables migrations current`.
 - [ ] Validate a Valmer vector updater update after migrations and confirm rows
   land in migrated storage keyed by `time_index` and `asset_identifier`.
 
@@ -449,10 +460,11 @@ The correct migration and runtime workflow is:
 
 This ADR is implemented only when the following evidence exists:
 
-- `msm.migrations:migration` has been applied successfully in the target
-  platform context.
-- `migrations:migration` has been applied successfully in the same
-  platform context.
+- The ms-markets schema is at head in the target platform context, applied by
+  the ms-markets deployment.
+- The `migrate-valmer` deployment Job has applied
+  `valmer_connectors.migrations:migration` successfully in the same platform
+  context.
 - The Valmer provider registers `ValmerAssetDetailsTable`.
 - The Valmer provider registers `ValmerVectorPricesStorage`.
 - ms-markets runtime startup attaches to the migrated Valmer tables without

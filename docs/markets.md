@@ -451,21 +451,26 @@ The project migration provider is:
 valmer_connectors.migrations:migration
 ```
 
-The provider metadata includes `AssetTable` so foreign keys can resolve during
-Alembic autogenerate, but DDL emission is filtered to Valmer-owned tables only.
+The provider metadata includes `AssetTable`, `IndexTable`, and
+`IndexFormulaDefinitionTable` so foreign keys can resolve during Alembic
+autogenerate, but DDL emission is filtered to Valmer-owned tables only.
 
-Run project migrations after core `ms-markets` migrations:
+Hosted environments are migrated only by the `migrate-valmer` Job in
+`.mainsequence/workflows/valmer-control-plane-api.yaml`, which runs
+`scripts/migrate_valmer.py` from the candidate image before the control-plane
+API deploys. The Job applies only this provider. The ms-markets tables that the
+Valmer foreign keys reference belong to the ms-markets deployment, which
+migrates them; this project does not apply the ms-markets provider.
+
+During local development, apply the provider to the MetaTables local runtime:
 
 ```bash
-metatables migrations current --provider msm.migrations:migration
-metatables migrations upgrade --provider msm.migrations:migration head
-
-metatables migrations current --provider valmer_connectors.migrations:migration
-metatables migrations upgrade --provider valmer_connectors.migrations:migration head
+metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head
+metatables --local migrations current --provider valmer_connectors.migrations:migration
 ```
 
 The Valmer provider lives in `src/valmer_connectors/migrations`, so its
-reference cannot collide with the ms-markets core provider and needs no
+reference cannot collide with the ms-markets provider and needs no
 `PYTHONPATH`.
 
 ## What This Page Does Not Own

@@ -119,11 +119,11 @@ Detailed guides:
 ### Requirements
 
 - CPython 3.13.x (the repository currently excludes Python 3.14)
-- A working MainSequence environment: `mainsequence>=9.0.4,<10` for identity,
+- A working MainSequence environment: `mainsequence>=9.0.5,<10` for identity,
   CodeRepository, Job, and Artifact APIs, plus the
-  `mainsequence-metatable>=0.1.8,<0.2` client (imported and run as
+  `mainsequence-metatable>=0.1.14,<0.2` client (imported and run as
   `metatables`) for MetaTables, updaters, and migrations, and
-  `ms-markets>=2,<3`
+  `ms-markets>=2.1.1,<3`
 - Access to the Valmer artifact bucket and to the Valmer benchmark CSV endpoint
 
 ### Install
@@ -134,30 +134,45 @@ pip install -e .
 uv pip install -e .
 ```
 
-### Migration CLI
-
-Run the core ms-markets provider first, then the Valmer project provider:
-
-```bash
-metatables migrations current --provider msm.migrations:migration
-metatables migrations upgrade --provider msm.migrations:migration head
-
-metatables migrations current --provider valmer_connectors.migrations:migration
-metatables migrations upgrade --provider valmer_connectors.migrations:migration head
-```
+### Migrations
 
 The Valmer provider is `valmer_connectors.migrations:migration`, exposed from
 `src/valmer_connectors/migrations`. The wheel installs only the
-`valmer_connectors` import package, so the provider cannot collide with the
-top-level `migrations` package that ms-markets installs for `msm.migrations`,
-and it resolves from an installed or editable package without `PYTHONPATH`.
+`valmer_connectors` import package, so the provider cannot collide with modules
+that other distributions install, and it resolves from an installed or editable
+package without `PYTHONPATH`.
+
+Hosted environments are migrated only by the deployment workflow.
+`.mainsequence/workflows/valmer-control-plane-api.yaml` prepares the image, runs
+the `migrate-valmer` Job (`scripts/migrate_valmer.py`) from it, and deploys the
+control-plane API with `needs: [migrate]`. The Job calls
+`metatables.upgrade_application("valmer_connectors.migrations:migration")`. A
+database already at head is left unchanged, and a failure blocks the API
+rollout while the previous release keeps serving. Do not run
+`metatables migrations upgrade` or `downgrade` against a hosted runtime, and do
+not migrate at application startup.
+
+The Job applies only the Valmer provider. The ms-markets tables that the Valmer
+tables reference are owned and migrated by the ms-markets deployment.
+
+Local development applies the provider to the MetaTables local runtime. See
+`.agents/skills/metatables/metatables-local-development/SKILL.md` for the
+runtime checks before any write:
+
+```bash
+metatables init --local
+metatables serve --local     # keep it running in its own terminal
+metatables --local runtime initialize
+metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head
+metatables --local migrations current --provider valmer_connectors.migrations:migration
+```
 
 Do not run `metatables migrations revision` during normal setup. Use
 `revision` only after changing the Valmer SQLAlchemy table contract and
-expecting an in-place Alembic DDL delta. Project table DDL and MetaTable
-catalog registration are applied by `metatables migrations upgrade` through
-the Valmer migration provider. Do not hand-author DDL for built-in ms-markets
-tables in this project.
+expecting an in-place Alembic DDL delta, and commit the revision with the code
+that needs it. Each revision must stay usable by the release that is still
+deployed while the migration Job runs. Do not hand-author DDL for built-in
+ms-markets tables in this project.
 
 ### Project CLI Surface
 
@@ -252,7 +267,9 @@ for MkDocs through `mkdocs.yml`.
   Main Sequence 6, Index-contract, migration, verification, and rollout task
 - `docs/agent-skills.md`: importing bundled Valmer Codex skills into host
   projects
-- `docs/deployment.md`: deployment sequence, verification commands, and backend follow-up
+- `docs/deployment.md`: publishing, the deployment migration Job, verification
+  commands, and backend follow-up
+- `CHANGELOG.md`: release notes
 - `docs/dashboards.md`: dashboards currently shipped by the project
 - `docs/control-plane.md`: FastAPI and Vite/Command Center control-plane boundary
 - `docs/SUMMARY.md`: documentation map required by the project instructions
