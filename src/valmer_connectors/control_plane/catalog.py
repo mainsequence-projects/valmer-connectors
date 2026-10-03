@@ -11,6 +11,7 @@ from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 from valmer_connectors.data_nodes.canonical_index_values import DailyIndexValuesStorage
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
+from valmer_connectors.services.migrations import MIGRATION_JOB_EXECUTION_PATH
 
 
 @dataclass(frozen=True)
@@ -283,6 +284,15 @@ JOB_LAUNCH_PROFILES_BY_KEY = {
 JOB_LAUNCH_PROFILES_BY_EXECUTION_PATH = {
     profile.execution_path: profile for profile in JOB_LAUNCH_PROFILES
 }
+
+# Jobs that only the deployment workflow runs. The migration Job applies the
+# Valmer schema from the candidate image before the API rolls out; launching it
+# by hand would migrate the hosted runtime outside a deployment.
+DEPLOYMENT_ONLY_EXECUTION_PATHS: frozenset[str] = frozenset({MIGRATION_JOB_EXECUTION_PATH})
+DEPLOYMENT_ONLY_JOB_BLOCKER = (
+    "This Job runs only from the deployment workflow, before the API rolls out. "
+    "It cannot be launched by hand."
+)
 
 
 PIPELINE_STAGES: tuple[dict[str, object], ...] = (

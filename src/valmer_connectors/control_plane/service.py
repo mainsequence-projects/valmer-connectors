@@ -30,6 +30,8 @@ from mainsequence.code_repository_context import (
 )
 from valmer_connectors.control_plane.catalog import (
     DATA_PRODUCTS,
+    DEPLOYMENT_ONLY_EXECUTION_PATHS,
+    DEPLOYMENT_ONLY_JOB_BLOCKER,
     JOB_LAUNCH_PROFILES,
     JOB_LAUNCH_PROFILES_BY_EXECUTION_PATH,
     JOB_LAUNCH_PROFILES_BY_KEY,
@@ -1179,6 +1181,8 @@ class ControlPlaneService:
             selected = next((job for job in jobs if job["uid"] == selected_uids[0]), None)
             if selected is None:
                 blockers.append("The selected Job is not available in this branch.")
+            elif selected.get("execution_path") in DEPLOYMENT_ONLY_EXECUTION_PATHS:
+                blockers.append(DEPLOYMENT_ONLY_JOB_BLOCKER)
             elif selected["status"] == "running":
                 blockers.append("The selected Job already has a pending or running execution.")
             elif selected["image_status"] not in {"ready", "READY"}:

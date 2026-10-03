@@ -1,12 +1,11 @@
-api_version: 2.1.0
+api_version: "2.3.0"
 name: valmer-control-plane-api
 
 resources:
   - key: valmer-control-plane-api
-    kind: resource_release
+    kind: fastapi
     spec:
-      release_kind: fastapi
-      resource_uid: 0a0dbefb-48e3-445b-9fcc-69d63cb52212
+      source_path: api/valmer_control_plane/main.py
       automatic_deployment: true
       automatic_redeployment:
         enabled: true
@@ -17,3 +16,30 @@ resources:
       env_vars:
         - name: VALMER_CONTROL_PLANE_OPERATOR_UIDS
           value: e2a4f38a-1b5f-40a3-974f-70bc8f065b3f
+
+  - key: migrate-valmer
+    kind: job
+    spec:
+      name: Valmer migrations
+      description: Apply the Valmer MetaTables migrations before the control-plane API rolls out.
+      execution_path: scripts/migrate_valmer.py
+      cpu_request: "1"
+      memory_request: "1"
+      max_runtime_seconds: 1800
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+execution:
+  steps:
+    image:
+      prepare_image: valmer-control-plane-api
+    migrate:
+      run_job: migrate-valmer
+      image_from: image
+      needs: [image]
+    deploy_api:
+      deploy: valmer-control-plane-api
+      image_from: image
+      needs: [migrate]

@@ -859,6 +859,53 @@ def test_unprofiled_branch_job_is_parameterless_and_launchable() -> None:
     assert gateway.launched_command_args == [[]]
 
 
+def test_deployment_migration_job_is_listed_but_never_launched_by_hand() -> None:
+    class MigrationJobGateway(FakeControlPlaneGateway):
+        def jobs(self) -> list[dict[str, object]]:
+            return [
+                *super().jobs(),
+                {
+                    "uid": "job-migrate",
+                    "key": None,
+                    "name": "Valmer migrations",
+                    "description": "Apply the Valmer MetaTables migrations.",
+                    "status": "succeeded",
+                    "last_run_status": "SUCCEEDED",
+                    "last_run_at": None,
+                    "execution_path": "scripts/migrate_valmer.py",
+                    "schedule": None,
+                    "image_status": "ready",
+                    "automatic_deployment": True,
+                    "dependencies": [],
+                    "parameter_count": 0,
+                },
+            ]
+
+    gateway = MigrationJobGateway()
+    payload = {
+        "selection": {"mode": "explicit", "uids": ["job-migrate"]},
+        "options": {},
+    }
+
+    with _client("operator-user", gateway=gateway) as client:
+        listing = client.get("/api/v1/control-plane/jobs")
+        preflight = client.post(
+            "/api/v1/control-plane/jobs/actions/run/preflight", json=payload
+        )
+        execution = client.post("/api/v1/control-plane/jobs/actions/run", json=payload)
+
+    assert listing.status_code == 200
+    assert "job-migrate" in str(listing.json())
+    assert preflight.status_code == 200
+    assert preflight.json()["allowed"] is False
+    assert any(
+        "only from the deployment workflow" in blocker
+        for blocker in preflight.json()["blockers"]
+    )
+    assert execution.status_code == 409
+    assert gateway.launched_job_uids == []
+
+
 def test_job_run_parameters_expose_runtime_controls_not_metatable_selection() -> None:
     with _client("operator-user") as client:
         response = client.get("/api/v1/control-plane/jobs/job-3/run-parameters")

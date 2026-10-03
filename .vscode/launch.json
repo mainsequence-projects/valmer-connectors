@@ -21,12 +21,13 @@
       "justMyCode": true
     },
     {
-      "name": "Migrations: Current (Valmer)",
+      "name": "Migrations: Current (Valmer, local runtime)",
       "type": "python",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
       "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
+        "--local",
         "migrations",
         "current",
         "--provider",
@@ -76,12 +77,13 @@
       "justMyCode": false
     },
     {
-      "name": "Migrations: Upgrade (Valmer)",
+      "name": "Migrations: Upgrade (Valmer, local runtime)",
       "type": "python",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
       "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
+        "--local",
         "migrations",
         "upgrade",
         "--provider",
