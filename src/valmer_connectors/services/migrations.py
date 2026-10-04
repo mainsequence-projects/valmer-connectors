@@ -25,8 +25,14 @@ HOSTED_MIGRATION_NOTE = (
     "against a hosted runtime."
 )
 
-REVISION_COMMAND_NOTE = "Use this only after changing Valmer SQLAlchemy table contracts:"
-REVISION_COMMAND = f"metatables migrations revision --provider {VALMER_MIGRATION_PROVIDER}"
+REVISION_COMMAND_NOTE = (
+    "Use this only after changing Valmer SQLAlchemy table contracts, with the local runtime "
+    "at head (autogenerate compares the models with it):"
+)
+REVISION_COMMAND = (
+    f"metatables --local migrations revision --provider {VALMER_MIGRATION_PROVIDER} "
+    '--message "<change>"'
+)
 
 
 def migration_command_lines() -> list[str]:

@@ -191,10 +191,12 @@ reference cannot collide with the ms-markets provider and needs no
 `PYTHONPATH`.
 
 Generate a project revision only after changing Valmer SQLAlchemy table
-contracts (`revision` autogenerates by default):
+contracts, against the local runtime at head. `revision` autogenerates by
+default and compares the models with the runtime that the command selects,
+which without `--local` is the Environment's hosted database:
 
 ```bash
-metatables migrations revision --provider valmer_connectors.migrations:migration
+metatables --local migrations revision --provider valmer_connectors.migrations:migration --message "<change>"
 ```
 
 ## Runtime Checks

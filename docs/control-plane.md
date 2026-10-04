@@ -132,7 +132,7 @@ override from the launch request.
 
 The local upload-folder vector launch is intentionally not a platform Job because its configured
 path exists only on the developer workstation. The migration current/revision/upgrade launchers
-(current and upgrade target the MetaTables local runtime), Streamlit, the example script, and the
+(all three target the MetaTables local runtime), Streamlit, the example script, and the
 local API/Vite host are development or administration launchers, not production workload Jobs.
 
 The workflow declaration is desired repository state, not proof that the Jobs exist. Overview and

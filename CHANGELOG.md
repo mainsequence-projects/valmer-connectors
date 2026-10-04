@@ -77,7 +77,9 @@
   After The Push" in `docs/deployment.md`.
 - Hosted environments are migrated only by the `migrate-valmer` Job. The
   `valmer-connectors migrations commands` output, the documentation and the
-  VS Code launchers use `metatables --local ...` for local development, and
+  VS Code launchers use `metatables --local ...` for local development,
+  including `migrations revision`, whose autogenerate otherwise compares the
+  models with the Environment's hosted database, and
   nothing here applies the ms-markets provider any more: the ms-markets
   deployment migrates its own schema. The Valmer foreign keys reference
   ms-markets tables, so the Job succeeds only in a DataSource where the

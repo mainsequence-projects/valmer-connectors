@@ -19,6 +19,11 @@ commands` prints only the Valmer provider's local-runtime commands
 by the deployment workflow's `migrate-valmer` Job, and no longer prints the
 ms-markets provider, which the ms-markets deployment migrates.
 
+Amended on 2026-10-04 for MetaTables 0.1.20: the printed revision command also
+targets the local runtime (`metatables --local migrations revision ...`).
+Revision autogenerate compares the models with the runtime that the command
+selects, which without `--local` is the Environment's hosted database.
+
 ## Date
 
 2026-06-04
@@ -102,8 +107,8 @@ metatables --local migrations current --provider valmer_connectors.migrations:mi
 
 Hosted environments are migrated only by the deployment workflow's migration Job (scripts/migrate_valmer.py in .mainsequence/workflows/valmer-control-plane-api.yaml), before the control-plane API rolls out. Do not run migrations upgrade or downgrade against a hosted runtime.
 
-Use this only after changing Valmer SQLAlchemy table contracts:
-metatables migrations revision --provider valmer_connectors.migrations:migration
+Use this only after changing Valmer SQLAlchemy table contracts, with the local runtime at head (autogenerate compares the models with it):
+metatables --local migrations revision --provider valmer_connectors.migrations:migration --message "<change>"
 ```
 
 This command must not run migrations. It is a discovery/help command only.

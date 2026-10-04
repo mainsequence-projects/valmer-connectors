@@ -8,7 +8,7 @@ Last complete backend lifecycle verification: 2026-08-21
 - Locked and installed: `mainsequence` 9.0.6, `mainsequence-metatable` 0.1.20,
   ms-markets 2.2.5. Declared floors: `mainsequence>=9.0.6,<10`,
   `mainsequence-metatable>=0.1.20,<0.2` and `ms-markets>=2.2.5,<3`. On them
-  the full suite passes (307 tests, 39 subtests), Ruff passes, and a wheel
+  the full suite passes (308 tests, 39 subtests), Ruff passes, and a wheel
   built from the committed tree contains only `valmer_connectors` and declares
   these floors.
 - SDK 9.0.6 never replays a POST, PUT, PATCH or DELETE and bounds read-only

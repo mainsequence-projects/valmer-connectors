@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import runpy
 import sys
 from pathlib import Path
@@ -222,4 +223,29 @@ def test_migrations_commands_print_only_local_valmer_commands(capsys) -> None:
         "metatables --local migrations upgrade "
         "--provider valmer_connectors.migrations:migration head"
     ]
+    # Revision autogenerate compares the models with the selected runtime;
+    # without --local that would be the Environment's hosted database.
+    assert [line for line in commands if " revision " in line] == [
+        "metatables --local migrations revision "
+        '--provider valmer_connectors.migrations:migration --message "<change>"'
+    ]
+    assert all(line.startswith("metatables --local ") for line in commands)
     assert any("migration Job" in line and MIGRATION_JOB_EXECUTION_PATH in line for line in lines)
+
+
+def test_every_metatables_launcher_targets_the_local_runtime() -> None:
+    launch = json.loads((REPOSITORY_ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+    launchers = {
+        configuration["name"]: configuration["args"]
+        for configuration in launch["configurations"]
+        if configuration.get("program", "").endswith("/metatables")
+    }
+
+    assert sorted(launchers) == [
+        "Migrations: Current (Valmer, local runtime)",
+        "Migrations: Revision (Valmer, local runtime)",
+        "Migrations: Upgrade (Valmer, local runtime)",
+    ]
+    for name, args in launchers.items():
+        assert args[:2] == ["--local", "migrations"], name
+        assert args[args.index("--provider") + 1] == VALMER_MIGRATION_PROVIDER, name

@@ -192,10 +192,18 @@ checkout, and commits or branch switches need no restart.
 
 Do not run `metatables migrations revision` during normal setup. Use
 `revision` only after changing the Valmer SQLAlchemy table contract and
-expecting an in-place Alembic DDL delta, and commit the revision with the code
-that needs it. Each revision must stay usable by the release that is still
-deployed while the migration Job runs. Do not hand-author DDL for built-in
-ms-markets tables in this project.
+expecting an in-place Alembic DDL delta, and author it against the local
+runtime at head:
+
+```bash
+metatables --local migrations revision --provider valmer_connectors.migrations:migration --message "<change>"
+```
+
+Autogenerate is on by default and compares the models with the runtime that
+the command selects; without `--local` that is the Environment's hosted
+database. Commit the revision with the code that needs it. Each revision must
+stay usable by the release that is still deployed while the migration Job
+runs. Do not hand-author DDL for built-in ms-markets tables in this project.
 
 ### Project CLI Surface
 

@@ -106,7 +106,10 @@ Do not run `metatables migrations upgrade` or `downgrade` against a hosted
 runtime, and do not migrate at application startup. The control plane lists the
 migration Job but refuses to launch it by hand. Local development applies the
 provider with
-`metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`.
+`metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`
+and authors a revision against that local runtime, at head, with
+`metatables --local migrations revision --provider valmer_connectors.migrations:migration --message "<change>"`:
+autogenerate compares the models with the runtime that the command selects.
 
 ## Workflow Declarations
 
