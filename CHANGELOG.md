@@ -93,6 +93,23 @@
   `mainsequence code-repository sync` only refreshes dependency files since
   SDK 9.0.5.
 
+### Control-plane API
+
+- The API installs the SDK request identity: `create_app()` calls
+  `mainsequence.server.fastapi.install_request_identity(app)` once per
+  application, and routes get the caller from `User.get_logged_user()` instead
+  of reading `request.state.user_uid`. PodDeploymentOrchestrator refuses to
+  serve a FastAPI app without this installation since `3057764`. Hosted
+  requests need the platform-signed caller assertion; local runs validate a
+  direct Bearer token against `MAINSEQUENCE_ENDPOINT`. Nothing falls back to
+  `X-User-UID`, the viewer and operator rules are unchanged, and the workflow
+  still declares no public ingress, so `/health` also needs an authenticated
+  caller.
+- The VS Code local review drops its static local capability and fixed review
+  user. The review host sends an access token from `mainsequence auth token`,
+  the local API validates it, and the developer is a viewer unless `.env`
+  lists their UID as an operator.
+
 ### Agent skills
 
 - Refreshed the SDK 9.0.6, MetaTables 0.1.20 and ms-markets 2.2.5 skills and

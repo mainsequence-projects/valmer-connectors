@@ -166,10 +166,24 @@ Last complete backend lifecycle verification: 2026-08-21
   workflow configured for every pushed commit and three retained
   revisions. It remains local and has not created a release.
 - The backend VS Code compound `Control Plane: API + Vite (local review)`
-  starts the development-only API capability wrapper and the sibling Vite SDK
-  host. Browser verification passed for the iframe handshake, authenticated
+  starts the development-only API wrapper and the sibling Vite SDK host.
+  Browser verification passed for the iframe handshake, authenticated
   viewer projection, API CORS boundary, overview, nine-row data-product page,
-  and dark/light theme propagation. The production apps remain unchanged.
+  and dark/light theme propagation. That check predates the SDK request
+  identity and used the since-removed static local capability.
+- Request identity (2026-10-04): `create_app` installs SDK 9.0.6
+  `install_request_identity` once per application and routes read the caller
+  with `User.get_logged_user()`. PodDeploymentOrchestrator's own
+  `require_request_identity` (`3057764`) raised "Application request identity
+  is not installed" for the app at `c4925c6`, built by `create_app` and by
+  importing `api/valmer_control_plane/main.py` (engine calls stubbed), with
+  hosted and with local configuration; it passes for all four after the
+  change. Against the development backend `127.0.0.1:8000`, the VS Code
+  wrapper under uvicorn answered `/api/v1/control-plane/me` with the UID that
+  the backend's `users/me` returns for a `mainsequence auth token` token
+  (viewer), and 401 without a token, with only `X-User-UID`, or with the old
+  static capability. Not verified: a hosted deployment, and whether the
+  Environment's gateway forwards caller assertions.
 - Platform inspection returned zero indexed backend FastAPI resources and zero
   releases in either repository at the last check, so no deployment is claimed.
   The backend API workflow is now workflow API 2.3.0 and declares the release by

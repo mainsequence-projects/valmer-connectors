@@ -20,7 +20,8 @@ under `src/valmer_connectors/control_plane/`; route handlers remain thin.
 
 The API publishes:
 
-- `GET /health` for release health checks;
+- `GET /health`, a liveness answer for an authenticated caller (the platform's readiness probe
+  is the launcher's own `/ms-health-deployment`, answered outside the app);
 - `GET /api/v1/control-plane/me` for the request-bound viewer/operator projection;
 - `GET /api/v1/control-plane/overview` for headline metrics and active failures;
 - `GET /api/v1/control-plane/pipeline` for the dependency-ordered pipeline model;
@@ -63,11 +64,39 @@ SDK's own CodeRepositoryBranch or Environment error as an `Environment:` failure
 `METATABLES_API_URL` development API bypasses MetaTables Environment discovery; data products then
 come from that development API while the header still names the branch's Environment.
 
+## Request Identity
+
+`create_app()` in `src/valmer_connectors/control_plane/api.py` calls
+`mainsequence.server.fastapi.install_request_identity(app)` once, after mounting the routes, on
+every application it builds: the deployed `api/valmer_control_plane/main.py`, the VS Code local
+API and the tests. The SDK middleware authenticates the caller before any route runs:
+
+- hosted, it verifies the platform-signed `X-MainSequence-Caller-Assertion`: an EdDSA signature
+  from the platform's published key, checked against the issuer, release and Environment that the
+  deployment's trusted configuration names, with a lifetime of at most five minutes;
+- locally, without hosted markers, it validates a direct `Authorization: Bearer` token against
+  `MAINSEQUENCE_ENDPOINT/api/v1/users/me/`.
+
+Routes get the caller through one dependency that calls `User.get_logged_user()`. A missing or
+invalid caller is rejected with 401, and an unavailable verifier with 503, before the route runs.
+There is no `X-User-UID` or other header fallback and no fallback to the process's own SDK
+account, and a hosted deployment cannot select local mode. The API never trusts the static-site
+iframe user field. `request.state.user` and `request.state.user_uid` are SDK compatibility
+projections that the application does not read.
+
+The workflow declares no `public_ingress`, so every route, `/health` included, needs an
+authenticated caller. If a deployment ever declared a route public, a route that needs a caller
+would still refuse the anonymous request.
+
+The installer records `app.state.mainsequence_request_identity`: `installed`, `mode`
+(`"assertion"` hosted, `"local"` otherwise) and the deployment's `FASTAPI_PUBLIC_INGRESS` pairs.
+The platform launcher (PodDeploymentOrchestrator since `3057764`) checks that declaration right
+after importing the app and refuses to serve an app without it. Installing twice on one
+application raises, so `create_app(app=...)` takes an application without request identity.
+
 ## Human Authorization
 
-FastAPI handlers read the platform-injected `request.state.user_uid`; they do not call
-`User.get_logged_user()` and do not trust the static-site iframe user field for authorization.
-
+The caller identity answers who called; the control plane still decides what that caller may do.
 Viewer access is read-only. Operators are configured explicitly through the comma-separated
 `VALMER_CONTROL_PLANE_OPERATOR_UIDS` release environment variable. An absent or empty value grants
 no operator access. Job launch behavior is fail-closed:
@@ -88,9 +117,10 @@ registered Job entrypoint.
 Successful launches produce a structured application log containing the human UID, request UID,
 Job UID, Job name, returned JobRun UID, and command-argument count.
 
-The VS Code local-review compound binds its fixed review user UID as an operator so the SDK action
-can exercise discovery and preflight locally. Production authorization remains controlled only by
-the FastAPI release environment. After the platform accepts a launch, the Jobs view links the
+The VS Code local review runs as the developer whose access token the review host sends, and that
+developer is a viewer unless the local `.env` lists their UID in
+`VALMER_CONTROL_PLANE_OPERATOR_UIDS`. Production authorization remains controlled only by the
+FastAPI release environment. After the platform accepts a launch, the Jobs view links the
 returned JobRun UID to the existing Job runs resource filtered to that exact execution; it does not
 create a second JobRun presentation or polling implementation.
 
@@ -214,10 +244,18 @@ wrapper on `127.0.0.1:8017`, starts the sibling Vite repository on
 `127.0.0.1:5187`, and opens `http://127.0.0.1:5187/`.
 
 The review host uses the installed Command Center SDK host and child protocol.
-Its short-lived local capability is accepted only by the development wrapper;
-the production FastAPI app and static-site transport are unchanged. The local
-identity is deliberately a viewer and Job launch actions remain unavailable,
-preventing a visual review from starting real platform workloads.
+The wrapper (`.vscode/control_plane_dev.py`) only adds CORS for the review origin
+around `create_app()`, so the local API authenticates as described in
+[Request Identity](#request-identity), in local mode. When the review host
+starts, its launch runs `mainsequence auth token` and the host sends that token
+as the Bearer credential; the API validates it against `MAINSEQUENCE_ENDPOINT`
+from `.env`, so the CLI session and `.env` must name the same backend.
+Development-backend access tokens last five minutes and the review host does not
+renew its token: restart `Control Plane: Vite Review Host` when requests start
+answering 401. The developer is a viewer unless `.env` lists their UID as an
+operator, so a visual review does not start real platform workloads. The launch
+waits for the API with `.vscode/wait_for_http.py`, which treats any answer below
+500 from `/health`, including that route's 401, as a started server.
 
 Backend checks:
 

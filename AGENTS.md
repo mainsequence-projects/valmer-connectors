@@ -18,6 +18,15 @@ each target by workflow file path and key, so a new file or key creates a new ta
 A push needs the Environment's hosted MetaTables API on 0.1.19 or later, because the locked 0.1.20
 client rejects an older API's runtime context. See `docs/deployment.md`.
 
+The control-plane API learns its caller only from the SDK request identity that `create_app` in
+`src/valmer_connectors/control_plane/api.py` installs once per application; route code gets the
+caller through `User.get_logged_user()`. Do not read the caller from headers or `request.state`, and
+do not add a UID-header, process-account or other unauthenticated fallback. The platform launcher
+refuses to serve the app without that installation, and hosted requests must carry the
+platform-signed caller assertion. The installed SDK 9.0.6 API-surfaces skill still describes
+launcher-injected `request.state`; the SDK 9.0.6 code and `docs/knowledge/fastapi/index.md` describe
+the current contract. See "Request Identity" in `docs/control-plane.md`.
+
 Do not remove the `<!-- mainsequence-agent-scaffold:start schema=1 source=agent_scaffold -->`
 or `<!-- mainsequence-agent-scaffold:end -->` markers. `mainsequence code-repository update AGENTS.md`
 uses them to update only the Main Sequence section below.

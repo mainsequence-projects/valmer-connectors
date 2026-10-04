@@ -56,7 +56,10 @@
   `runtime_switch_available`; against an older API `migrate-valmer` fails
   before migrating and the pipeline Jobs' updaters fail, MetaTables issue #33),
   confirm that the ms-markets deployment's migration Job has succeeded in the
-  target DataSource (the Valmer foreign keys need its tables), and push this
+  target DataSource (the Valmer foreign keys need its tables), confirm that the
+  Environment's gateway forwards the platform-signed caller assertion (the API
+  installs the SDK request identity and answers 401 to every hosted request
+  without one; see "Publishing" in `docs/deployment.md`), and push this
   backend. The workflow declares the FastAPI release by
   `source_path` and deploys it only after the `migrate-valmer` Job succeeds;
   a failed Job blocks every API deployment. Then configure the stable FastAPI
@@ -74,8 +77,24 @@
   `valmer_connectors.migrations:migration: 0001 (migrated) on <DataSource UID>`)
   before `deploy_api`, both ready active revisions, automatic deployment enabled
   with null tag policies and three retained revisions, repository-event
-  DeploymentRuns, iframe/theme verification, viewer denial, operator preflight
-  and launch, JobRun polling, and application logs.
+  DeploymentRuns, iframe/theme verification, `/api/v1/control-plane/me`
+  through the gateway returning the caller's UID and a request without a
+  release credential denied, viewer denial, operator preflight and launch,
+  JobRun polling, and application logs.
+
+## Renew the local review host's access token
+
+- Scope: the `ValmerConnectorsMonitor` local review host
+  (`src/local-review-host.tsx`) keeps returning the `VITE_LOCAL_FASTAPI_TOKEN`
+  that its VS Code launch read from `mainsequence auth token` at startup.
+  Development-backend access tokens last five minutes, so after that the local
+  API answers 401 until the host restarts. Give the host a fresh token when the
+  iframe asks for a credential, without serving tokens to anonymous callers.
+- Owning skills: `static-site` and `command-center`.
+- Expected output: a local review session keeps reading the overview after its
+  first token expires.
+- Required evidence: a local review session older than five minutes that still
+  reads the overview, and the request that obtained its current token.
 
 ## Retire the Jobs of the removed jobs workflow
 

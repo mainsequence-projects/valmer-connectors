@@ -34,6 +34,17 @@ To check the API, run `metatables runtime status` without `--local`, after
 Environment. It is a read-only request that prints the response without
 validating it; an API on 0.1.18 or older lists `runtime_switch_available`.
 
+The API installs the SDK request identity (see "Request Identity" in
+`docs/control-plane.md`). The platform's FastAPI launcher, PodDeploymentOrchestrator
+since `3057764`, refuses to start an app without it ("Application request identity
+is not installed"), and the previous revision keeps serving. Once deployed, every
+hosted request must carry the platform-signed caller assertion, so the Environment
+needs the backend's caller-assertion signing and key discovery
+(`/fastapi/caller-keys/`) and a gateway that forwards
+`X-MainSequence-Caller-Assertion`. Without them the new revision starts but every
+API request answers 401 (503 while key discovery is down); nothing falls back to
+`X-User-UID`.
+
 ```bash
 git add <reviewed paths>
 git commit -m "<specific commit message>"
