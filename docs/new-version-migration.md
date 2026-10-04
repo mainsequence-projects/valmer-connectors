@@ -45,9 +45,9 @@ Relevant repository skills:
 
 Current declared package constraints:
 
-- `mainsequence>=9.0.5,<10`
-- `mainsequence-metatable>=0.1.18,<0.2`
-- `ms-markets>=2.2.2,<3`
+- `mainsequence>=9.0.6,<10`
+- `mainsequence-metatable>=0.1.20,<0.2`
+- `ms-markets>=2.2.5,<3`
 - `streamlit>=1.58.0`
 - `xlrd>=2.0.2`
 
@@ -62,7 +62,10 @@ and `msm_command_center` and moved its provider to `msm_migrations`, and 2.2.0
 removed `msm_command_center`; this project imports none of them.
 MetaTables registers cascading foreign keys since 0.1.17, and 0.1.18 makes write
 on a table depend only on that table's own grants, so the asset-details key
-keeps the `ON DELETE CASCADE` that revision `0001` declares.
+keeps the `ON DELETE CASCADE` that revision `0001` declares. MetaTables 0.1.19
+and later run one local API per local storage directory, which
+`metatables --local` and `metatables.configure_local_client()` reach from any
+checkout. SDK 9.0.6 never replays a write request.
 
 ## Migration Status
 

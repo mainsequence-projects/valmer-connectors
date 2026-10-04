@@ -18,22 +18,34 @@
 
 ### Dependencies
 
-- Requires `mainsequence>=9.0.5,<10`, `mainsequence-metatable>=0.1.18,<0.2`
-  and `ms-markets>=2.2.2,<3`. The lock selects mainsequence 9.0.5,
-  mainsequence-metatable 0.1.18 and ms-markets 2.2.2.
+- Requires `mainsequence>=9.0.6,<10`, `mainsequence-metatable>=0.1.20,<0.2`
+  and `ms-markets>=2.2.5,<3`. The lock selects mainsequence 9.0.6,
+  mainsequence-metatable 0.1.20 and ms-markets 2.2.5.
 - MetaTables registers tables with cascading foreign keys since 0.1.17, so
   revision `0001` finalizes with its asset-details key to
   `ms_markets__asset.uid` (`ON DELETE CASCADE`): deleting an Asset deletes its
-  Valmer details row. The floor is 0.1.18 because it makes write on a table
-  depend only on that table's own grants; under 0.1.17, writing
-  `ms_markets__asset` also required write access to
-  `valmer_connectors__valmerassetdetails`.
+  Valmer details row. Since 0.1.18, write on a table depends only on that
+  table's own grants; under 0.1.17, writing `ms_markets__asset` also required
+  write access to `valmer_connectors__valmerassetdetails`.
+- MetaTables 0.1.19 runs one local API per local storage directory and
+  publishes its address and private token in `server.json` there, so
+  `metatables --local` and `metatables.configure_local_client()` reach it from
+  any checkout and commits no longer require a restart. The local API has no
+  Local/Hosted switch any more. 0.1.20 retries runtime-access requests that
+  time out and requires SDK 9.0.6.
+- SDK 9.0.6 never replays a POST, PUT, PATCH or DELETE and bounds read-only
+  retries by one timeout budget, so a control-plane Job launch is sent at most
+  once. PyJWT and cryptography are base SDK dependencies; the `server` extra is
+  gone.
 - ms-markets 2.2.2 requires MetaTables 0.1.17 and names the long
   portfolio-ledger index explicitly, so its provider applies to a new
   environment. Nothing here imports the `cli` or `command_center` packages that
   ms-markets 2.1 renamed, or what 2.2.0 removed: `msm_command_center`, the
   asset-monitor builders, pricing `response_mappings` and the `apps.v1`
-  re-export modules.
+  re-export modules. ms-markets 2.2.3 to 2.2.5 add the bulk-delete impact
+  preflight and omit unset optional fields from the bulk-action and
+  tabular-frame contracts; the control plane builds its own preflight and
+  discovery payloads with every field set and uses none of those models.
 
 ### Deployment and migrations
 
@@ -61,14 +73,17 @@
   ms-markets tables, so the Job succeeds only in a DataSource where the
   ms-markets deployment has migrated that schema.
 - The control plane lists the migration Job but refuses to launch it by hand.
-- `.gitignore` ignores `.local/`, where the MetaTables local launcher keeps its
-  private client token.
+- `.gitignore` ignores `.local/`, where the local MetaTables API records which
+  SQLite file it serves (`runtime-data-sources.json`, next to its deployment
+  configuration). Since MetaTables 0.1.19 the launcher's private client token
+  is in `server.json` in the local storage directory, outside the checkout.
 - Documentation describes publishing with `git push`:
   `mainsequence code-repository sync` only refreshes dependency files since
   SDK 9.0.5.
 
 ### Agent skills
 
-- Refreshed the SDK 9.0.5, MetaTables 0.1.18 and ms-markets 2.2.2 skills and
+- Refreshed the SDK 9.0.6, MetaTables 0.1.20 and ms-markets 2.2.5 skills and
   the managed `AGENTS.md` block. The ms-markets refresh drops the asset-monitor
-  skills that 2.2.0 removed.
+  skills that 2.2.0 removed, and the MetaTables local-development skill
+  describes the one local API per laptop.

@@ -1,13 +1,24 @@
 # Project Status
 
-Last local verification: 2026-10-03
+Last local verification: 2026-10-04
 Last complete backend lifecycle verification: 2026-08-21
 
-## Dependency And Skill Pins (Verified Locally 2026-10-03)
+## Dependency And Skill Pins (Verified Locally 2026-10-04)
 
-- Locked and installed: `mainsequence` 9.0.5, `mainsequence-metatable` 0.1.18,
-  ms-markets 2.2.2. Declared floors: `mainsequence>=9.0.5,<10`,
-  `mainsequence-metatable>=0.1.18,<0.2` and `ms-markets>=2.2.2,<3`.
+- Locked and installed: `mainsequence` 9.0.6, `mainsequence-metatable` 0.1.20,
+  ms-markets 2.2.5. Declared floors: `mainsequence>=9.0.6,<10`,
+  `mainsequence-metatable>=0.1.20,<0.2` and `ms-markets>=2.2.5,<3`. On them
+  the full suite passes (307 tests, 39 subtests), Ruff passes, and a wheel
+  built from the committed tree contains only `valmer_connectors` and declares
+  these floors.
+- SDK 9.0.6 never replays a POST, PUT, PATCH or DELETE and bounds read-only
+  retries by one timeout budget; PyJWT and cryptography are base dependencies.
+- MetaTables 0.1.19 runs one local API per local storage directory: `serve
+  --local` publishes `server.json` there, a second `serve --local` on the same
+  directory reports the running API and exits, and `--local` and
+  `configure_local_client()` work from any checkout without a restart after
+  commits. The Local/Hosted switch is gone. 0.1.20 retries timed-out
+  runtime-access requests.
 - MetaTables registers cascading foreign keys since 0.1.17, and 0.1.18 makes
   write on a table depend only on that table's own grants (0.1.17 also required
   write on every table a cascade modifies). The asset-details key to
@@ -18,10 +29,12 @@ Last complete backend lifecycle verification: 2026-08-21
   removed `msm_command_center`, the asset-monitor builders, pricing
   `response_mappings` and the `apps.v1` re-export modules. Nothing in this
   repository uses any of them. The ms-markets models the Valmer provider
-  references are unchanged since 2.1.1.
-- Skills are pinned to SDK 9.0.5, MetaTables 0.1.18 and ms-markets 2.2.2.
+  references are unchanged since 2.1.1. 2.2.3 to 2.2.5 change only the
+  bulk-delete preflight and the serialization of the bulk-action and
+  tabular-frame contracts, which this repository does not use.
+- Skills are pinned to SDK 9.0.6, MetaTables 0.1.20 and ms-markets 2.2.5.
   Platform skills (`.agents/skills/mainsequence_platform/`) are not installed.
-  The managed `AGENTS.md` block matches the SDK 9.0.5 template.
+  The managed `AGENTS.md` block matches the SDK 9.0.6 template.
 - Since SDK 9.0.5, `code-repository sync` only refreshes dependency files;
   publishing is `git commit` and `git push`, and the single workflow file
   decides what deploys. Every workflow resource declares `tag_regex: null`.
@@ -49,6 +62,13 @@ Last complete backend lifecycle verification: 2026-08-21
   validated through the branch `validate-workflow` endpoint: on 2026-10-03 the
   backend at `127.0.0.1:8000` sent an empty reply after 136 seconds, and
   earlier it listed no CodeRepositoryBranch for this repository.
+- 2026-10-04: the file is still valid offline against tdag-django
+  `5a6c9280b`. The branch `validate-workflow` route was not tried: the backend
+  at `127.0.0.1:8000` was hung.
+- The local proof below ran on MetaTables 0.1.18. It has not been repeated on
+  0.1.20: on 2026-10-04 the backend at `127.0.0.1:8000` was hung and no SDK
+  session was saved, so `metatables serve --local` could not start. The task
+  is in `.agents/tasks.md`.
 - The control plane lists the migration Job but its preflight refuses to launch
   it by hand.
 - Local proof on 2026-10-03 against a fresh, isolated MetaTables 0.1.18 SQLite

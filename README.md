@@ -119,11 +119,11 @@ Detailed guides:
 ### Requirements
 
 - CPython 3.13.x (the repository currently excludes Python 3.14)
-- A working MainSequence environment: `mainsequence>=9.0.5,<10` for identity,
+- A working MainSequence environment: `mainsequence>=9.0.6,<10` for identity,
   CodeRepository, Job, and Artifact APIs, plus the
-  `mainsequence-metatable>=0.1.18,<0.2` client (imported and run as
+  `mainsequence-metatable>=0.1.20,<0.2` client (imported and run as
   `metatables`) for MetaTables, updaters, and migrations, and
-  `ms-markets>=2.2.2,<3`
+  `ms-markets>=2.2.5,<3`
 - Access to the Valmer artifact bucket and to the Valmer benchmark CSV endpoint
 
 ### Install
@@ -169,6 +169,14 @@ metatables --local runtime initialize
 metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head
 metatables --local migrations current --provider valmer_connectors.migrations:migration
 ```
+
+The laptop runs one local MetaTables API per local storage directory
+(`METATABLES_LOCAL_STORAGE_DIR`, default `~/.local/share/metatables`).
+`metatables serve --local` publishes its address and private token in
+`server.json` there; started again from any checkout while it runs, it reports
+the running API and exits. `--local` commands and
+`metatables.configure_local_client()` connect through that file from any
+checkout, and commits or branch switches need no restart.
 
 Do not run `metatables migrations revision` during normal setup. Use
 `revision` only after changing the Valmer SQLAlchemy table contract and

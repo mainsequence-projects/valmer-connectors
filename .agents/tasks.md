@@ -1,5 +1,26 @@
 # Open Tasks
 
+## Repeat the local migration proof on MetaTables 0.1.20
+
+- Scope: on 2026-10-04 the backend at `127.0.0.1:8000` was hung and no SDK
+  session was saved, so `metatables serve --local` could not start and the
+  Valmer provider was not applied on MetaTables 0.1.20. Once
+  `mainsequence auth status` reports a session, start a local API on its own
+  `METATABLES_LOCAL_STORAGE_DIR`, a free `--port` and a scratch
+  `--configuration`, and run every `--local` command with the same
+  `METATABLES_LOCAL_STORAGE_DIR`, because `--local` reads `server.json` there.
+  Run `metatables --local runtime initialize`, apply `msm_migrations:migration`
+  first as a local stand-in for the ms-markets deployment, then
+  `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`,
+  and run `scripts/migrate_valmer.py` after `metatables.configure_local_client()`.
+- Owning skills: `metatables-local-development` and `metatables-migrations`.
+- Expected output: the upgrade finalizes the four Valmer catalog tables with
+  `failed_count: 0`, `current` reports `0001 (head)`, every catalog table is
+  `active`, and the Job script prints `0001 (already current)` and, after
+  `downgrade base`, `0001 (migrated)`.
+- Required evidence: the upgrade result, `current`, the catalog states and both
+  Job script runs.
+
 ## Verify the namespaced packages against the backend
 
 - Scope: after the first successful `migrate-valmer` Job run, read
@@ -18,8 +39,8 @@
 ## Roll valmer-connectors 0.1.47 out to consumers
 
 - Scope: move qisfactory, mexicofundcompetition and marketsanalytics to the
-  0.1.47 release together with ms-markets 2.2.2 and mainsequence-metatable
-  0.1.18. Uninstalling 0.1.46 deletes the top-level `migrations` files it shared
+  0.1.47 release together with mainsequence 9.0.6, mainsequence-metatable
+  0.1.20 and ms-markets 2.2.5. Uninstalling 0.1.46 deletes the top-level `migrations` files it shared
   with ms-markets 2.0.x; ms-markets 2.1 and later install no top-level
   `migrations` package, so upgrading both together leaves none behind.
   Consumers do not apply the Valmer or ms-markets providers; those deployments
