@@ -1,7 +1,7 @@
 schema=1
 library_name=mainsequence-metatable
 namespace=metatables
-pinned_version=0.1.18
+pinned_version=0.1.20
 skills_path=/Users/jose/mainsequence-dev/main-sequence-workbench/worktrees-mt014/valmer-connectors-64338319-bd19-48db-bf14-945d8debb9be/.venv/lib/python3.13/site-packages/metatables/_client_skills
-copied_at_utc=2026-10-03T19:47:57Z
+copied_at_utc=2026-10-04T08:35:01Z
 command=metatables copy-metatables-skills
