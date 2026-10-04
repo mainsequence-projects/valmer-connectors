@@ -75,19 +75,18 @@ Last complete backend lifecycle verification: 2026-08-21
 - 2026-10-04: the file is still valid offline against tdag-django
   `5a6c9280b`. The branch `validate-workflow` route was not tried: the backend
   at `127.0.0.1:8000` was hung.
-- The local proof below ran on MetaTables 0.1.18. It has not been repeated on
-  0.1.20: on 2026-10-04 the backend at `127.0.0.1:8000` was hung and no SDK
-  session was saved, so `metatables serve --local` could not start. The task
-  is in `.agents/tasks.md`.
 - The control plane lists the migration Job but its preflight refuses to launch
   it by hand.
-- Local proof on 2026-10-03 against a fresh, isolated MetaTables 0.1.18 SQLite
-  runtime (`metatables --local runtime initialize`: `ready`, system revision
-  `0010_cascade_targets`, DataSource `22451dae-c994-5937-a6f4-fc378592e955`),
-  at commit `75f1342`; later commits change only documentation, tests and the
-  workflow file:
-  - The runtime held the ms-markets 2.2.2 schema first (revision `0018`, 62
-    active catalog tables), standing in for the ms-markets deployment.
+- Local proof on 2026-10-04 against a fresh, isolated MetaTables 0.1.20 SQLite
+  runtime (its own `METATABLES_LOCAL_STORAGE_DIR`, `serve --local` on a free
+  port with a scratch configuration, SDK session on the development backend
+  `127.0.0.1:8000`; `metatables --local runtime initialize`: `ready`, system
+  revision `0010_cascade_targets`, DataSource
+  `5e49cce4-75e4-52bb-9e67-d792a7d345a0`), at commit `bb7b5b0`, with
+  mainsequence 9.0.6 and ms-markets 2.2.5:
+  - `msm_migrations:migration` was applied first as a local stand-in for the
+    ms-markets deployment: `finalized_count: 62`, `failed_count: 0`, `current`
+    `0018 (head)`.
   - `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`:
     Alembic ran `-> 0001, current_schema_baseline`, then `ok: True`,
     `finalized_count: 4`, `active_count: 4`, `reserved_count: 0`,
@@ -95,21 +94,20 @@ Last complete backend lifecycle verification: 2026-08-21
     `valmer_connectors__valmerassetdetails`,
     `valmer_connectors__vector_de_precios_valmer`,
     `ms_markets__index_values__t_1d`). `current` printed `0001 (head)`, and all
-    66 catalog tables were `active`.
-  - `PRAGMA foreign_key_list` and the catalog show
-    `fk__valmer_connectors__valmerassetdetails__asset_uid_cc247d13d3` as
-    `ON DELETE CASCADE`; the other three keys on Valmer-owned tables stay
-    `RESTRICT`. `MetaTable.get_impact(action="delete_rows")` on
-    `ms_markets__asset` returned `allowed: True` with no blockers, a
-    `cascade_delete` edge from the details table and a `restrict` edge from the
-    vector table.
+    66 catalog tables were `active`, none `reserved` or `failed`.
+  - `PRAGMA foreign_key_list` shows the asset-details key to
+    `ms_markets__asset.uid` as `ON DELETE CASCADE`; the other three keys on
+    Valmer-owned tables stay `RESTRICT`.
   - `scripts/migrate_valmer.py` after `metatables.configure_local_client()`
     printed `valmer_connectors.migrations:migration: 0001 (already current) on
-    22451dae-c994-5937-a6f4-fc378592e955` and exited 0. After `downgrade base`
-    (three tables `deleted`, the version table kept), it printed
-    `0001 (migrated)`, exited 0, and the four tables were `active` again.
-  - Alembic autogenerate comparison of the provider metadata with that schema:
-    no differences.
+    5e49cce4-75e4-52bb-9e67-d792a7d345a0` and exited 0. After `downgrade base`
+    (three tables `deleted`, the version table kept, `failed_count: 0`), it
+    printed `0001 (migrated)` and exited 0; `current` printed `0001 (head)`
+    and all 66 catalog tables were `active` again.
+  - The 2026-10-03 proof on MetaTables 0.1.18 (commit `75f1342`) also found
+    `MetaTable.get_impact(action="delete_rows")` on `ms_markets__asset`
+    allowed with no blockers, and no Alembic autogenerate differences; those
+    two checks were not repeated on 0.1.20.
 
 ## Wheel Packaging (Verified Locally 2026-10-03)
 
