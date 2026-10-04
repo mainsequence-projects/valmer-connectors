@@ -19,6 +19,16 @@ Last complete backend lifecycle verification: 2026-08-21
   `configure_local_client()` work from any checkout without a restart after
   commits. The Local/Hosted switch is gone. 0.1.20 retries timed-out
   runtime-access requests.
+- Hosted prerequisite, checked in the MetaTables source and offline on
+  2026-10-04: the 0.1.20 client validates `/runtime-context/` with
+  `RuntimeContext` (`extra="forbid"`), and a MetaTables API on 0.1.18 or older
+  still sends `runtime_switch_available`, `runtime_switch_error` and
+  `hosted_environment_target`. A 0.1.18-shaped payload fails with three
+  `extra_forbidden` errors
+  ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)).
+  `upgrade_application` and `TimeIndexTableUpdater.run()` read that context
+  first, so a push needs the Environment's MetaTables API on 0.1.19 or later
+  (`docs/deployment.md`, "Publishing"). Not checked against a hosted API.
 - MetaTables registers cascading foreign keys since 0.1.17, and 0.1.18 makes
   write on a table depend only on that table's own grants (0.1.17 also required
   write on every table a cascade modifies). The asset-details key to

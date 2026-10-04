@@ -179,10 +179,13 @@ The platform injects the reserved exact `VITE_COMMAND_CENTER_ORIGIN`. The static
 
 The two repositories must be released in dependency order:
 
-1. push `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI release by
-   `source_path` (`api/valmer_control_plane/main.py`) with every-commit automatic redeployment,
-   three retained revisions, and the platform's default static-site CORS policy, gates it on
-   the `migrate-valmer` Job, and declares the pipeline Jobs outside the graph;
+1. confirm that the Environment's hosted MetaTables API runs 0.1.19 or later and that the
+   ms-markets deployment's migration Job has succeeded in the same DataSource (see "Publishing"
+   in `docs/deployment.md`; against an older API `migrate-valmer` fails and the API is not
+   deployed), then push `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI
+   release by `source_path` (`api/valmer_control_plane/main.py`) with every-commit automatic
+   redeployment, three retained revisions, and the platform's default static-site CORS policy,
+   gates it on the `migrate-valmer` Job, and declares the pipeline Jobs outside the graph;
 2. confirm that the workflow run's `migrate` step succeeded before its `deploy_api` step;
 3. confirm that only one Job per pipeline Job name remains, and delete the old Jobs that are
    still bound to the removed `valmer-control-plane-jobs.yaml` (see "Cleanup After The Push"

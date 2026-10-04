@@ -45,20 +45,40 @@
   `migrations` package, so upgrading both together leaves none behind.
   Consumers do not apply the Valmer or ms-markets providers; those deployments
   migrate their own schemas.
+- Hosted prerequisite: every consumer locked to `mainsequence-metatable`
+  0.1.20 needs its Environment's hosted MetaTables API on 0.1.19 or later
+  before it is pushed. The 0.1.20 client rejects the `/runtime-context/`
+  response of an API on 0.1.18 or older, which still sends
+  `runtime_switch_available`, `runtime_switch_error` and
+  `hosted_environment_target`
+  ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)),
+  so the consumer's migration Job fails before it migrates anything and its
+  updaters fail. In each target DataSource the order is: that API on 0.1.19 or
+  later, then a succeeded ms-markets deployment migration Job, then a succeeded
+  `migrate-valmer`, then the consumer. ms-markets 2.2.5 locks the 0.1.18
+  client, which works with either API; an ms-markets deployment locked to
+  0.1.19 or later has the same prerequisite.
 - Expected output: each consumer has no top-level `migrations`, `banxico`,
   `fred`, `agents`, `cli`, `command_center` or `msm_command_center` modules,
-  and `import msm_migrations, valmer_connectors.migrations` succeeds.
+  and `import msm_migrations, valmer_connectors.migrations` succeeds; before
+  each push, `metatables runtime status` for the consumer's Environment lists
+  no `runtime_switch_available`.
 - Required evidence: the site-packages listing and the import check in each
-  consumer environment.
+  consumer environment, and the `metatables runtime status` output read before
+  each push.
 
 ## Publish and verify the two-repository control plane
 
 - Scope: validate the API 2.3.0 workflow, now the only workflow file, through
   `POST /api/v1/code-repository-branches/{uid}/validate-workflow/` (it was
   validated offline only, because the backend had no CodeRepositoryBranch for
-  this repository), confirm that the ms-markets deployment's migration Job has
-  succeeded in the target DataSource (the Valmer foreign keys need its tables),
-  and push this backend. The workflow declares the FastAPI release by
+  this repository), confirm that the Environment's hosted MetaTables API runs
+  0.1.19 or later (`metatables runtime status` lists no
+  `runtime_switch_available`; against an older API `migrate-valmer` fails
+  before migrating and the pipeline Jobs' updaters fail, MetaTables issue #33),
+  confirm that the ms-markets deployment's migration Job has succeeded in the
+  target DataSource (the Valmer foreign keys need its tables), and push this
+  backend. The workflow declares the FastAPI release by
   `source_path` and deploys it only after the `migrate-valmer` Job succeeds;
   a failed Job blocks every API deployment. Then configure the stable FastAPI
   release target for `ValmerConnectorsMonitor` and push its validated automatic
@@ -68,8 +88,10 @@
   `static-site`, and `command-center`.
 - Expected output: the embedded SDK-native control plane reads current Valmer
   state and an authorized operator can launch one approved Job.
-- Required evidence: the validate-workflow response, the ms-markets migration
-  JobRun, the workflow run with a succeeded `migrate` step (its log line
+- Required evidence: the validate-workflow response, the
+  `metatables runtime status` output read before the push, the ms-markets
+  migration JobRun, the workflow run with a succeeded `migrate` step (its log
+  line
   `valmer_connectors.migrations:migration: 0001 (migrated) on <DataSource UID>`)
   before `deploy_api`, both ready active revisions, automatic deployment enabled
   with null tag policies and three retained revisions, repository-event

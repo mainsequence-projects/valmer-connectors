@@ -67,6 +67,12 @@ and later run one local API per local storage directory, which
 `metatables --local` and `metatables.configure_local_client()` reach from any
 checkout. SDK 9.0.6 never replays a write request.
 
+The 0.1.20 client needs the Environment's hosted MetaTables API on 0.1.19 or
+later: it rejects the `/runtime-context/` response of an older API
+([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)),
+so the `migrate-valmer` Job and the updaters fail against it. Upgrade that API
+before pushing this repository; see "Publishing" in `deployment.md`.
+
 ## Migration Status
 
 | Area | Current state | Remaining validation |

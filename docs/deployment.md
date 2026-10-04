@@ -14,6 +14,26 @@ decides what deploys. It declares the control-plane FastAPI release, the
 - no step references the pipeline Jobs, so each one redeploys on every push by
   itself (see [Workflow Declarations](#workflow-declarations)).
 
+Push only after the Environment's hosted MetaTables API (the `metatables-api`
+release of the MetaTables repository) runs 0.1.19 or later, and after the
+ms-markets deployment's migration Job has succeeded in the same DataSource (see
+[Migrations](#migrations)). The `mainsequence-metatable` 0.1.20 client in this
+image validates the API's `/runtime-context/` response with a model that
+forbids unknown fields, and an API on 0.1.18 or older still sends
+`runtime_switch_available`, `runtime_switch_error` and
+`hosted_environment_target`, which 0.1.19 removed
+([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)).
+Against such an API, `migrate-valmer` fails before it migrates anything,
+`deploy_api` never runs, and the push deploys no API. The pipeline Jobs still
+take the new image, because the push applies them outside the graph, and their
+updater runs fail the same way: `TimeIndexTableUpdater.run()` reads the runtime
+context first.
+
+To check the API, run `metatables runtime status` without `--local`, after
+`mainsequence login`, from a checkout whose branch is registered in that
+Environment. It is a read-only request that prints the response without
+validating it; an API on 0.1.18 or older lists `runtime_switch_available`.
+
 ```bash
 git add <reviewed paths>
 git commit -m "<specific commit message>"
@@ -59,6 +79,17 @@ prints one line with the revision, whether it migrated, and the DataSource. A
 database already at head is left unchanged. A failed Job blocks the API
 deployment and the previous release keeps serving; fix the revision and push
 again. Redeploying an older image does not roll the schema back.
+
+The Job needs the Environment's hosted MetaTables API on 0.1.19 or later.
+`upgrade_application` reads the API's runtime context before it migrates
+anything, and the 0.1.20 client rejects the context of an API on 0.1.18 or
+older (MetaTables issue #33). The JobRun then fails with
+`3 validation errors for RuntimeContext`, `Extra inputs are not permitted` for
+`runtime_switch_available`, `runtime_switch_error` and
+`hosted_environment_target`; nothing was migrated and the API was not
+deployed. Upgrade that API, then push a new commit: a failed workflow run does
+not resume, and each commit gets its own run. Do not migrate the Environment by
+hand.
 
 The Job applies only the Valmer provider. The ms-markets schema that the Valmer
 tables reference is migrated by the ms-markets deployment, and it must be in

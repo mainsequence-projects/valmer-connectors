@@ -21,6 +21,16 @@
 - Requires `mainsequence>=9.0.6,<10`, `mainsequence-metatable>=0.1.20,<0.2`
   and `ms-markets>=2.2.5,<3`. The lock selects mainsequence 9.0.6,
   mainsequence-metatable 0.1.20 and ms-markets 2.2.5.
+- Deploying 0.1.47 requires the Environment's hosted MetaTables API on 0.1.19
+  or later; upgrade that API before pushing. The 0.1.20 client validates the
+  API's `/runtime-context/` response with a model that forbids unknown fields,
+  and an API on 0.1.18 or older still sends `runtime_switch_available`,
+  `runtime_switch_error` and `hosted_environment_target`
+  ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)).
+  Against such an API the `migrate-valmer` Job fails before it migrates
+  anything, the API is not deployed, and the pipeline Jobs, which take the new
+  image anyway, fail in their updater runs. Every consumer that locks 0.1.20
+  has the same prerequisite.
 - MetaTables registers tables with cascading foreign keys since 0.1.17, so
   revision `0001` finalizes with its asset-details key to
   `ms_markets__asset.uid` (`ON DELETE CASCADE`): deleting an Asset deletes its

@@ -24,9 +24,10 @@
 - `docs/dashboards.md`: Streamlit dashboard pages and monitoring purpose.
 - `docs/control-plane.md`: two-repository Command Center control-plane architecture, FastAPI
   contracts, Job authorization, static-site integration, release order, and verification.
-- `docs/deployment.md`: publishing with Git, the single workflow file, the
-  deployment migration Job, the cleanup of the Jobs that moved files, and
-  verification commands.
+- `docs/deployment.md`: publishing with Git and its hosted MetaTables API
+  prerequisite (0.1.19 or later), the single workflow file, the deployment
+  migration Job, the cleanup of the Jobs that moved files, and verification
+  commands.
 - `docs/new-version-migration.md`: migration status against current SDK and
   `ms-markets` architecture.
 

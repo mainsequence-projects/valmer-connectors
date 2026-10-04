@@ -15,7 +15,8 @@ Do not introduce additional historical agent-state logs.
 Declare every API, agent and Job in it, and keep its path and resource keys: the backend identifies
 each target by workflow file path and key, so a new file or key creates a new target. In
 `execution.steps` the API waits for the `migrate-valmer` Job; scheduled Jobs stay out of the graph.
-See `docs/deployment.md`.
+A push needs the Environment's hosted MetaTables API on 0.1.19 or later, because the locked 0.1.20
+client rejects an older API's runtime context. See `docs/deployment.md`.
 
 Do not remove the `<!-- mainsequence-agent-scaffold:start schema=1 source=agent_scaffold -->`
 or `<!-- mainsequence-agent-scaffold:end -->` markers. `mainsequence code-repository update AGENTS.md`

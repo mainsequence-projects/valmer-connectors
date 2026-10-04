@@ -124,6 +124,11 @@ Detailed guides:
   `mainsequence-metatable>=0.1.20,<0.2` client (imported and run as
   `metatables`) for MetaTables, updaters, and migrations, and
   `ms-markets>=2.2.5,<3`
+- For hosted runs and deployment, the Environment's MetaTables API on 0.1.19
+  or later, upgraded before this repository is pushed: the 0.1.20 client
+  rejects the runtime context of an older API
+  ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)),
+  so the `migrate-valmer` Job and the updaters fail against it
 - Access to the Valmer artifact bucket and to the Valmer benchmark CSV endpoint
 
 ### Install
@@ -151,6 +156,13 @@ database already at head is left unchanged, and a failure blocks the API
 rollout while the previous release keeps serving. Do not run
 `metatables migrations upgrade` or `downgrade` against a hosted runtime, and do
 not migrate at application startup.
+
+Push only after the Environment's hosted MetaTables API runs 0.1.19 or later.
+The 0.1.20 client rejects the `/runtime-context/` response of an API on 0.1.18
+or older, which still sends the Local/Hosted switch fields that 0.1.19 removed
+([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)),
+so `migrate-valmer` would fail before migrating anything and stop the API
+rollout. "Publishing" in `docs/deployment.md` shows how to check the API.
 
 The Job applies only the Valmer provider. The ms-markets tables that the Valmer
 tables reference are owned and migrated by the ms-markets deployment, so they
@@ -278,9 +290,10 @@ for MkDocs through `mkdocs.yml`.
   Main Sequence 6, Index-contract, migration, verification, and rollout task
 - `docs/agent-skills.md`: importing bundled Valmer Codex skills into host
   projects
-- `docs/deployment.md`: publishing, the single workflow file, the deployment
-  migration Job, the post-push cleanup of the moved Jobs, verification
-  commands, and backend follow-up
+- `docs/deployment.md`: publishing and its hosted MetaTables API
+  prerequisite, the single workflow file, the deployment migration Job, the
+  post-push cleanup of the moved Jobs, verification commands, and backend
+  follow-up
 - `CHANGELOG.md`: release notes
 - `docs/dashboards.md`: dashboards currently shipped by the project
 - `docs/control-plane.md`: FastAPI and Vite/Command Center control-plane boundary
