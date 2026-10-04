@@ -19,6 +19,8 @@ app = FastAPI(
         "Valmer Command Center static-site application."
     ),
 )
+# Mounts the routes and installs the SDK request identity once; the platform
+# launcher checks that declaration right after importing this module.
 create_app(app=app)
 
 __all__ = ["app"]

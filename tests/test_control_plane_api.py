@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib
+import json
 import os
 import pathlib
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 
+import jwt
+import msm
+import msm_pricing.bootstrap
 import pandas as pd
 import pytest
+import yaml
+from cryptography.hazmat.primitives.asymmetric import ed25519
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from metatables import MetaTable, MetaTableCompiledSQLOperation
 from msm.models import AssetTable
@@ -22,6 +34,11 @@ from mainsequence.code_repository_context import (
     CodeRepositoryContext,
     CodeRepositoryEnvironmentContextRequiredError,
     GitCodeRepositorySourceContext,
+)
+from mainsequence.server.caller_assertions import (
+    ASSERTION_HEADER,
+    ASSERTION_TYPE,
+    CallerAssertionVerifier,
 )
 from valmer_connectors.control_plane import service as control_plane_service
 from valmer_connectors.control_plane.api import _request_user_uid, create_app
@@ -48,6 +65,9 @@ from valmer_connectors.control_plane.service import (
 from valmer_connectors.data_nodes.canonical_index_values import DailyIndexValuesStorage
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
+from valmer_connectors.services.migrations import MIGRATION_WORKFLOW_PATH
+
+REPOSITORY_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class FakeControlPlaneGateway:
@@ -182,22 +202,523 @@ class FakeControlPlaneGateway:
         }
 
 
-def _client(user_uid: str, *, gateway: FakeControlPlaneGateway | None = None) -> TestClient:
-    gateway = gateway or FakeControlPlaneGateway()
-    service = ControlPlaneService(
-        gateway=gateway,
-        operator_uids={"operator-user"},
+# create_app() installs the SDK request identity, so these tests authenticate the
+# way real callers do: with a platform-signed caller assertion when hosted, and with
+# a Bearer token that MAINSEQUENCE_ENDPOINT/api/v1/users/me/ accepts locally.
+# Nothing overrides the caller dependency.
+VIEWER_UID = "9f68191a-54c2-4e3f-bd07-0f1c6dbe60e9"
+OPERATOR_UID = "f90e2937-6360-4e9b-96ac-eca8964e8213"
+RELEASE_UID = "c417f27d-8da0-49cf-8b1c-42349cea002c"
+OTHER_RELEASE_UID = "1a35c6db-5371-4f50-a983-d440ff56c507"
+HOSTED_ENVIRONMENT_UID = "d1838f05-d157-41cb-af9a-3e9509fb05b9"
+ASSERTION_ISSUER = "https://backend.example.test"
+ASSERTION_KEY_ID = "caller-key"
+LOCAL_BEARER_TOKENS = {"viewer-token": VIEWER_UID, "operator-token": OPERATOR_UID}
+LOCAL_AUTHENTICATOR_OUTAGE_TOKEN = "authenticator-outage"
+# Every variable that selects or configures the SDK's hosted (assertion) mode.
+HOSTED_RUNTIME_VARIABLES = (
+    "APP_NAME",
+    "FASTAPI_PUBLIC_BASE_URL",
+    "MAINSEQUENCE_CALLER_AUTH_MODE",
+    "MAINSEQUENCE_CALLER_ASSERTION_ISSUER",
+    "MAINSEQUENCE_CALLER_ASSERTION_JWKS_URL",
+    "MAINSEQUENCE_ORGANIZATION_ENVIRONMENT_UID",
+    "FASTAPI_PUBLIC_INGRESS",
+)
+ENTRY_MODULE = "api.valmer_control_plane.main"
+_REAL_VERIFIER_FROM_ENVIRONMENT = CallerAssertionVerifier.from_environment.__func__
+
+
+def _deployed_public_ingress() -> list[dict[str, str]]:
+    """Return the API's workflow `public_ingress`, which the platform projects as
+    FASTAPI_PUBLIC_INGRESS (an absent declaration is an empty list)."""
+    workflow = yaml.safe_load((REPOSITORY_ROOT / MIGRATION_WORKFLOW_PATH).read_text("utf-8"))
+    (api,) = [resource for resource in workflow["resources"] if resource["kind"] == "fastapi"]
+    return list(api["spec"].get("public_ingress", []))
+
+
+def _public_ingress_pairs() -> tuple[tuple[str, str], ...]:
+    return tuple((route["method"], route["path"]) for route in _deployed_public_ingress())
+
+
+def _service(gateway: object | None = None) -> ControlPlaneService:
+    return ControlPlaneService(
+        gateway=gateway or FakeControlPlaneGateway(),
+        operator_uids={OPERATOR_UID},
         now=lambda: dt.datetime(2026, 8, 30, 12, tzinfo=dt.UTC),
     )
-    app = create_app(service)
-    app.dependency_overrides[_request_user_uid] = lambda: user_uid
-    return TestClient(app)
 
 
-def test_health_is_available_for_release_checks() -> None:
-    response = TestClient(create_app(ControlPlaneService(gateway=FakeControlPlaneGateway()))).get(
-        "/health"
+class UnreachableGateway:
+    """Fails the test when a rejected request reaches a route handler."""
+
+    def __getattr__(self, name: str) -> object:
+        raise AssertionError(f"A rejected request reached the gateway ({name}).")
+
+
+class CallerAssertionAuthority:
+    """Sign caller assertions as the platform does, with a key made for the test."""
+
+    def __init__(self) -> None:
+        self.key = ed25519.Ed25519PrivateKey.generate()
+        public_key = jwt.algorithms.OKPAlgorithm.to_jwk(self.key.public_key(), as_dict=True)
+        self.jwks = {
+            "keys": [
+                {
+                    "kid": ASSERTION_KEY_ID,
+                    "alg": "EdDSA",
+                    "use": "sig",
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": public_key["x"],
+                }
+            ]
+        }
+        self.key_discovery_available = True
+
+    def fetch_jwks(self) -> dict[str, object]:
+        if not self.key_discovery_available:
+            raise RuntimeError("Caller key discovery is unavailable.")
+        return self.jwks
+
+    def sign(
+        self,
+        user_uid: str,
+        *,
+        key: ed25519.Ed25519PrivateKey | None = None,
+        **claims: object,
+    ) -> str:
+        now = int(time.time())
+        payload = {
+            "iss": ASSERTION_ISSUER,
+            "aud": f"urn:mainsequence:fapi:{RELEASE_UID}",
+            "sub": user_uid,
+            "resource_release_uid": RELEASE_UID,
+            "organization_environment_uid": HOSTED_ENVIRONMENT_UID,
+            "iat": now,
+            "nbf": now,
+            "exp": now + 120,
+            **claims,
+        }
+        return jwt.encode(
+            payload,
+            key or self.key,
+            algorithm="EdDSA",
+            headers={"kid": ASSERTION_KEY_ID, "typ": ASSERTION_TYPE},
+        )
+
+
+@pytest.fixture
+def hosted_runtime(monkeypatch) -> CallerAssertionAuthority:
+    """Project the configuration the platform gives a deployed FastAPI release.
+
+    Only the download of the platform's public key is replaced; the verifier still
+    reads its issuer, release and Environment from these variables.
+    """
+    authority = CallerAssertionAuthority()
+    for name, value in {
+        "APP_NAME": RELEASE_UID,
+        "FASTAPI_PUBLIC_BASE_URL": "https://valmer-control-plane.example.test",
+        "MAINSEQUENCE_CALLER_AUTH_MODE": "assertion",
+        "MAINSEQUENCE_CALLER_ASSERTION_ISSUER": ASSERTION_ISSUER,
+        "MAINSEQUENCE_CALLER_ASSERTION_JWKS_URL": f"{ASSERTION_ISSUER}/fastapi/caller-keys/",
+        "MAINSEQUENCE_ORGANIZATION_ENVIRONMENT_UID": HOSTED_ENVIRONMENT_UID,
+        "FASTAPI_PUBLIC_INGRESS": json.dumps(_deployed_public_ingress()),
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        CallerAssertionVerifier,
+        "from_environment",
+        classmethod(
+            lambda cls, **_kwargs: _REAL_VERIFIER_FROM_ENVIRONMENT(
+                cls, fetch_jwks=authority.fetch_jwks
+            )
+        ),
     )
+    return authority
+
+
+@pytest.fixture(scope="module")
+def users_me_endpoint():
+    """Serve a loopback MAINSEQUENCE_ENDPOINT whose /api/v1/users/me/ knows two tokens."""
+    received_authorizations: list[str] = []
+
+    class UsersMeHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - http.server handler name
+            authorization = self.headers.get("Authorization", "")
+            received_authorizations.append(authorization)
+            scheme, _, token = authorization.partition(" ")
+            if self.path != "/api/v1/users/me/":
+                status_code, body = 404, {"detail": "Not found."}
+            elif token == LOCAL_AUTHENTICATOR_OUTAGE_TOKEN:
+                status_code, body = 503, {"detail": "Authentication is unavailable."}
+            elif scheme == "Bearer" and token in LOCAL_BEARER_TOKENS:
+                status_code, body = 200, {"uid": LOCAL_BEARER_TOKENS[token], "username": token}
+            else:
+                status_code, body = 401, {"detail": "Invalid token."}
+            payload = json.dumps(body).encode()
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *_args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), UsersMeHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield SimpleNamespace(
+            url=f"http://127.0.0.1:{server.server_port}",
+            received_authorizations=received_authorizations,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.fixture
+def local_runtime(monkeypatch, users_me_endpoint) -> SimpleNamespace:
+    """Run without hosted markers: the SDK validates Bearer tokens against
+    MAINSEQUENCE_ENDPOINT, here the loopback users/me endpoint."""
+    for name in HOSTED_RUNTIME_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("MAINSEQUENCE_ENDPOINT", users_me_endpoint.url)
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    users_me_endpoint.received_authorizations.clear()
+    return users_me_endpoint
+
+
+@pytest.fixture
+def api_client(hosted_runtime):
+    """Build a TestClient for the hosted app that calls as one user."""
+
+    def build(user_uid: str, *, gateway: FakeControlPlaneGateway | None = None) -> TestClient:
+        return TestClient(
+            create_app(_service(gateway)),
+            headers={ASSERTION_HEADER: hosted_runtime.sign(user_uid)},
+        )
+
+    return build
+
+
+def _route_requests(app: FastAPI) -> list[tuple[str, str]]:
+    """One (method, path) request for every route the app mounts."""
+    requests = []
+    for route in app.routes:
+        methods = sorted(set(getattr(route, "methods", None) or ()) - {"HEAD"})
+        if methods:
+            requests.append((methods[0], route.path.replace("{job_uid}", "job-1")))
+    return requests
+
+
+JOB_RUN_REQUEST = {"selection": {"mode": "explicit", "uids": ["job-1"]}, "options": {}}
+
+
+def _assert_every_route_rejects(
+    app: FastAPI,
+    headers: dict[str, str],
+    status_code: int,
+) -> None:
+    requests = _route_requests(app)
+    assert ("GET", "/api/v1/control-plane/me") in requests
+    assert ("POST", "/api/v1/control-plane/jobs/actions/run") in requests
+    with TestClient(app) as client:
+        for method, path in requests:
+            response = client.request(
+                method,
+                path,
+                headers=headers,
+                json=JOB_RUN_REQUEST if method == "POST" else None,
+            )
+            assert response.status_code == status_code, (method, path, response.text)
+
+
+def test_hosted_app_declares_assertion_identity_and_the_deployment_public_ingress(
+    hosted_runtime,
+) -> None:
+    app = create_app(_service())
+
+    assert app.state.mainsequence_request_identity == {
+        "installed": True,
+        "mode": "assertion",
+        "public_ingress": _public_ingress_pairs(),
+    }
+    assert [middleware.cls.__name__ for middleware in app.user_middleware] == [
+        "_RequestIdentityMiddleware"
+    ]
+
+
+def test_hosted_markers_select_assertion_mode_without_an_explicit_mode(
+    hosted_runtime,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("MAINSEQUENCE_CALLER_AUTH_MODE")
+
+    assert os.environ["FASTAPI_PUBLIC_BASE_URL"]
+    assert os.environ["MAINSEQUENCE_CALLER_ASSERTION_ISSUER"]
+    assert create_app(_service()).state.mainsequence_request_identity["mode"] == "assertion"
+
+
+def test_local_app_declares_local_identity(local_runtime) -> None:
+    app = create_app(_service())
+
+    assert app.state.mainsequence_request_identity == {
+        "installed": True,
+        "mode": "local",
+        "public_ingress": (),
+    }
+
+
+def test_the_deployment_declares_no_public_route() -> None:
+    """Every route reads or acts on platform state for a known caller."""
+    assert _deployed_public_ingress() == []
+    assert _public_ingress_pairs() == ()
+
+
+@pytest.mark.parametrize(
+    ("environment", "error"),
+    [
+        (
+            {"FASTAPI_PUBLIC_BASE_URL": "https://valmer-control-plane.example.test"},
+            "Trusted runtime target configuration is invalid",
+        ),
+        (
+            {"APP_NAME": RELEASE_UID, "MAINSEQUENCE_CALLER_AUTH_MODE": "local"},
+            "Invalid caller authentication mode",
+        ),
+    ],
+    ids=["hosted-without-trust-configuration", "hosted-asking-for-local-mode"],
+)
+def test_hosted_app_without_caller_verification_fails_at_creation(
+    monkeypatch,
+    environment: dict[str, str],
+    error: str,
+) -> None:
+    for name in HOSTED_RUNTIME_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+
+    with pytest.raises(RuntimeError, match=error):
+        create_app(_service(UnreachableGateway()))
+
+
+def test_each_created_app_installs_request_identity_exactly_once(local_runtime) -> None:
+    first = create_app(_service())
+    second = create_app(_service())
+
+    for app in (first, second):
+        assert app.state.mainsequence_request_identity["installed"] is True
+        assert [middleware.cls.__name__ for middleware in app.user_middleware] == [
+            "_RequestIdentityMiddleware"
+        ]
+    with pytest.raises(RuntimeError, match="already installed"):
+        create_app(_service(), app=first)
+
+
+def test_deployed_entry_module_installs_request_identity(hosted_runtime, monkeypatch) -> None:
+    """The launcher imports the workflow's source_path and checks the app it exports."""
+    # Both need a MetaTables runtime and are unrelated to caller identity.
+    monkeypatch.setattr(msm, "start_engine", lambda **_kwargs: None)
+    monkeypatch.setattr(msm_pricing.bootstrap, "attach_pricing_schemas", lambda **_kwargs: None)
+    monkeypatch.delitem(sys.modules, ENTRY_MODULE, raising=False)
+    try:
+        entry_module = importlib.import_module(ENTRY_MODULE)
+        first_app = entry_module.app
+        reloaded_app = importlib.reload(entry_module).app
+    finally:
+        sys.modules.pop(ENTRY_MODULE, None)
+
+    assert reloaded_app is not first_app
+    for app in (first_app, reloaded_app):
+        assert app.state.mainsequence_request_identity == {
+            "installed": True,
+            "mode": "assertion",
+            "public_ingress": _public_ingress_pairs(),
+        }
+
+
+def test_platform_launcher_accepts_the_hosted_app(hosted_runtime) -> None:
+    """Run PodDeploymentOrchestrator's own startup check where it is installed."""
+    launcher = pytest.importorskip(
+        "pod_orchestrator.fastapi_auth",
+        reason="PodDeploymentOrchestrator is not installed in this environment.",
+    )
+    public_ingress = tuple(
+        (route["method"], route["path"])
+        for route in json.loads(os.environ["FASTAPI_PUBLIC_INGRESS"])
+    )
+
+    with pytest.raises(RuntimeError, match="not installed"):
+        launcher.require_request_identity(FastAPI(), public_ingress=public_ingress)
+    launcher.require_request_identity(create_app(_service()), public_ingress=public_ingress)
+
+
+def test_hosted_handlers_see_the_caller_of_the_signed_assertion(hosted_runtime) -> None:
+    with TestClient(create_app(_service())) as client:
+        viewer = client.get(
+            "/api/v1/control-plane/me",
+            headers={
+                ASSERTION_HEADER: hosted_runtime.sign(VIEWER_UID),
+                "X-User-UID": OPERATOR_UID,
+            },
+        )
+        operator = client.get(
+            "/api/v1/control-plane/me",
+            headers={ASSERTION_HEADER: hosted_runtime.sign(OPERATOR_UID)},
+        )
+
+    assert viewer.status_code == 200
+    assert viewer.json() == {"uid": VIEWER_UID, "role": "viewer"}
+    assert operator.status_code == 200
+    assert operator.json() == {"uid": OPERATOR_UID, "role": "operator"}
+
+
+def _expired_assertion(authority: CallerAssertionAuthority) -> dict[str, str]:
+    issued_at = int(time.time()) - 600
+    return {
+        ASSERTION_HEADER: authority.sign(
+            OPERATOR_UID, iat=issued_at, nbf=issued_at, exp=issued_at + 120
+        )
+    }
+
+
+HOSTED_REJECTIONS = {
+    "no-credentials": lambda authority: {},
+    "user-uid-header-only": lambda authority: {"X-User-UID": OPERATOR_UID},
+    "bearer-token-only": lambda authority: {"Authorization": "Bearer operator-token"},
+    "malformed-assertion": lambda authority: {ASSERTION_HEADER: "not-a-caller-assertion"},
+    "expired-assertion": _expired_assertion,
+    "assertion-for-another-release": lambda authority: {
+        ASSERTION_HEADER: authority.sign(
+            OPERATOR_UID,
+            aud=f"urn:mainsequence:fapi:{OTHER_RELEASE_UID}",
+            resource_release_uid=OTHER_RELEASE_UID,
+        )
+    },
+    "assertion-signed-by-an-untrusted-key": lambda authority: {
+        ASSERTION_HEADER: authority.sign(
+            OPERATOR_UID,
+            key=ed25519.Ed25519PrivateKey.generate(),
+        )
+    },
+    "numeric-user-id-beside-a-valid-assertion": lambda authority: {
+        ASSERTION_HEADER: authority.sign(OPERATOR_UID),
+        "X-User-ID": "42",
+    },
+}
+
+
+@pytest.mark.parametrize("case", sorted(HOSTED_REJECTIONS))
+def test_hosted_app_rejects_a_missing_or_invalid_caller_on_every_route(
+    hosted_runtime,
+    case: str,
+) -> None:
+    app = create_app(_service(UnreachableGateway()))
+
+    _assert_every_route_rejects(app, HOSTED_REJECTIONS[case](hosted_runtime), 401)
+
+
+def test_hosted_caller_key_outage_answers_503_without_a_fallback(hosted_runtime) -> None:
+    hosted_runtime.key_discovery_available = False
+    app = create_app(_service(UnreachableGateway()))
+
+    _assert_every_route_rejects(
+        app,
+        {ASSERTION_HEADER: hosted_runtime.sign(OPERATOR_UID), "X-User-UID": OPERATOR_UID},
+        503,
+    )
+
+
+def test_local_handlers_see_the_caller_of_a_valid_bearer_token(local_runtime) -> None:
+    with TestClient(create_app(_service())) as client:
+        viewer = client.get(
+            "/api/v1/control-plane/me", headers={"Authorization": "Bearer viewer-token"}
+        )
+        operator = client.get(
+            "/api/v1/control-plane/me", headers={"Authorization": "Bearer operator-token"}
+        )
+
+    assert viewer.status_code == 200
+    assert viewer.json() == {"uid": VIEWER_UID, "role": "viewer"}
+    assert operator.status_code == 200
+    assert operator.json() == {"uid": OPERATOR_UID, "role": "operator"}
+    assert local_runtime.received_authorizations == [
+        "Bearer viewer-token",
+        "Bearer operator-token",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("headers", "status_code"),
+    [
+        ({}, 401),
+        ({"X-User-UID": OPERATOR_UID}, 401),
+        ({"Authorization": "Bearer unknown-token"}, 401),
+        ({"Authorization": "Basic b3BlcmF0b3I6c2VjcmV0"}, 401),
+        ({"Authorization": "Bearer viewer-token", "X-User-UID": OPERATOR_UID}, 401),
+        ({"Authorization": f"Bearer {LOCAL_AUTHENTICATOR_OUTAGE_TOKEN}"}, 503),
+    ],
+    ids=[
+        "no-credentials",
+        "user-uid-header-only",
+        "unknown-token",
+        "not-a-bearer-token",
+        "user-uid-header-conflicting-with-the-token",
+        "authenticator-outage",
+    ],
+)
+def test_local_app_rejects_a_missing_or_invalid_caller_on_every_route(
+    local_runtime,
+    headers: dict[str, str],
+    status_code: int,
+) -> None:
+    app = create_app(_service(UnreachableGateway()))
+
+    _assert_every_route_rejects(app, headers, status_code)
+
+
+def test_a_route_reached_without_a_caller_refuses_the_request(monkeypatch, hosted_runtime) -> None:
+    """Public admission lets an anonymous request through; a route that needs a
+    caller still refuses it, and the app mirrors whatever the deployment declares."""
+    overview = {"method": "GET", "path": "/api/v1/control-plane/overview"}
+    health = {"method": "GET", "path": "/health"}
+    monkeypatch.setenv("FASTAPI_PUBLIC_INGRESS", json.dumps([overview, health]))
+    app = create_app(_service(UnreachableGateway()))
+    anonymous = {"X-Public-Ingress": "1"}
+
+    with TestClient(app) as client:
+        public_overview = client.get(overview["path"], headers=anonymous)
+        public_health = client.get(health["path"], headers=anonymous)
+        protected = client.get("/api/v1/control-plane/me", headers=anonymous)
+
+    assert app.state.mainsequence_request_identity["public_ingress"] == (
+        ("GET", overview["path"]),
+        ("GET", health["path"]),
+    )
+    assert public_overview.status_code == 401
+    assert public_overview.json() == {
+        "detail": "The platform-authenticated request user is unavailable."
+    }
+    assert public_health.status_code == 200
+    assert protected.status_code == 401
+
+
+def test_caller_dependency_rejects_outside_an_authenticated_request() -> None:
+    with pytest.raises(HTTPException) as rejected:
+        _request_user_uid()
+
+    assert rejected.value.status_code == 401
+
+
+def test_health_answers_an_authenticated_caller(api_client) -> None:
+    with api_client(VIEWER_UID) as client:
+        response = client.get("/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "valmer-control-plane"}
@@ -318,8 +839,8 @@ def test_job_launch_profile_is_resolved_from_execution_path() -> None:
     assert _job_launch_profile(unconfigured) is None
 
 
-def test_authenticated_overview_and_resource_collection() -> None:
-    with _client("viewer-user") as client:
+def test_authenticated_overview_and_resource_collection(api_client) -> None:
+    with api_client(VIEWER_UID) as client:
         overview = client.get("/api/v1/control-plane/overview")
         products = client.get(
             "/api/v1/control-plane/data-products",
@@ -769,8 +1290,8 @@ def test_pricing_target_query_requests_the_complete_persisted_relation(
     }
 
 
-def test_job_discovery_is_authorized_per_human() -> None:
-    with _client("viewer-user") as viewer, _client("operator-user") as operator:
+def test_job_discovery_is_authorized_per_human(api_client) -> None:
+    with api_client(VIEWER_UID) as viewer, api_client(OPERATOR_UID) as operator:
         viewer_payload = viewer.get("/api/v1/control-plane/jobs/discovery/").json()
         operator_payload = operator.get("/api/v1/control-plane/jobs/discovery/").json()
 
@@ -779,10 +1300,10 @@ def test_job_discovery_is_authorized_per_human() -> None:
     assert operator_payload["bulk_actions"][0]["selection_modes"] == ["explicit"]
 
 
-def test_viewer_cannot_execute_job_action() -> None:
+def test_viewer_cannot_execute_job_action(api_client) -> None:
     payload = {"selection": {"mode": "explicit", "uids": ["job-1"]}, "options": {}}
 
-    with _client("viewer-user") as client:
+    with api_client(VIEWER_UID) as client:
         preflight = client.post(
             "/api/v1/control-plane/jobs/actions/run/preflight", json=payload
         )
@@ -793,11 +1314,11 @@ def test_viewer_cannot_execute_job_action() -> None:
     assert execution.status_code == 403
 
 
-def test_operator_preflights_and_launches_one_branch_job() -> None:
+def test_operator_preflights_and_launches_one_branch_job(api_client) -> None:
     gateway = FakeControlPlaneGateway()
     payload = {"selection": {"mode": "explicit", "uids": ["job-1"]}, "options": {}}
 
-    with _client("operator-user", gateway=gateway) as client:
+    with api_client(OPERATOR_UID, gateway=gateway) as client:
         preflight = client.post(
             "/api/v1/control-plane/jobs/actions/run/preflight", json=payload
         )
@@ -807,14 +1328,14 @@ def test_operator_preflights_and_launches_one_branch_job() -> None:
     assert preflight.json()["allowed"] is True
     assert execution.status_code == 202
     assert execution.json()["job_run_uid"] == "run-2"
-    assert execution.json()["requested_by_user_uid"] == "operator-user"
+    assert execution.json()["requested_by_user_uid"] == OPERATOR_UID
     assert gateway.launched_job_uids == ["job-1"]
     assert gateway.launched_command_args == [
         ["--force-pricing-details-patch", "--no-bypass-vector-cursor-filter"]
     ]
 
 
-def test_unprofiled_branch_job_is_parameterless_and_launchable() -> None:
+def test_unprofiled_branch_job_is_parameterless_and_launchable(api_client) -> None:
     class DynamicJobsGateway(FakeControlPlaneGateway):
         def jobs(self) -> list[dict[str, object]]:
             return [
@@ -842,7 +1363,7 @@ def test_unprofiled_branch_job_is_parameterless_and_launchable() -> None:
         "options": {},
     }
 
-    with _client("operator-user", gateway=gateway) as client:
+    with api_client(OPERATOR_UID, gateway=gateway) as client:
         parameters = client.get(
             "/api/v1/control-plane/jobs/job-dynamic/run-parameters"
         )
@@ -859,7 +1380,7 @@ def test_unprofiled_branch_job_is_parameterless_and_launchable() -> None:
     assert gateway.launched_command_args == [[]]
 
 
-def test_deployment_migration_job_is_listed_but_never_launched_by_hand() -> None:
+def test_deployment_migration_job_is_listed_but_never_launched_by_hand(api_client) -> None:
     class MigrationJobGateway(FakeControlPlaneGateway):
         def jobs(self) -> list[dict[str, object]]:
             return [
@@ -887,7 +1408,7 @@ def test_deployment_migration_job_is_listed_but_never_launched_by_hand() -> None
         "options": {},
     }
 
-    with _client("operator-user", gateway=gateway) as client:
+    with api_client(OPERATOR_UID, gateway=gateway) as client:
         listing = client.get("/api/v1/control-plane/jobs")
         preflight = client.post(
             "/api/v1/control-plane/jobs/actions/run/preflight", json=payload
@@ -906,8 +1427,8 @@ def test_deployment_migration_job_is_listed_but_never_launched_by_hand() -> None
     assert gateway.launched_job_uids == []
 
 
-def test_job_run_parameters_expose_runtime_controls_not_metatable_selection() -> None:
-    with _client("operator-user") as client:
+def test_job_run_parameters_expose_runtime_controls_not_metatable_selection(api_client) -> None:
+    with api_client(OPERATOR_UID) as client:
         response = client.get("/api/v1/control-plane/jobs/job-3/run-parameters")
 
     assert response.status_code == 200
@@ -921,11 +1442,11 @@ def test_job_run_parameters_expose_runtime_controls_not_metatable_selection() ->
     assert "fixed by the repository configuration" in payload["configuration_summary"]
 
 
-def test_metatable_job_preflight_validates_the_repository_configured_source() -> None:
+def test_metatable_job_preflight_validates_the_repository_configured_source(api_client) -> None:
     gateway = FakeControlPlaneGateway()
     payload = {"selection": {"mode": "explicit", "uids": ["job-3"]}, "options": {}}
 
-    with _client("operator-user", gateway=gateway) as client:
+    with api_client(OPERATOR_UID, gateway=gateway) as client:
         response = client.post(
             "/api/v1/control-plane/jobs/actions/run/preflight", json=payload
         )
@@ -935,7 +1456,7 @@ def test_metatable_job_preflight_validates_the_repository_configured_source() ->
     assert gateway.validated_metatable_sources == 1
 
 
-def test_job_launch_forwards_only_catalogued_command_arguments() -> None:
+def test_job_launch_forwards_only_catalogued_command_arguments(api_client) -> None:
     gateway = FakeControlPlaneGateway()
     payload = {
         "selection": {"mode": "explicit", "uids": ["job-1"]},
@@ -945,7 +1466,7 @@ def test_job_launch_forwards_only_catalogued_command_arguments() -> None:
         },
     }
 
-    with _client("operator-user", gateway=gateway) as client:
+    with api_client(OPERATOR_UID, gateway=gateway) as client:
         response = client.post("/api/v1/control-plane/jobs/actions/run", json=payload)
 
     assert response.status_code == 202
@@ -1000,12 +1521,12 @@ def test_launch_accepts_platform_response_without_run_status() -> None:
     assert result.status == "ACCEPTED"
 
 
-def test_operator_cannot_launch_an_already_running_job() -> None:
+def test_operator_cannot_launch_an_already_running_job(api_client) -> None:
     gateway = FakeControlPlaneGateway()
     gateway.job_status = "running"
     payload = {"selection": {"mode": "explicit", "uids": ["job-1"]}, "options": {}}
 
-    with _client("operator-user", gateway=gateway) as client:
+    with api_client(OPERATOR_UID, gateway=gateway) as client:
         response = client.post("/api/v1/control-plane/jobs/actions/run", json=payload)
 
     assert response.status_code == 409

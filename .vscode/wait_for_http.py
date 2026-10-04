@@ -16,13 +16,21 @@ def main() -> int:
     deadline = time.monotonic() + float(sys.argv[2])
     last_error: Exception | None = None
     while time.monotonic() < deadline:
+        status: int | None = None
         try:
             with urllib.request.urlopen(url, timeout=1) as response:  # noqa: S310
-                if response.status < 500:
-                    print(f"Ready: {url}")
-                    return 0
+                status = response.status
+        except urllib.error.HTTPError as exc:
+            # Any answer below 500 means the server is up, including the 401 of a
+            # route that needs an authenticated caller.
+            status = exc.code
+            last_error = exc
+            exc.close()
         except (OSError, urllib.error.URLError) as exc:
             last_error = exc
+        if status is not None and status < 500:
+            print(f"Ready: {url} (HTTP {status})")
+            return 0
         time.sleep(0.25)
 
     detail = f": {last_error}" if last_error else ""

@@ -5,6 +5,8 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 
+from mainsequence.client import RequestIdentityError, User
+from mainsequence.server.fastapi import install_request_identity
 from valmer_connectors.control_plane.models import (
     BulkActionExecution,
     BulkActionPreflight,
@@ -31,14 +33,20 @@ def _service(request: Request) -> ControlPlaneService:
     return request.app.state.control_plane_service
 
 
-def _request_user_uid(request: Request) -> str:
-    user_uid = str(getattr(request.state, "user_uid", "") or "").strip()
-    if not user_uid:
+def _request_user_uid() -> str:
+    """Return the UID of the caller the SDK request identity authenticated.
+
+    The middleware that `create_app` installs rejects an unauthenticated request
+    before any handler runs. This check still refuses a request that reaches a
+    route without a bound caller, such as one the deployment declares public.
+    """
+    try:
+        return User.get_logged_user().uid
+    except RequestIdentityError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="The platform-authenticated request user is unavailable.",
-        )
-    return user_uid
+        ) from exc
 
 
 Service = Annotated[ControlPlaneService, Depends(_service)]
@@ -50,6 +58,11 @@ def create_app(
     *,
     app: FastAPI | None = None,
 ) -> FastAPI:
+    """Mount the control plane on `app`, or on a new application, and return it.
+
+    Every call installs the SDK request identity on the application it builds, so
+    pass an `app` that has none yet; installing it twice raises.
+    """
     app = app or FastAPI(
         title="Valmer Control Plane API",
         version="1.0.0",
@@ -260,6 +273,11 @@ def create_app(
     ) -> LaunchResponse:
         return service.launch(user_uid, payload)
 
+    # Once, after the routes are mounted. The SDK verifies each request's caller
+    # (the platform's signed caller assertion when hosted, a direct Bearer token
+    # against MAINSEQUENCE_ENDPOINT locally), binds it for User.get_logged_user()
+    # and records the declaration the platform launcher checks before serving.
+    install_request_identity(app)
     return app
 
 
