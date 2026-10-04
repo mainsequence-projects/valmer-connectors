@@ -8,8 +8,6 @@
   `mainsequence refresh-token`.
 - Refresh the SDK/platform skill scaffold, then sync the current repository
   head and build a CodeRepository image.
-- Migrate the legacy root `scheduled_jobs.yaml` declaration to the canonical
-  `.mainsequence/workflows/` contract before publishing scheduled jobs.
 - Re-run backend verification with `code-repository current`, `jobs list`,
   `metatables code-repository time-index-table-updates list`, `resources list`,
   `images list`, and

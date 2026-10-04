@@ -106,9 +106,10 @@ persisted MXN quotes + same-date TIIE + same-date SOFR
   - `valmer-connectors curves update-usd-mxn-xccy`
 - Matching scripts and VS Code launch configurations exist, including the
   government-curve rebuild from persisted vector observations.
-- `scheduled_jobs.yaml` runs MXN quotes at 13:00 UTC, USD quotes at 13:05,
-  TIIE at 13:10, SOFR at 13:15, XCCY at 13:20, and the government curve at
-  13:25 on weekdays.
+- The schedule lives in `.mainsequence/workflows/valmer-control-plane-api.yaml`:
+  `standard-pipeline-refresh` runs the complete dependency-ordered refresh at
+  13:00 UTC on weekdays. The legacy root `scheduled_jobs.yaml`, which staggered
+  the steps from 13:00 to 13:25 UTC, was removed.
 
 ## Migration and Data-Cutover Evidence
 
