@@ -15,64 +15,67 @@
 - Required evidence: the migration JobRun log, `current` output, updater
   exits, before/after governed row counts, and the updater record list.
 
-## Roll valmer-connectors 0.1.47 out to consumers
+## Roll valmer-connectors 0.1.48 out to consumers
 
-- Scope: move qisfactory, mexicofundcompetition and marketsanalytics to the
-  0.1.47 release together with mainsequence 9.0.6, mainsequence-metatable
-  0.1.20 and ms-markets 2.2.5. Uninstalling 0.1.46 deletes the top-level `migrations` files it shared
-  with ms-markets 2.0.x; ms-markets 2.1 and later install no top-level
-  `migrations` package, so upgrading both together leaves none behind.
-  Consumers do not apply the Valmer or ms-markets providers; those deployments
-  migrate their own schemas.
-- Hosted prerequisite: every consumer locked to `mainsequence-metatable`
-  0.1.20 needs its Environment's hosted MetaTables API on 0.1.19 or later
-  before it is pushed. The 0.1.20 client rejects the `/runtime-context/`
-  response of an API on 0.1.18 or older, which still sends
-  `runtime_switch_available`, `runtime_switch_error` and
-  `hosted_environment_target`
-  ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)),
-  so the consumer's migration Job fails before it migrates anything and its
-  updaters fail. In each target DataSource the order is: that API on 0.1.19 or
-  later, then a succeeded ms-markets deployment migration Job, then a succeeded
-  `migrate-valmer`, then the consumer. ms-markets 2.2.5 locks the 0.1.18
-  client, which works with either API; an ms-markets deployment locked to
-  0.1.19 or later has the same prerequisite.
-- Expected output: each consumer has no top-level `migrations`, `banxico`,
-  `fred`, `agents`, `cli`, `command_center` or `msm_command_center` modules,
-  and `import msm_migrations, valmer_connectors.migrations` succeeds; before
-  each push, `metatables runtime status` for the consumer's Environment lists
-  no `runtime_switch_available`.
-- Required evidence: the site-packages listing and the import check in each
-  consumer environment, and the `metatables runtime status` output read before
-  each push.
+- Scope: once `main` and the `v0.1.48` tag are pushed, move the three
+  consumers to the commit that tag names, together with mainsequence 9.0.22,
+  mainsequence-metatable 0.1.34 and ms-markets 2.2.10. 0.1.47 was tagged
+  locally only and never published, so every consumer moves from 0.1.46 or
+  an unpublished 0.1.47 build.
+  - mexicofundcompetition: its `[tool.uv.sources]` git source has no `rev`
+    and locks `926dce6` (0.1.46). Set
+    `rev = "<v0.1.48 commit>"` and run
+    `uv lock --upgrade-package valmer-connectors`.
+  - qisfactory: replace the sibling `path` source of its `fixed-income-mx`
+    extra with the same pinned git source, raise the extra to
+    `valmer-connectors>=0.1.48`, and keep `--extra fixed-income-mx` in the
+    `requirements.txt` export.
+  - marketsanalytics: rebuild the vendored wheel from the `v0.1.48` commit as
+    its `vendor/README.md` describes, and raise its floor to 0.1.48.
+  Uninstalling 0.1.46 deletes the top-level `migrations` files it shared with
+  ms-markets 2.0.x; ms-markets 2.1 and later install no top-level `migrations`
+  package. Consumers do not apply the Valmer or ms-markets providers; those
+  deployments migrate their own schemas.
+- Hosted prerequisite: the consumer's Environment runs MetaTables 0.1.34 and
+  ms-markets 2.2.10, and in its DataSource the ms-markets migration and then
+  `migrate-valmer` have succeeded before the consumer is pushed.
+- Expected output: each consumer locks valmer-connectors 0.1.48 from that
+  commit, `import msm_migrations, valmer_connectors.migrations` succeeds, and
+  no top-level `migrations`, `banxico`, `fred`, `agents`, `cli`,
+  `command_center` or `msm_command_center` module is installed.
+- Required evidence: each consumer's `uv.lock` entry and `requirements.txt`
+  line, the site-packages listing and import check, and for marketsanalytics
+  the wheel's SHA-256.
 
 ## Publish and verify the two-repository control plane
 
-- Scope: validate the API 2.3.0 workflow, now the only workflow file, through
-  `POST /api/v1/code-repository-branches/{uid}/validate-workflow/` (it was
-  validated offline only, because the backend had no CodeRepositoryBranch for
-  this repository), confirm that the Environment's hosted MetaTables API runs
-  0.1.19 or later (`metatables runtime status` lists no
-  `runtime_switch_available`; against an older API `migrate-valmer` fails
-  before migrating and the pipeline Jobs' updaters fail, MetaTables issue #33),
-  confirm that the ms-markets deployment's migration Job has succeeded in the
-  target DataSource (the Valmer foreign keys need its tables), confirm that the
-  Environment's gateway forwards the platform-signed caller assertion (the API
-  installs the SDK request identity and answers 401 to every hosted request
-  without one; see "Publishing" in `docs/deployment.md`), and push this
-  backend. The workflow declares the FastAPI release by
-  `source_path` and deploys it only after the `migrate-valmer` Job succeeds;
-  a failed Job blocks every API deployment. Then configure the stable FastAPI
-  release target for `ValmerConnectorsMonitor` and push its validated automatic
-  Vite static-site declaration. Navigation placement remains a separate
-  explicit human grant.
+- Scope: the API 2.3.0 workflow, the only workflow file, validates through
+  `POST /api/v1/code-repository-branches/{uid}/validate-workflow/` (2026-10-11).
+  Before the push, confirm that the Environment's MetaTables API runs 0.1.34
+  (`metatables runtime status`: system revision `0012_table_creator`, nothing
+  pending), that its ms-markets deployment runs 2.2.10 and its migration Job
+  has succeeded in the target DataSource (the Valmer foreign keys need its
+  tables), that the `valmer_connectors` namespace exists and the Valmer Team
+  holds Writer on it and on `mainsequence.markets`, and that the gateway
+  forwards the platform-signed caller assertion (see "Publishing" and "Teams
+  And Namespaces" in `docs/deployment.md`). The push needs a person the
+  platform resolves (a linked GitHub account), because every workload
+  declares view on the `MetaTables` repository's branch. While the candidate
+  image builds, add the workload Users of the seventeen Jobs the push creates,
+  `migrate-valmer` first, and of the API to the Team; otherwise
+  `migrate-valmer` fails with `namespace_not_writable` and blocks the API.
+  Then point `ValmerConnectorsMonitor` at the release by repository and key
+  and push its static-site declaration. Navigation placement remains a
+  separate explicit human grant.
 - Owning skills: `mainsequence-command-center-fastapi`, `resource-release`,
   `static-site`, and `command-center`.
 - Expected output: the embedded SDK-native control plane reads current Valmer
   state and an authorized operator can launch one approved Job.
 - Required evidence: the validate-workflow response, the
   `metatables runtime status` output read before the push, the ms-markets
-  migration JobRun, the workflow run with a succeeded `migrate` step (its log
+  migration JobRun, the Team's members and namespace grants, the workflow
+  action's granted `access` entries, the workflow run with a succeeded
+  `migrate` step (its log
   line
   `valmer_connectors.migrations:migration: 0001 (migrated) on <DataSource UID>`)
   before `deploy_api`, both ready active revisions, automatic deployment enabled
@@ -81,6 +84,24 @@
   through the gateway returning the caller's UID and a request without a
   release credential denied, viewer denial, operator preflight and launch,
   JobRun polling, and application logs.
+
+## Give the pipeline Jobs their source credentials
+
+- Scope: the source Jobs read objects that the workflow does not declare:
+  the Secrets `FRED_API_KEY`, `BANXICO_TOKEN`, `VALMER_ONEDRIVE_TENANT_ID`,
+  `VALMER_ONEDRIVE_CLIENT_ID` and `VALMER_ONEDRIVE_CLIENT_SECRET`, the Constant
+  `VALMER_ONEDRIVE_DRIVE_ID`, the Bucket `Hitorical Valmer Vector Analytico`
+  with the vector Artifacts, and the registered MetaTable
+  `dbo.vector_precios_gubernamental_pip_vista`. On 2026-10-11 Production had
+  none of them. Create each where it belongs, then grant each Job's workload
+  User view as "Objects Outside MetaTables" in `docs/deployment.md` lists.
+  Until then those Jobs, and the scheduled standard pipeline, fail at their
+  first source read.
+- Owning skill: `mainsequence-access-control-and-sharing`.
+- Expected output: every source Job and one scheduled standard-pipeline run
+  succeed, and the control plane's preflight for `vector-metatable-refresh`
+  passes its one-row probe.
+- Required evidence: the grants, and one succeeded JobRun per source Job.
 
 ## Renew the local review host's access token
 
@@ -98,13 +119,14 @@
 
 ## Retire the Jobs of the removed jobs workflow
 
-- Scope: after the push, make sure the sixteen Jobs still bound to the removed
-  `.mainsequence/workflows/valmer-control-plane-jobs.yaml` are gone. A backend
+- Scope: after the push, make sure no Job is still bound to the removed
+  `.mainsequence/workflows/valmer-control-plane-jobs.yaml`. A backend
   running ADR-077 deletes them in the push's workflow action; delete any that
   remain by hand (Main Sequence UI or `DELETE /api/v1/jobs/{uid}/`). Their
   JobRuns are deleted with them, so record any run worth keeping before the
   push. The keys and names are in `docs/deployment.md`, "Cleanup After The
-  Push".
+  Push". On 2026-10-11 the Production branch had none of these Jobs, so its
+  push should delete nothing.
 - Owning skill: `mainsequence-orchestration-and-releases`.
 - Expected output: one Job per pipeline Job name plus `Valmer migrations`, all
   declared by `valmer-control-plane-api.yaml`, and one standard-pipeline run

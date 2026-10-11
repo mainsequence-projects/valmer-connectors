@@ -1,34 +1,36 @@
 # Project Status
 
-Last local verification: 2026-10-04
+Last local verification: 2026-10-11
 Last complete backend lifecycle verification: 2026-08-21
 
-## Dependency And Skill Pins (Verified Locally 2026-10-04)
+## Dependency And Skill Pins (Verified Locally 2026-10-11)
 
-- Locked and installed: `mainsequence` 9.0.6, `mainsequence-metatable` 0.1.20,
-  ms-markets 2.2.5. Declared floors: `mainsequence>=9.0.6,<10`,
-  `mainsequence-metatable>=0.1.20,<0.2` and `ms-markets>=2.2.5,<3`. On them
-  the full suite passes (308 tests, 39 subtests), Ruff passes, and a wheel
-  built from the committed tree contains only `valmer_connectors` and declares
-  these floors.
-- SDK 9.0.6 never replays a POST, PUT, PATCH or DELETE and bounds read-only
-  retries by one timeout budget; PyJWT and cryptography are base dependencies.
-- MetaTables 0.1.19 runs one local API per local storage directory: `serve
-  --local` publishes `server.json` there, a second `serve --local` on the same
-  directory reports the running API and exits, and `--local` and
-  `configure_local_client()` work from any checkout without a restart after
-  commits. The Local/Hosted switch is gone. 0.1.20 retries timed-out
-  runtime-access requests.
-- Hosted prerequisite, checked in the MetaTables source and offline on
-  2026-10-04: the 0.1.20 client validates `/runtime-context/` with
-  `RuntimeContext` (`extra="forbid"`), and a MetaTables API on 0.1.18 or older
-  still sends `runtime_switch_available`, `runtime_switch_error` and
-  `hosted_environment_target`. A 0.1.18-shaped payload fails with three
-  `extra_forbidden` errors
-  ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)).
-  `upgrade_application` and `TimeIndexTableUpdater.run()` read that context
-  first, so a push needs the Environment's MetaTables API on 0.1.19 or later
-  (`docs/deployment.md`, "Publishing"). Not checked against a hosted API.
+- Locked and installed: `mainsequence` 9.0.22, `mainsequence-metatable` 0.1.34,
+  ms-markets 2.2.10, the newest stable releases on PyPI that day. Declared:
+  `mainsequence>=9.0.22,<10`, `mainsequence-metatable>=0.1.34,<0.2` and
+  exactly `ms-markets==2.2.10`, the release the Markets deployment runs;
+  `requires-python` stays `>=3.13,<3.14`. MetaTables 0.1.34 adds fastembed
+  (onnxruntime, tokenizers, huggingface-hub) and `mainsequence[mcp]` to the
+  lock. On them the full suite passes (339 tests, 1 skipped, 39 subtests) and
+  Ruff passes.
+- Identity check against the previous lock (9.0.6, 0.1.20, 2.2.5), offline,
+  2026-10-11: the provider (package, namespace, version location, head `0001`,
+  version table `valmer_connectors__alembic_version`), the six provider
+  metadata tables (columns, types, keys, indexes), the owned tables' MetaTable
+  identifiers and contract hashes, the updater `update_hash` of eight Jobs'
+  nodes, the curve and vector config contracts, and the backend serialization
+  of a CETES zero-coupon and an M Bono fixed-rate bond are identical. So is
+  `metatables/updaters/configuration.py`, which computes every update hash.
+- SDK 9.0.22 requires the caller's `team_uids` and `is_organization_admin` in
+  each hosted caller assertion; 9.0.6 accepted only its older exact claim set
+  and so rejects what the backend signs now. The API tests sign both claims,
+  refuse an assertion without them, and keep an Organization admin outside
+  `VALMER_CONTROL_PLANE_OPERATOR_UIDS` a viewer.
+- MetaTables 0.1.34's client reads `/runtime-context/` with
+  `extra="ignore"` (0.1.20 used `extra="forbid"`), so MetaTables issue #33
+  no longer applies. A push needs the Environment's MetaTables API on 0.1.34;
+  the hosted Production API reported system revision `0012_table_creator`,
+  nothing pending, on 2026-10-11.
 - MetaTables registers cascading foreign keys since 0.1.17, and 0.1.18 makes
   write on a table depend only on that table's own grants (0.1.17 also required
   write on every table a cascade modifies). The asset-details key to
@@ -39,17 +41,18 @@ Last complete backend lifecycle verification: 2026-08-21
   removed `msm_command_center`, the asset-monitor builders, pricing
   `response_mappings` and the `apps.v1` re-export modules. Nothing in this
   repository uses any of them. The ms-markets models the Valmer provider
-  references are unchanged since 2.1.1. 2.2.3 to 2.2.5 change only the
-  bulk-delete preflight and the serialization of the bulk-action and
-  tabular-frame contracts, which this repository does not use.
-- Skills are pinned to SDK 9.0.6, MetaTables 0.1.20 and ms-markets 2.2.5.
+  references (`AssetTable`, `IndexTable`, `IndexFormulaDefinitionTable`) are
+  unchanged through 2.2.10, whose provider head is `0020`. ms-markets talks
+  only to the MetaTables API (`MetaTable.execute_operation`), so no workload
+  needs access to the MainSequenceMarkets repository's branch.
+- Skills are pinned to SDK 9.0.22, MetaTables 0.1.34 and ms-markets 2.2.10.
   Platform skills (`.agents/skills/mainsequence_platform/`) are not installed.
-  The managed `AGENTS.md` block matches the SDK 9.0.6 template.
+  The managed `AGENTS.md` block matches the SDK 9.0.22 template.
 - Since SDK 9.0.5, `code-repository sync` only refreshes dependency files;
   publishing is `git commit` and `git push`, and the single workflow file
   decides what deploys. Every workflow resource declares `tag_regex: null`.
 
-## Deployment Migration Job (2026-10-03, Not Yet Pushed)
+## Deployment Workflow (Not Yet Pushed)
 
 - `.mainsequence/workflows/valmer-control-plane-api.yaml` is workflow API
   2.3.0. The API is `kind: fastapi` with
@@ -58,25 +61,33 @@ Last complete backend lifecycle verification: 2026-08-21
   `scripts/migrate_valmer.py`, which calls `metatables.upgrade_application` for
   `valmer_connectors.migrations:migration` only. Graph: `image`
   (prepare_image API) -> `migrate` (run_job, image_from image) -> `deploy_api`
-  (deploy API, image_from image, needs migrate).
+  (deploy API, image_from image, needs migrate), plus one `prepare_image`
+  step with `needs: [migrate]` for each of the sixteen pipeline Jobs, all of
+  which the API launches.
+- Every workload declares `access.branches: [{repository: MetaTables, level:
+  view}]`; the API also declares `access.resources` at `edit` on the sixteen
+  Jobs. Hosted, the control plane therefore sees only those Jobs and no longer
+  lists the migration Job; its preflight still refuses that execution path.
 - It is the only workflow file. The sixteen pipeline Jobs moved into it from
   `.mainsequence/workflows/valmer-control-plane-jobs.yaml` (workflow API
-  2.1.0, now deleted) with keys and specs unchanged, and no execution step
-  references them. Moved declarations are new backend targets: the push
-  creates sixteen new Jobs, and the old ones, still bound to the removed file,
-  are deleted by a backend running ADR-077 (tdag-django `4a2833f12`) or by
-  hand. The list is in `docs/deployment.md`, "Cleanup After The Push".
-- The 18-resource file passes, offline at tdag-django `122a395fe`, the
-  backend's own `validate_execution`, the 2.3.0 root, resource and spec field
-  sets, `_validate_task_schedule` and the Job compute limits. It was not
-  validated through the branch `validate-workflow` endpoint: on 2026-10-03 the
-  backend at `127.0.0.1:8000` sent an empty reply after 136 seconds, and
-  earlier it listed no CodeRepositoryBranch for this repository.
-- 2026-10-04: the file is still valid offline against tdag-django
-  `5a6c9280b`. The branch `validate-workflow` route was not tried: the backend
-  at `127.0.0.1:8000` was hung.
-- The control plane lists the migration Job but its preflight refuses to launch
-  it by hand.
+  2.1.0, now deleted) with keys and specs unchanged. Moved declarations are
+  new backend targets: the push creates sixteen new Jobs, plus
+  `migrate-valmer`, and deletes the targets bound to the removed file. On
+  2026-10-11 the Production branch had none of those old Jobs, so nothing is
+  deleted there.
+- 2026-10-11: the committed file is valid through the branch
+  `validate-workflow` route (`valid=True`, `document_api_version` 2.3.0), and
+  `msapi.py keys` lists 17 Jobs created, the API kept and the 16 old-file Jobs
+  deleted, the same as before this upgrade's changes.
+- Backend behavior read at tdag-django `f16c42249` (2026-10-11): a Job's
+  `prepare_image` step does not hold its new image back.
+  `WorkflowExecutionService._prepare` starts each Job's
+  `JobImageDeploymentService.prepare` run when it prepares the connected
+  group, and that run activates the image and re-enables the schedule once the
+  shared commit image is verified, without the `workflow_deployment_allowed`
+  gate that release and static-site rollouts use. Every target of a group must
+  admit the push, so a Job taken off every-push promotion would make the API's
+  group skip later pushes unless its step is removed too.
 - Local proof on 2026-10-04 against a fresh, isolated MetaTables 0.1.20 SQLite
   runtime (its own `METATABLES_LOCAL_STORAGE_DIR`, `serve --local` on a free
   port with a scratch configuration, SDK session on the development backend
@@ -108,6 +119,33 @@ Last complete backend lifecycle verification: 2026-08-21
     `MetaTable.get_impact(action="delete_rows")` on `ms_markets__asset`
     allowed with no blockers, and no Alembic autogenerate differences; those
     two checks were not repeated on 0.1.20.
+
+## Production Platform State (Read Only, 2026-10-11)
+
+- CodeRepositoryBranch `64338319-bd19-48db-bf14-945d8debb9be` (`main`,
+  Environment Production `18595d12-f92a-4960-84cd-0c6798a1ad25`) has no
+  workflow runs.
+- FastAPI release `584c0bf3-2ce3-41fb-aadf-022d1fa66bf5`, workload User
+  `97331098-9f56-4e6d-8366-cb081a58afc2`, backing Job
+  `ad475c1d-e79b-4998-b89f-474538db3717`: active revision `41b312ef`, desired
+  `33909ecf`. Five redeployments of `1842f93` (v0.1.45) from 2026-10-03 to
+  2026-10-09 failed with `runtime_deployment_failed`. `ValmerConnectorsMonitor`
+  pins this release UID, which the push keeps.
+- No pipeline Job exists on the branch; the only Job is the release's backing
+  Job.
+- MetaTables (DataSource `ebd9bc7f-5f11-42fa-8961-19e9e66e2196`, TimescaleDB,
+  system revision `0012_table_creator`): the namespaces are
+  `alpaca-connectors`, `mainsequence-crm`, `mainsequence-sdk-tutorial` and
+  `mainsequence.markets`. There is no `valmer_connectors` namespace, no Valmer
+  table and no `ms_markets__index_values__t_1d`; `ms_markets__asset` is active
+  under `msm:mainsequence.markets`. Writers of `mainsequence.markets` are the
+  Teams `ms-markets-production` and `alpaca-connectors-production`.
+- There is no Valmer Team.
+- Production has none of the Secrets `FRED_API_KEY`, `BANXICO_TOKEN`,
+  `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID` and
+  `VALMER_ONEDRIVE_CLIENT_SECRET`, no Constant `VALMER_ONEDRIVE_DRIVE_ID`, no
+  Bucket `Hitorical Valmer Vector Analytico`, and no registered MetaTable
+  `dbo.vector_precios_gubernamental_pip_vista`.
 
 ## Wheel Packaging (Verified Locally 2026-10-03)
 

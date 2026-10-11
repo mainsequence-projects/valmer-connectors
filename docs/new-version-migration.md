@@ -45,9 +45,10 @@ Relevant repository skills:
 
 Current declared package constraints:
 
-- `mainsequence>=9.0.6,<10`
-- `mainsequence-metatable>=0.1.20,<0.2`
-- `ms-markets>=2.2.5,<3`
+- `mainsequence>=9.0.22,<10`
+- `mainsequence-metatable>=0.1.34,<0.2`
+- `ms-markets==2.2.10`, exactly the release the Environment's Markets
+  deployment runs
 - `streamlit>=1.58.0`
 - `xlrd>=2.0.2`
 
@@ -65,13 +66,16 @@ on a table depend only on that table's own grants, so the asset-details key
 keeps the `ON DELETE CASCADE` that revision `0001` declares. MetaTables 0.1.19
 and later run one local API per local storage directory, which
 `metatables --local` and `metatables.configure_local_client()` reach from any
-checkout. SDK 9.0.6 never replays a write request.
+checkout. SDK 9.0.6 and later never replay a write request.
 
-The 0.1.20 client needs the Environment's hosted MetaTables API on 0.1.19 or
-later: it rejects the `/runtime-context/` response of an older API
-([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)),
-so the `migrate-valmer` Job and the updaters fail against it. Upgrade that API
-before pushing this repository; see "Publishing" in `deployment.md`.
+Under mainsequence 9.0.22, mainsequence-metatable 0.1.34 and ms-markets 2.2.10
+the Valmer provider, its tables, revision `0001`, the updater hashes and the
+bond pricing serialization are unchanged, so the upgrade needs no revision.
+SDK 9.0.22 requires the caller's `team_uids` and `is_organization_admin` in
+every hosted caller assertion, and the 0.1.34 client ignores unknown
+`/runtime-context/` fields. Deploy against the Environment's MetaTables API
+on 0.1.34 and its Markets deployment on 2.2.10; see "Publishing" in
+`deployment.md`.
 
 ## Migration Status
 

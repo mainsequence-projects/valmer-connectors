@@ -19,8 +19,10 @@ one `prepare_image` step that needs `migrate`; that step does not delay the Job'
 "Workflow Declarations" in `docs/deployment.md`). Every workload declares view on the `MetaTables`
 branch, and the API declares edit on each Job of `JOB_LAUNCH_PROFILES`: add a launch profile and
 its grant and image step together.
-A push needs the Environment's hosted MetaTables API on 0.1.19 or later, because the locked 0.1.20
-client rejects an older API's runtime context. See `docs/deployment.md`.
+A push needs the Environment's MetaTables API on 0.1.34 (the locked client's release), its
+ms-markets deployment on 2.2.10 with its migration applied, and the Valmer Team with Writer on the
+`valmer_connectors` and `mainsequence.markets` namespaces, including every new workload User. See
+"Publishing" and "Teams And Namespaces" in `docs/deployment.md`.
 
 The control-plane API learns its caller only from the SDK request identity that `create_app` in
 `src/valmer_connectors/control_plane/api.py` installs once per application; route code gets the

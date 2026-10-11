@@ -19,25 +19,31 @@ decides what deploys. It declares the control-plane FastAPI release, the
   API declares edit on the sixteen Jobs (see
   [Teams And Namespaces](#teams-and-namespaces) for table access).
 
-Push only after the Environment's hosted MetaTables API (the `metatables-api`
-release of the MetaTables repository) runs 0.1.19 or later, and after the
-ms-markets deployment's migration Job has succeeded in the same DataSource (see
-[Migrations](#migrations)). The `mainsequence-metatable` 0.1.20 client in this
-image validates the API's `/runtime-context/` response with a model that
-forbids unknown fields, and an API on 0.1.18 or older still sends
-`runtime_switch_available`, `runtime_switch_error` and
-`hosted_environment_target`, which 0.1.19 removed
-([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)).
-Against such an API, `migrate-valmer` fails before it migrates anything,
-`deploy_api` never runs, and the push deploys no API. The pipeline Jobs still
-take the new image, because the backend activates it before the migration runs,
-and their updater runs fail the same way: `TimeIndexTableUpdater.run()` reads
-the runtime context first.
+Push only when the Environment is ready for this image:
 
-To check the API, run `metatables runtime status` without `--local`, after
-`mainsequence login`, from a checkout whose branch is registered in that
-Environment. It is a read-only request that prints the response without
-validating it; an API on 0.1.18 or older lists `runtime_switch_available`.
+- its MetaTables API, the API release of the `MetaTables` repository's branch
+  in that Environment, runs 0.1.34, the release of the locked
+  `mainsequence-metatable` client. Keep the client and the API on one
+  release. The 0.1.34 client ignores unknown `/runtime-context/` fields, so the
+  failure of the 0.1.20 client against an API on 0.1.18 or older
+  ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33))
+  no longer applies;
+- its ms-markets deployment runs 2.2.10 and that deployment's migration Job has
+  succeeded in the same DataSource (see [Migrations](#migrations));
+- the Valmer Team holds Writer on `valmer_connectors` and
+  `mainsequence.markets`, and the Job and release workload Users that the push
+  creates are added to it before the `migrate` step starts (see
+  [Teams And Namespaces](#teams-and-namespaces)).
+
+When `migrate-valmer` fails, `deploy_api` never runs and the push deploys no
+API. The pipeline Jobs still take the new image, because the backend activates
+it before the migration runs.
+
+To check the MetaTables API, run `metatables runtime status` without
+`--local`, after `mainsequence login`, from a checkout whose branch is
+registered in that Environment. It is a read-only request. With 0.1.34 its
+`bootstrap.current_revisions` is `["0012_table_creator"]` and nothing is
+pending.
 
 The API installs the SDK request identity (see "Request Identity" in
 `docs/control-plane.md`). The platform's FastAPI launcher, PodDeploymentOrchestrator
@@ -48,7 +54,10 @@ needs the backend's caller-assertion signing and key discovery
 (`/fastapi/caller-keys/`) and a gateway that forwards
 `X-MainSequence-Caller-Assertion`. Without them the new revision starts but every
 API request answers 401 (503 while key discovery is down); nothing falls back to
-`X-User-UID`.
+`X-User-UID`. Since SDK 9.0.22 the assertion must also state the caller's
+`team_uids` and `is_organization_admin`, which the backend signs (ADR-0048,
+section 7). SDK 9.0.6 accepts only its older, exact claim set, so an image
+built on it rejects every assertion the backend signs now.
 
 ```bash
 git add <reviewed paths>
@@ -96,16 +105,16 @@ database already at head is left unchanged. A failed Job blocks the API
 deployment and the previous release keeps serving; fix the revision and push
 again. Redeploying an older image does not roll the schema back.
 
-The Job needs the Environment's hosted MetaTables API on 0.1.19 or later.
-`upgrade_application` reads the API's runtime context before it migrates
-anything, and the 0.1.20 client rejects the context of an API on 0.1.18 or
-older (MetaTables issue #33). The JobRun then fails with
-`3 validation errors for RuntimeContext`, `Extra inputs are not permitted` for
-`runtime_switch_available`, `runtime_switch_error` and
-`hosted_environment_target`; nothing was migrated and the API was not
-deployed. Upgrade that API, then push a new commit: a failed workflow run does
+The Job needs the Environment's MetaTables API on 0.1.34, the release of the
+locked client, and its workload User in the Valmer Team (see
+[Teams And Namespaces](#teams-and-namespaces)). `upgrade_application` waits up
+to five minutes for a waking API, then finalizes the provider's tables in
+batches. A workload User without Writer on a namespace the provider registers
+tables in fails with `namespace_not_writable` and names the `caller_user_uid`;
+nothing of that table is registered and the API is not deployed. Add the
+member, then run the Job again or push a new commit: a failed workflow run does
 not resume, and each commit gets its own run. Do not migrate the Environment by
-hand.
+hand from a workstation.
 
 The Job applies only the Valmer provider. The ms-markets schema that the Valmer
 tables reference is migrated by the ms-markets deployment, and it must be in
@@ -119,8 +128,9 @@ revision `0001` declares; MetaTables registers cascading foreign keys since
 0.1.17.
 
 Do not run `metatables migrations upgrade` or `downgrade` against a hosted
-runtime, and do not migrate at application startup. The control plane lists the
-migration Job but refuses to launch it by hand. Local development applies the
+runtime, and do not migrate at application startup. The hosted control plane
+is not granted the migration Job, and its preflight refuses that Job wherever
+it is listed. Local development applies the
 provider with
 `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`
 and authors a revision against that local runtime, at head, with

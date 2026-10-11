@@ -73,7 +73,8 @@ API and the tests. The SDK middleware authenticates the caller before any route 
 
 - hosted, it verifies the platform-signed `X-MainSequence-Caller-Assertion`: an EdDSA signature
   from the platform's published key, checked against the issuer, release and Environment that the
-  deployment's trusted configuration names, with a lifetime of at most five minutes;
+  deployment's trusted configuration names, with a lifetime of at most five minutes, and since
+  SDK 9.0.22 stating the caller's `team_uids` and `is_organization_admin`;
 - locally, without hosted markers, it validates a direct `Authorization: Bearer` token against
   `MAINSEQUENCE_ENDPOINT/api/v1/users/me/`.
 
@@ -99,7 +100,9 @@ application raises, so `create_app(app=...)` takes an application without reques
 The caller identity answers who called; the control plane still decides what that caller may do.
 Viewer access is read-only. Operators are configured explicitly through the comma-separated
 `VALMER_CONTROL_PLANE_OPERATOR_UIDS` release environment variable. An absent or empty value grants
-no operator access. Job launch behavior is fail-closed:
+no operator access. The team UIDs and Organization-admin flag in the caller identity grant
+nothing here: an Organization admin outside that list is a viewer. Job launch behavior is
+fail-closed:
 
 1. the current caller must be an operator;
 2. discovery must advertise the action for that caller;
@@ -208,17 +211,22 @@ ResourceRelease UID. The static site never receives the Command Center session, 
 an authorization header, never persists a delegated token, and has no direct-link credential
 fallback.
 
-The platform injects the reserved exact `VITE_COMMAND_CENTER_ORIGIN`. The static release must set
-`VITE_FASTAPI_RESOURCE_RELEASE_UID` to the deployed backend release UID.
+The platform injects the reserved exact `VITE_COMMAND_CENTER_ORIGIN`. The static release sets
+`VITE_FASTAPI_RESOURCE_RELEASE_UID` to the backend release. It can name the release instead of
+pinning its UID, as
+`{resource_release: {repository: valmer-connectors, key: valmer-control-plane-api}}`, which the
+backend resolves at every build. A pinned UID stays valid while the API keeps its workflow file
+and key.
 
 ## Release Sequence
 
 The two repositories must be released in dependency order:
 
-1. confirm that the Environment's hosted MetaTables API runs 0.1.19 or later and that the
-   ms-markets deployment's migration Job has succeeded in the same DataSource (see "Publishing"
-   in `docs/deployment.md`; against an older API `migrate-valmer` fails and the API is not
-   deployed), then push `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI
+1. confirm that the Environment's MetaTables API runs 0.1.34, that its ms-markets deployment
+   runs 2.2.10 and its migration Job has succeeded in the same DataSource, and that the Valmer
+   Team holds Writer on the `valmer_connectors` and `mainsequence.markets` namespaces (see
+   "Publishing" and "Teams And Namespaces" in `docs/deployment.md`), then push
+   `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI
    release by `source_path` (`api/valmer_control_plane/main.py`) with every-commit automatic
    redeployment, three retained revisions, and the platform's default static-site CORS policy,
    gates it on the `migrate-valmer` Job, gives each pipeline Job an image step after the
