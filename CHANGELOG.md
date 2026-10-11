@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.1.48 (unreleased)
+
+0.1.47 was tagged in a local checkout but never published. Consumers move
+from 0.1.46 straight to 0.1.48, so they should also read the 0.1.47 entry
+below; where the two differ, this entry applies.
+
+### Dependencies
+
+- Requires `mainsequence>=9.0.22,<10`, `mainsequence-metatable>=0.1.34,<0.2`
+  and exactly `ms-markets==2.2.10`, the release the Environment's Markets
+  deployment runs; `requires-python` stays `>=3.13,<3.14`. The lock selects
+  mainsequence 9.0.22, mainsequence-metatable 0.1.34 and ms-markets 2.2.10,
+  and adds what MetaTables 0.1.34 depends on: fastembed (with onnxruntime,
+  tokenizers and huggingface-hub) and `mainsequence[mcp]`.
+- Deploy against the Environment's MetaTables API on 0.1.34 and its Markets
+  deployment on 2.2.10, with the ms-markets migration applied. The hosted
+  MetaTables API 0.1.19 prerequisite of 0.1.47 no longer applies: the 0.1.34
+  client ignores unknown `/runtime-context/` fields.
+- SDK 9.0.22 requires the caller's `team_uids` and `is_organization_admin` in
+  every hosted caller assertion; SDK 9.0.6 rejects the assertions the backend
+  signs now, so the hosted API must run this image. The control plane's
+  identity code is unchanged, and operators are still only the
+  `VALMER_CONTROL_PLANE_OPERATOR_UIDS`: the admin flag and team UIDs grant
+  nothing.
+- The Valmer provider, its tables and revision `0001`, the updater hashes and
+  the bond pricing serialization are identical under the old and the new
+  lock, so no database migration is needed.
+
+### Deployment and migrations
+
+- `valmer-control-plane-api.yaml` keeps its file and keys. Every workload
+  declares view on the `MetaTables` repository's branch, and the API declares
+  edit on the sixteen Jobs it launches; hosted, the control plane therefore
+  lists those Jobs and not `migrate-valmer`. A push that grants access to
+  another repository's branch needs a person the platform resolves.
+- Each of the sixteen Jobs, `standard-pipeline-refresh` and
+  `pipeline-verification` included, has a `prepare_image` step that needs
+  `migrate`, which puts it in the API's connected group. The backend still
+  activates a Job's new image as soon as the commit image is verified, before
+  the migration runs, and a Job taken off every-push promotion must also lose
+  its step, or the group skips later pushes.
+- The Valmer tables belong to one Team per Environment with Writer on the
+  `valmer_connectors` and `mainsequence.markets` namespaces; the workload
+  Users that a push creates join it before the migration runs. See "Teams And
+  Namespaces" in `docs/deployment.md`, which also lists the Secrets,
+  Constant, Bucket and MetaTable source the Jobs read.
+
+### Agent skills
+
+- Refreshed the SDK 9.0.22, MetaTables 0.1.34 and ms-markets 2.2.10 skills
+  and the managed `AGENTS.md` block.
+
 ## 0.1.47 (unreleased)
 
 ### Packaging

@@ -157,7 +157,18 @@ Last complete backend lifecycle verification: 2026-08-21
   Bucket `Hitorical Valmer Vector Analytico`, and no registered MetaTable
   `dbo.vector_precios_gubernamental_pip_vista`.
 
-## Wheel Packaging (Verified Locally 2026-10-03)
+## Wheel Packaging (Verified Locally 2026-10-03, 2026-10-11)
+
+- 2026-10-11: a wheel built from the 0.1.48 tree's tracked files (so no stale
+  `build/`) installs only `valmer_connectors`, 69 files including the Valmer
+  skill, the MetaTable source configuration, `script.py.mako` and revision
+  `0001`, and declares `mainsequence<10,>=9.0.22`,
+  `mainsequence-metatable<0.2,>=0.1.34`, `ms-markets==2.2.10` and
+  `Requires-Python <3.14,>=3.13`. In a clean venv it resolves mainsequence
+  9.0.22, mainsequence-metatable 0.1.34 and ms-markets 2.2.10,
+  `import msm_migrations, valmer_connectors.migrations` succeeds, and no
+  top-level `migrations`, `banxico`, `fred`, `agents`, `cli`,
+  `command_center` or `msm_command_center` module is installed.
 
 - `valmer-connectors` 0.1.47 installs exactly one top-level import package,
   `valmer_connectors`. The Valmer migration provider is
