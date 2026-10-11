@@ -286,6 +286,7 @@ class CallerAssertionAuthority:
         user_uid: str,
         *,
         key: ed25519.Ed25519PrivateKey | None = None,
+        omit: tuple[str, ...] = (),
         **claims: object,
     ) -> str:
         now = int(time.time())
@@ -298,8 +299,15 @@ class CallerAssertionAuthority:
             "iat": now,
             "nbf": now,
             "exp": now + 120,
+            # What the platform states about every caller: its active team UIDs
+            # and whether it is an Organization admin. The SDK refuses an
+            # assertion without them since 9.0.22 (ADR-0048, section 7).
+            "team_uids": [],
+            "is_organization_admin": False,
             **claims,
         }
+        for name in omit:
+            del payload[name]
         return jwt.encode(
             payload,
             key or self.key,
@@ -605,6 +613,12 @@ HOSTED_REJECTIONS = {
         ASSERTION_HEADER: authority.sign(
             OPERATOR_UID,
             key=ed25519.Ed25519PrivateKey.generate(),
+        )
+    },
+    "assertion-without-the-caller-team-facts": lambda authority: {
+        ASSERTION_HEADER: authority.sign(
+            OPERATOR_UID,
+            omit=("team_uids", "is_organization_admin"),
         )
     },
     "numeric-user-id-beside-a-valid-assertion": lambda authority: {
@@ -1312,6 +1326,37 @@ def test_viewer_cannot_execute_job_action(api_client) -> None:
     assert preflight.status_code == 200
     assert preflight.json()["allowed"] is False
     assert execution.status_code == 403
+
+
+def test_an_organization_admin_outside_the_operator_list_is_a_viewer(
+    hosted_runtime,
+) -> None:
+    """Operators are the explicit VALMER_CONTROL_PLANE_OPERATOR_UIDS list. The
+    admin flag and team UIDs in the caller assertion grant nothing here."""
+    payload = {"selection": {"mode": "explicit", "uids": ["job-1"]}, "options": {}}
+    gateway = FakeControlPlaneGateway()
+    admin_assertion = hosted_runtime.sign(
+        VIEWER_UID,
+        team_uids=["0b5e6a3c-7d2f-4c1e-9a8b-3f4e5d6c7b8a"],
+        is_organization_admin=True,
+    )
+
+    with TestClient(
+        create_app(_service(gateway)), headers={ASSERTION_HEADER: admin_assertion}
+    ) as client:
+        me = client.get("/api/v1/control-plane/me")
+        discovery = client.get("/api/v1/control-plane/jobs/discovery/")
+        preflight = client.post(
+            "/api/v1/control-plane/jobs/actions/run/preflight", json=payload
+        )
+        execution = client.post("/api/v1/control-plane/jobs/actions/run", json=payload)
+
+    assert me.status_code == 200
+    assert me.json() == {"uid": VIEWER_UID, "role": "viewer"}
+    assert discovery.json()["bulk_actions"] == []
+    assert preflight.json()["allowed"] is False
+    assert execution.status_code == 403
+    assert gateway.launched_job_uids == []
 
 
 def test_operator_preflights_and_launches_one_branch_job(api_client) -> None:
