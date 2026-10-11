@@ -23,9 +23,10 @@ The control-plane API learns its caller only from the SDK request identity that 
 caller through `User.get_logged_user()`. Do not read the caller from headers or `request.state`, and
 do not add a UID-header, process-account or other unauthenticated fallback. The platform launcher
 refuses to serve the app without that installation, and hosted requests must carry the
-platform-signed caller assertion. The installed SDK 9.0.6 API-surfaces skill still describes
-launcher-injected `request.state`; the SDK 9.0.6 code and `docs/knowledge/fastapi/index.md` describe
-the current contract. See "Request Identity" in `docs/control-plane.md`.
+platform-signed caller assertion, which since SDK 9.0.22 must also state the caller's `team_uids`
+and `is_organization_admin`. Operators are only the UIDs in `VALMER_CONTROL_PLANE_OPERATOR_UIDS`;
+the admin flag and team UIDs grant nothing here. The installed SDK 9.0.22 API-surfaces skill
+describes this contract. See "Request Identity" in `docs/control-plane.md`.
 
 Do not remove the `<!-- mainsequence-agent-scaffold:start schema=1 source=agent_scaffold -->`
 or `<!-- mainsequence-agent-scaffold:end -->` markers. `mainsequence code-repository update AGENTS.md`
@@ -99,7 +100,8 @@ bundle. Platform skills are installed separately under
   `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
 - Jobs, schedules, images, resources, releases, and Artifacts:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
-- RBAC, sharing, constants, secrets, and access verification:
+- RBAC, sharing, constants, secrets, access verification, and whether an
+  application uses its own grants or acts for its requester:
   `.agents/skills/mainsequence/platform_operations/access_control_and_sharing/SKILL.md`
 - Direct recorded model calls, structured extraction, thinking/provider options,
   inference history and idempotent replay:
