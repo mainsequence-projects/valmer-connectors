@@ -14,11 +14,12 @@ Do not introduce additional historical agent-state logs.
 `.mainsequence/workflows/valmer-control-plane-api.yaml` is the repository's only workflow file.
 Declare every API, agent and Job in it, and keep its path and resource keys: the backend identifies
 each target by workflow file path and key, so a new file or key creates a new target. In
-`execution.steps` the API waits for the `migrate-valmer` Job, and every Job the API launches has
-one `prepare_image` step that needs `migrate`; that step does not delay the Job's new image (see
-"Workflow Declarations" in `docs/deployment.md`). Every workload declares view on the `MetaTables`
-branch, and the API declares edit on each Job of `JOB_LAUNCH_PROFILES`: add a launch profile and
-its grant and image step together.
+`execution.steps` the API waits for the `migrate-valmer` Job; the operational and scheduled Jobs
+stay out of the graph, because a step would not hold their new image back and would tie their
+promotion policy to the API's group (see "Workflow Declarations" in `docs/deployment.md`). Keep
+every revision backward compatible (expand first). Every workload declares view on the
+`MetaTables` branch, and the API declares edit on each Job of `JOB_LAUNCH_PROFILES`: add a launch
+profile and its grant together.
 A push needs the Environment's MetaTables API on 0.1.34 (the locked client's release), its
 ms-markets deployment on 2.2.10 with its migration applied, and the Valmer Team with Writer on the
 `valmer_connectors` and `mainsequence.markets` namespaces, including every new workload User. See

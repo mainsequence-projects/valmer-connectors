@@ -11,10 +11,10 @@ decides what deploys. It declares the control-plane FastAPI release, the
 - the execution graph prepares the code repository image, runs the
   `migrate-valmer` Job from it, and only then deploys the API
   (`needs: [migrate]`);
-- each of the sixteen pipeline Jobs, all of which the API launches, has a
-  `prepare_image` step that needs `migrate`. The backend still activates a
-  Job's new image as soon as the commit image is verified, before the
-  migration runs (see [Workflow Declarations](#workflow-declarations));
+- no step references the sixteen pipeline Jobs, all of which the API
+  launches, so each one redeploys on every push by itself; its new image is
+  active as soon as the commit image is verified, before the migration runs
+  (see [Workflow Declarations](#workflow-declarations));
 - every workload declares view on the MetaTables repository's branch, and the
   API declares edit on the sixteen Jobs (see
   [Teams And Namespaces](#teams-and-namespaces) for table access).
@@ -147,31 +147,29 @@ platform catalog deliberately excludes launch configurations that depend on a
 developer workstation or exist only to run UI, debugging, examples, or
 migration administration.
 
-Every Job the API launches has one `prepare_image` step with
-`needs: [migrate]`: the sixteen `JOB_LAUNCH_PROFILES` of
-`src/valmer_connectors/control_plane/catalog.py`, the scheduled
-`standard-pipeline-refresh` and `pipeline-verification` among them.
-`migrate-valmer` has no image step of its own; it runs from the API's
-candidate image. The steps put the Jobs in the API's connected group:
+Only the API and `migrate-valmer` are in `execution.steps`. The sixteen
+pipeline Jobs, the `JOB_LAUNCH_PROFILES` of
+`src/valmer_connectors/control_plane/catalog.py` with the scheduled
+`standard-pipeline-refresh` and `pipeline-verification` among them, stay out
+of the graph on purpose, and each one redeploys on every push by itself:
 
-- the workflow run reports each Job's image under its own step;
-- the group is applied together, so a Job declaration that fails, or whose
-  declared access is refused, also stops `migrate` and the API rollout;
-- every target of the group must admit the push under its own promotion
-  policy. A Job taken off every-push promotion
-  (`automatic_redeployment.enabled: false`) would make the whole group skip
-  every later push, migration and API included, so such a Job must also lose
-  its `prepare_image` step.
+- a step cannot hold a Job's new image back until the migration has
+  succeeded. At tdag-django `f16c42249` (2026-10-11) the backend starts the
+  image deployment run of a Job that a `prepare_image` step names when it
+  prepares the step's connected group, and that run activates the new image,
+  and re-enables the Job's schedule, as soon as the shared commit image is
+  verified, whatever the step's `needs` say;
+- a Job in the graph would join the API's connected group, which is applied
+  together and admits a push only when every one of its targets does under
+  its own promotion policy. A failed Job declaration would then stop the
+  migration and the API, and a Job taken off every-push promotion would make
+  the group skip later pushes.
 
-The steps do not hold a Job's new image back until the migration has
-succeeded. At tdag-django `f16c42249` (2026-10-11) the backend starts each
-Job's image deployment run when it prepares the group, and that run activates
-the new image, and re-enables the Job's schedule, as soon as the shared commit
-image is verified. `migrate` runs from that same verified image, so a
-scheduled or manual run can start on the new image before `migrate-valmer` has
-finished, and keeps it if the migration fails. Keep every revision compatible
-with the previous release: add tables and nullable or defaulted columns first,
-and drop or rename only in a later release.
+A scheduled or manual run can therefore start on a new image before
+`migrate-valmer` has finished, and keeps that image if the migration fails.
+Keep every revision compatible with the previous release: add tables and
+nullable or defaulted columns first, and drop or rename only in a later
+release.
 
 The API is declared as `kind: fastapi` with
 `source_path: api/valmer_control_plane/main.py`. Workflow API 2.3.0 files carry
@@ -209,6 +207,13 @@ its branch: the hosted API lists, and can launch, only the Jobs granted to it,
 and a launch needs edit. `migrate-valmer` is not granted, so the hosted Jobs
 collection does not list it; wherever it is listed, as in a local review, the
 preflight refuses its execution path.
+
+A named Job must exist when the API is applied. On the push that creates the
+Jobs that holds: the backend applies the resources outside the graph while it
+processes the push, and the workflow run applies the API's group only after
+that has committed (tdag-django `f16c42249`). A Job whose own declaration fails
+on that push leaves the API's grant `not_created`, which stops the migration
+and the API rollout of that push.
 
 Table access is granted in MetaTables, not in the workflow file. The Valmer
 provider registers its tables in two namespaces:

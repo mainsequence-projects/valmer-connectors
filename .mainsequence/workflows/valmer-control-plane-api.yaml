@@ -85,8 +85,12 @@ resources:
           level: view
 
   # Pipeline Jobs. The control-plane API launches every one of them, and
-  # standard-pipeline-refresh is the only scheduled Job. Each has a
-  # prepare_image step that needs migrate (see execution.steps).
+  # standard-pipeline-refresh is the only scheduled Job. No execution step
+  # references them, on purpose: the backend activates a Job's new image,
+  # schedule included, as soon as the commit image is verified, whatever a
+  # step's needs say, and a Job in the graph would tie its promotion policy to
+  # the API's group. Each one redeploys on every push by itself, so keep every
+  # revision compatible with the previous release (expand first).
   - key: vector-refresh
     kind: job
     spec:
@@ -390,58 +394,4 @@ execution:
     deploy_api:
       deploy: valmer-control-plane-api
       image_from: image
-      needs: [migrate]
-    # One image step per Job the API launches, after migrate. They put the
-    # Jobs in the API's group: the run reports each Job's image, and a Job
-    # whose declaration fails or is refused stops the API rollout too. They do
-    # not hold a Job's new image back until migrate succeeds: the backend
-    # activates it, schedule included, once the shared commit image is
-    # verified (docs/deployment.md, "Workflow Declarations").
-    vector_refresh_image:
-      prepare_image: vector-refresh
-      needs: [migrate]
-    vector_onedrive_refresh_image:
-      prepare_image: vector-onedrive-refresh
-      needs: [migrate]
-    vector_metatable_refresh_image:
-      prepare_image: vector-metatable-refresh
-      needs: [migrate]
-    irs_mxn_quotes_refresh_image:
-      prepare_image: irs-mxn-quotes-refresh
-      needs: [migrate]
-    irs_usd_quotes_refresh_image:
-      prepare_image: irs-usd-quotes-refresh
-      needs: [migrate]
-    banxico_fixings_refresh_image:
-      prepare_image: banxico-fixings-refresh
-      needs: [migrate]
-    banxico_tiie_fixings_refresh_image:
-      prepare_image: banxico-tiie-fixings-refresh
-      needs: [migrate]
-    fred_reference_rates_refresh_image:
-      prepare_image: fred-reference-rates-refresh
-      needs: [migrate]
-    banxico_policy_refresh_image:
-      prepare_image: banxico-policy-refresh
-      needs: [migrate]
-    tiie_curve_refresh_image:
-      prepare_image: tiie-curve-refresh
-      needs: [migrate]
-    sofr_curve_refresh_image:
-      prepare_image: sofr-curve-refresh
-      needs: [migrate]
-    xccy_curve_refresh_image:
-      prepare_image: xccy-curve-refresh
-      needs: [migrate]
-    xccy_curve_rebuild_image:
-      prepare_image: xccy-curve-rebuild
-      needs: [migrate]
-    government_curve_refresh_image:
-      prepare_image: government-curve-refresh
-      needs: [migrate]
-    standard_pipeline_refresh_image:
-      prepare_image: standard-pipeline-refresh
-      needs: [migrate]
-    pipeline_verification_image:
-      prepare_image: pipeline-verification
       needs: [migrate]

@@ -142,9 +142,7 @@ def _steps() -> dict[str, dict]:
 
 
 def test_api_deploys_only_after_the_migration_job_runs_from_its_image() -> None:
-    steps = _steps()
-
-    assert {key: steps[key] for key in ("image", "migrate", "deploy_api")} == {
+    assert _steps() == {
         "image": {"prepare_image": API_KEY},
         "migrate": {
             "run_job": MIGRATION_JOB_KEY,
@@ -157,10 +155,6 @@ def test_api_deploys_only_after_the_migration_job_runs_from_its_image() -> None:
             "needs": ["migrate"],
         },
     }
-    # No other step runs, deploys or builds the API or the migration Job.
-    others = [step for key, step in steps.items() if key not in {"image", "migrate", "deploy_api"}]
-    assert all(set(step) == {"prepare_image", "needs"} for step in others)
-    assert not {step["prepare_image"] for step in others} & {API_KEY, MIGRATION_JOB_KEY}
 
 
 def _jobs() -> dict[str, dict]:
@@ -179,27 +173,25 @@ def test_every_job_declares_only_api_2_3_0_job_fields() -> None:
         assert set(spec) <= JOB_FIELDS, key
 
 
-def test_every_launched_job_prepares_its_image_after_the_migration() -> None:
-    steps = _steps()
-    image_steps = [step for step in steps.values() if "prepare_image" in step]
-    prepared = [step["prepare_image"] for step in image_steps]
+def test_operational_jobs_stay_outside_the_deployment_graph() -> None:
+    referenced = {
+        step[operation]
+        for step in _steps().values()
+        for operation in ("prepare_image", "run_job", "deploy")
+        if operation in step
+    }
     jobs = _jobs()
     scheduled = {key for key, spec in jobs.items() if "task_schedule" in spec}
     launched = {profile.key for profile in JOB_LAUNCH_PROFILES}
 
-    # At most one image step per resource; the backend rejects a second one.
-    assert len(prepared) == len(set(prepared))
-    # Each Job the control plane launches, the scheduled pipeline and the
-    # verification Job among them, gets one image step after migrate.
+    # Only the API and its migration Job are in the graph. The backend
+    # activates a Job's new image, schedule included, as soon as the commit
+    # image is verified, whatever a step's needs say, and a Job in the graph
+    # would tie its promotion policy to the API's group.
+    assert referenced == {API_KEY, MIGRATION_JOB_KEY}
     assert scheduled == {"standard-pipeline-refresh"}
     assert scheduled | {"pipeline-verification"} <= launched
-    assert set(prepared) == launched | {API_KEY}
-    for step in image_steps:
-        if step["prepare_image"] != API_KEY:
-            assert step["needs"] == ["migrate"], step
-    # The migration Job runs from the API's candidate image and has no image
-    # step of its own.
-    assert MIGRATION_JOB_KEY not in prepared
+    assert not launched & referenced
     assert [
         key for key, spec in jobs.items() if spec["execution_path"] == MIGRATION_JOB_EXECUTION_PATH
     ] == [MIGRATION_JOB_KEY]

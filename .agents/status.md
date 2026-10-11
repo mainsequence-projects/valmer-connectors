@@ -61,13 +61,17 @@ Last complete backend lifecycle verification: 2026-08-21
   `scripts/migrate_valmer.py`, which calls `metatables.upgrade_application` for
   `valmer_connectors.migrations:migration` only. Graph: `image`
   (prepare_image API) -> `migrate` (run_job, image_from image) -> `deploy_api`
-  (deploy API, image_from image, needs migrate), plus one `prepare_image`
-  step with `needs: [migrate]` for each of the sixteen pipeline Jobs, all of
-  which the API launches.
+  (deploy API, image_from image, needs migrate). The sixteen pipeline Jobs,
+  all of which the API launches, stay out of the graph and redeploy on every
+  push by themselves (an upgrade-run revision of 2026-10-11 removed the
+  `prepare_image` steps that a first pass had added for them).
 - Every workload declares `access.branches: [{repository: MetaTables, level:
   view}]`; the API also declares `access.resources` at `edit` on the sixteen
   Jobs. Hosted, the control plane therefore sees only those Jobs and no longer
   lists the migration Job; its preflight still refuses that execution path.
+  The backend applies the Jobs outside the graph while it processes the push
+  and the API's group only after that commits, so on the push that creates
+  the Jobs the API's grants find them (tdag-django `f16c42249`).
 - It is the only workflow file. The sixteen pipeline Jobs moved into it from
   `.mainsequence/workflows/valmer-control-plane-jobs.yaml` (workflow API
   2.1.0, now deleted) with keys and specs unchanged. Moved declarations are
@@ -79,15 +83,15 @@ Last complete backend lifecycle verification: 2026-08-21
   `validate-workflow` route (`valid=True`, `document_api_version` 2.3.0), and
   `msapi.py keys` lists 17 Jobs created, the API kept and the 16 old-file Jobs
   deleted, the same as before this upgrade's changes.
-- Backend behavior read at tdag-django `f16c42249` (2026-10-11): a Job's
-  `prepare_image` step does not hold its new image back.
-  `WorkflowExecutionService._prepare` starts each Job's
+- Backend behavior read at tdag-django `f16c42249` (2026-10-11), the reason
+  the Jobs stay out of the graph: a Job's `prepare_image` step does not hold
+  its new image back. `WorkflowExecutionService._prepare` starts each Job's
   `JobImageDeploymentService.prepare` run when it prepares the connected
   group, and that run activates the image and re-enables the schedule once the
   shared commit image is verified, without the `workflow_deployment_allowed`
-  gate that release and static-site rollouts use. Every target of a group must
-  admit the push, so a Job taken off every-push promotion would make the API's
-  group skip later pushes unless its step is removed too.
+  gate that release and static-site rollouts use. And every target of a group
+  must admit the push, so a Job in the API's group would tie its promotion
+  policy to the API and the migration.
 - Local proof on 2026-10-11 against a fresh, isolated MetaTables 0.1.34 SQLite
   runtime (its own `METATABLES_LOCAL_STORAGE_DIR`, `serve --local --port
   63500` with a scratch configuration from `init --local --configuration`,

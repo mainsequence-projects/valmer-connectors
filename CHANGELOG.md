@@ -35,12 +35,12 @@ below; where the two differ, this entry applies.
   edit on the sixteen Jobs it launches; hosted, the control plane therefore
   lists those Jobs and not `migrate-valmer`. A push that grants access to
   another repository's branch needs a person the platform resolves.
-- Each of the sixteen Jobs, `standard-pipeline-refresh` and
-  `pipeline-verification` included, has a `prepare_image` step that needs
-  `migrate`, which puts it in the API's connected group. The backend still
-  activates a Job's new image as soon as the commit image is verified, before
-  the migration runs, and a Job taken off every-push promotion must also lose
-  its step, or the group skips later pushes.
+- The execution graph is unchanged: `image` -> `migrate` -> `deploy_api`.
+  The sixteen pipeline Jobs stay out of it and redeploy on every push by
+  themselves. A `prepare_image` step with `needs: [migrate]` would not hold a
+  Job's new image back (the backend activates it as soon as the commit image
+  is verified) and would tie the Job's promotion policy to the API's group,
+  so keep every revision compatible with the previous release.
 - The Valmer tables belong to one Team per Environment with Writer on the
   `valmer_connectors` and `mainsequence.markets` namespaces; the workload
   Users that a push creates join it before the migration runs. See "Teams And
