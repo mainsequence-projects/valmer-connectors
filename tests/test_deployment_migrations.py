@@ -21,7 +21,13 @@ from valmer_connectors.services.migrations import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIRECTORY = REPOSITORY_ROOT / ".mainsequence" / "workflows"
-GATED_RESOURCE_KEYS = {"valmer-control-plane-api", "migrate-valmer"}
+API_KEY = "valmer-control-plane-api"
+MIGRATION_JOB_KEY = "migrate-valmer"
+# The MetaTables repository's exact platform name; every workload discovers its API.
+METATABLES_BRANCH_VIEW = [{"repository": "MetaTables", "level": "view"}]
+# Resource-level fields this file uses. Workflow API 2.3.0 also accepts
+# acts_for_requester on a fastapi resource, which no agent here needs.
+RESOURCE_FIELDS = {"key", "kind", "spec", "access"}
 
 # Spec fields that workflow API 2.3.0 accepts for these kinds. The backend
 # rejects unknown fields, including the retired resource_uid and release_kind
@@ -29,12 +35,17 @@ GATED_RESOURCE_KEYS = {"valmer-control-plane-api", "migrate-valmer"}
 # from CodeRepositoryWorkflowService.FASTAPI_FIELDS and .JOB_FIELDS, plus
 # env_vars (WORKFLOW_ENV_VARS_API_VERSIONS), in tdag-django
 # timeseries_orm/tdag/pod_manager/services/code_repository_workflows.py at
-# a618e4140 and checked again at 122a395fe (2026-10-03, WORKFLOW_API_VERSION
-# "2.3.0"). They do not follow backend changes: refresh them with every
-# workflow API bump, and validate the file through the branch
-# validate-workflow endpoint before pushing.
+# a618e4140, checked again at 122a395fe (2026-10-03) and refreshed at
+# f16c42249 (2026-10-11, WORKFLOW_API_VERSION "2.3.0"). They do not follow
+# backend changes: refresh them with every workflow API bump, and validate the
+# file through the branch validate-workflow endpoint before pushing.
 FASTAPI_FIELDS = {
+    "mcp_enabled",
     "min_scale",
+    "max_scale",
+    "container_concurrency",
+    "concurrency_target",
+    "timeout_seconds",
     "source_path",
     "spot",
     "cpu_request",
@@ -126,22 +137,30 @@ def test_migration_job_shares_the_api_promotion_policy() -> None:
     assert job["max_runtime_seconds"] > 0
 
 
+def _steps() -> dict[str, dict]:
+    return _load(MIGRATION_WORKFLOW_PATH)["execution"]["steps"]
+
+
 def test_api_deploys_only_after_the_migration_job_runs_from_its_image() -> None:
-    assert _load(MIGRATION_WORKFLOW_PATH)["execution"] == {
-        "steps": {
-            "image": {"prepare_image": "valmer-control-plane-api"},
-            "migrate": {
-                "run_job": "migrate-valmer",
-                "image_from": "image",
-                "needs": ["image"],
-            },
-            "deploy_api": {
-                "deploy": "valmer-control-plane-api",
-                "image_from": "image",
-                "needs": ["migrate"],
-            },
-        }
+    steps = _steps()
+
+    assert {key: steps[key] for key in ("image", "migrate", "deploy_api")} == {
+        "image": {"prepare_image": API_KEY},
+        "migrate": {
+            "run_job": MIGRATION_JOB_KEY,
+            "image_from": "image",
+            "needs": ["image"],
+        },
+        "deploy_api": {
+            "deploy": API_KEY,
+            "image_from": "image",
+            "needs": ["migrate"],
+        },
     }
+    # No other step runs, deploys or builds the API or the migration Job.
+    others = [step for key, step in steps.items() if key not in {"image", "migrate", "deploy_api"}]
+    assert all(set(step) == {"prepare_image", "needs"} for step in others)
+    assert not {step["prepare_image"] for step in others} & {API_KEY, MIGRATION_JOB_KEY}
 
 
 def _jobs() -> dict[str, dict]:
@@ -160,26 +179,55 @@ def test_every_job_declares_only_api_2_3_0_job_fields() -> None:
         assert set(spec) <= JOB_FIELDS, key
 
 
-def test_scheduled_jobs_stay_outside_the_deployment_graph() -> None:
-    steps = _load(MIGRATION_WORKFLOW_PATH)["execution"]["steps"]
-    referenced = {
-        step[operation]
-        for step in steps.values()
-        for operation in ("prepare_image", "run_job", "deploy")
-        if operation in step
-    }
+def test_every_launched_job_prepares_its_image_after_the_migration() -> None:
+    steps = _steps()
+    image_steps = [step for step in steps.values() if "prepare_image" in step]
+    prepared = [step["prepare_image"] for step in image_steps]
     jobs = _jobs()
     scheduled = {key for key, spec in jobs.items() if "task_schedule" in spec}
+    launched = {profile.key for profile in JOB_LAUNCH_PROFILES}
 
-    # Only the API and its migration Job are in the graph. A Job that a step
-    # references gets its new image when the workflow run is admitted, so a
-    # step could not hold a schedule back until the migration has run.
-    assert referenced == GATED_RESOURCE_KEYS
+    # At most one image step per resource; the backend rejects a second one.
+    assert len(prepared) == len(set(prepared))
+    # Each Job the control plane launches, the scheduled pipeline and the
+    # verification Job among them, gets one image step after migrate.
     assert scheduled == {"standard-pipeline-refresh"}
-    assert not scheduled & referenced
+    assert scheduled | {"pipeline-verification"} <= launched
+    assert set(prepared) == launched | {API_KEY}
+    for step in image_steps:
+        if step["prepare_image"] != API_KEY:
+            assert step["needs"] == ["migrate"], step
+    # The migration Job runs from the API's candidate image and has no image
+    # step of its own.
+    assert MIGRATION_JOB_KEY not in prepared
     assert [
         key for key, spec in jobs.items() if spec["execution_path"] == MIGRATION_JOB_EXECUTION_PATH
-    ] == ["migrate-valmer"]
+    ] == [MIGRATION_JOB_KEY]
+
+
+def _resources() -> dict[str, dict]:
+    return {
+        resource["key"]: resource
+        for resource in _load(MIGRATION_WORKFLOW_PATH)["resources"]
+    }
+
+
+def test_every_workload_declares_view_on_the_metatables_branch() -> None:
+    for key, resource in _resources().items():
+        assert set(resource) <= RESOURCE_FIELDS, key
+        assert resource["access"]["branches"] == METATABLES_BRANCH_VIEW, key
+        expected = {"branches", "resources"} if key == API_KEY else {"branches"}
+        assert set(resource["access"]) == expected, key
+
+
+def test_the_api_holds_edit_on_exactly_the_jobs_it_launches() -> None:
+    granted = _resources()[API_KEY]["access"]["resources"]
+
+    # The control plane lists and runs a branch Job only when its workload is
+    # granted that Job; launching needs edit. The migration Job is not launched.
+    assert granted == [{"key": profile.key, "level": "edit"} for profile in JOB_LAUNCH_PROFILES]
+    assert MIGRATION_JOB_KEY not in {entry["key"] for entry in granted}
+    assert {entry["key"] for entry in granted} <= set(_jobs())
 
 
 def test_migration_job_applies_only_the_valmer_provider(monkeypatch, capsys) -> None:

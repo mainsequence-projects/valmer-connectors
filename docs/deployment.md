@@ -11,8 +11,13 @@ decides what deploys. It declares the control-plane FastAPI release, the
 - the execution graph prepares the code repository image, runs the
   `migrate-valmer` Job from it, and only then deploys the API
   (`needs: [migrate]`);
-- no step references the pipeline Jobs, so each one redeploys on every push by
-  itself (see [Workflow Declarations](#workflow-declarations)).
+- each of the sixteen pipeline Jobs, all of which the API launches, has a
+  `prepare_image` step that needs `migrate`. The backend still activates a
+  Job's new image as soon as the commit image is verified, before the
+  migration runs (see [Workflow Declarations](#workflow-declarations));
+- every workload declares view on the MetaTables repository's branch, and the
+  API declares edit on the sixteen Jobs (see
+  [Teams And Namespaces](#teams-and-namespaces) for table access).
 
 Push only after the Environment's hosted MetaTables API (the `metatables-api`
 release of the MetaTables repository) runs 0.1.19 or later, and after the
@@ -25,9 +30,9 @@ forbids unknown fields, and an API on 0.1.18 or older still sends
 ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33)).
 Against such an API, `migrate-valmer` fails before it migrates anything,
 `deploy_api` never runs, and the push deploys no API. The pipeline Jobs still
-take the new image, because the push applies them outside the graph, and their
-updater runs fail the same way: `TimeIndexTableUpdater.run()` reads the runtime
-context first.
+take the new image, because the backend activates it before the migration runs,
+and their updater runs fail the same way: `TimeIndexTableUpdater.run()` reads
+the runtime context first.
 
 To check the API, run `metatables runtime status` without `--local`, after
 `mainsequence login`, from a checkout whose branch is registered in that
@@ -132,12 +137,31 @@ platform catalog deliberately excludes launch configurations that depend on a
 developer workstation or exist only to run UI, debugging, examples, or
 migration administration.
 
-The pipeline Jobs stay out of `execution.steps` on purpose. The backend
-prepares the image of every Job that a step references when it admits the
-workflow run, before any `run_job` step, so a step cannot make a schedule wait
-for the migration. A Job that no step references keeps its own every-push
-redeployment. A scheduled or manual run can therefore start on a new image
-before `migrate-valmer` has finished.
+Every Job the API launches has one `prepare_image` step with
+`needs: [migrate]`: the sixteen `JOB_LAUNCH_PROFILES` of
+`src/valmer_connectors/control_plane/catalog.py`, the scheduled
+`standard-pipeline-refresh` and `pipeline-verification` among them.
+`migrate-valmer` has no image step of its own; it runs from the API's
+candidate image. The steps put the Jobs in the API's connected group:
+
+- the workflow run reports each Job's image under its own step;
+- the group is applied together, so a Job declaration that fails, or whose
+  declared access is refused, also stops `migrate` and the API rollout;
+- every target of the group must admit the push under its own promotion
+  policy. A Job taken off every-push promotion
+  (`automatic_redeployment.enabled: false`) would make the whole group skip
+  every later push, migration and API included, so such a Job must also lose
+  its `prepare_image` step.
+
+The steps do not hold a Job's new image back until the migration has
+succeeded. At tdag-django `f16c42249` (2026-10-11) the backend starts each
+Job's image deployment run when it prepares the group, and that run activates
+the new image, and re-enables the Job's schedule, as soon as the shared commit
+image is verified. `migrate` runs from that same verified image, so a
+scheduled or manual run can start on the new image before `migrate-valmer` has
+finished, and keeps it if the migration fails. Keep every revision compatible
+with the previous release: add tables and nullable or defaulted columns first,
+and drop or rename only in a later release.
 
 The API is declared as `kind: fastapi` with
 `source_path: api/valmer_control_plane/main.py`. Workflow API 2.3.0 files carry
@@ -156,6 +180,72 @@ same every-commit promotion policy and retains three revisions. Push the
 static repository only after the FastAPI release exists and the installed
 Command Center SDK's exact stable release target has been configured. See
 `docs/control-plane.md` for the two-repository release order.
+
+## Teams And Namespaces
+
+Every workload of the workflow declares
+`access.branches: [{repository: MetaTables, level: view}]`, view on the
+MetaTables repository's branch in its Environment, which a workload needs to
+discover that Environment's MetaTables API. Without it `upgrade_application`
+and every table read or write fail to resolve the API. A grant on another
+repository's branch needs a push that the platform resolves to a person (a
+member whose GitHub account an Organization admin linked) who manages the
+workload and holds view on that branch. Otherwise the resource fails with
+`declared_access_not_granted`, and nothing of its group is applied.
+
+The API also declares `access.resources` at `edit` on each of the sixteen
+Jobs it launches. A workload has no implicit access to the other workloads of
+its branch: the hosted API lists, and can launch, only the Jobs granted to it,
+and a launch needs edit. `migrate-valmer` is not granted, so the hosted Jobs
+collection does not list it; wherever it is listed, as in a local review, the
+preflight refuses its execution path.
+
+Table access is granted in MetaTables, not in the workflow file. The Valmer
+provider registers its tables in two namespaces:
+
+| Namespace | Tables registered by `valmer_connectors.migrations:migration` |
+| --- | --- |
+| `valmer_connectors` | `valmer_connectors__alembic_version`; `valmer_connectors__valmerassetdetails` (`valmer_connectors.ValmerAssetDetails`); `valmer_connectors__vector_de_precios_valmer` (`valmer_connectors.vector_de_precios_valmer`) |
+| `mainsequence.markets` | `ms_markets__index_values__t_1d` (`IndexValuesTS.1d`), the canonical daily Index values |
+
+The pipeline Jobs also write tables that the ms-markets provider registers in
+`mainsequence.markets`: assets, current pricing details, Index and Index type
+rows, Index fixings and discount curves. As the MetaTables guide
+(`deploy-application-migrations.md` in the `metatables-migrations` skill)
+describes, one Team per Environment owns the Valmer tables, for example
+`valmer-connectors-production`:
+
+- an Organization admin creates the `valmer_connectors` namespace in that
+  Environment's MetaTables and grants the Team Writer on it, and also grants
+  the Team Writer on `mainsequence.markets`;
+- its members are the workload Users of `migrate-valmer` and of every Job
+  that writes (each pipeline Job except `pipeline-verification`), and of the
+  two readers, `pipeline-verification` and the API. A Reader grant would do
+  for those two; membership keeps the Team the tables' one owner. Each Job
+  and release reports its `workload_user_uid`.
+
+A Job or release created by a push, including one moved to another file or
+key, has a new workload User that must be added. Until `migrate-valmer`'s
+workload User is a member and the namespace exists, the migration fails with
+`namespace_not_writable` and blocks the API rollout.
+
+### Objects Outside MetaTables
+
+The workflow declares no Secret, Constant or Bucket: a declared object that
+cannot be granted would refuse the whole group. A person who manages the Job
+grants each one with `add-to-view` and the Job's `workload_user_uid`;
+until then the Job fails when it reaches the object. The names are the
+defaults; the `VALMER_*_NAME` environment variables of
+`src/valmer_connectors/settings.py` override some of them.
+
+| Object | Kind | Jobs |
+| --- | --- | --- |
+| `FRED_API_KEY` | Secret | `fred-reference-rates-refresh`, `standard-pipeline-refresh` |
+| `BANXICO_TOKEN` | Secret | `banxico-fixings-refresh`, `banxico-tiie-fixings-refresh`, `banxico-policy-refresh`, `standard-pipeline-refresh` |
+| `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID`, `VALMER_ONEDRIVE_CLIENT_SECRET` | Secrets | `vector-onedrive-refresh` |
+| `VALMER_ONEDRIVE_DRIVE_ID` | Constant | `vector-onedrive-refresh` |
+| `Hitorical Valmer Vector Analytico` | Bucket and its Artifacts | `vector-refresh`, `standard-pipeline-refresh` |
+| `dbo.vector_precios_gubernamental_pip_vista` | MetaTable (Reader) | `vector-metatable-refresh`, and the API for that Job's preflight |
 
 ## Cleanup After The Push: The Removed Jobs Workflow
 

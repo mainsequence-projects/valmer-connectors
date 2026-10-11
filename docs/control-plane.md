@@ -105,7 +105,8 @@ no operator access. Job launch behavior is fail-closed:
 2. discovery must advertise the action for that caller;
 3. the SDK performs preflight before confirmation;
 4. selection must contain exactly one Job UID;
-5. the Job must belong to the current CodeRepositoryBranch;
+5. the Job must belong to the current CodeRepositoryBranch and, hosted, be one of the Jobs
+   the workflow grants the API;
 6. the latest run cannot already be pending or running; and
 7. the Job image must be ready.
 
@@ -137,11 +138,16 @@ site.
 
 The `migrate-valmer` Job is declared in the same file. Its execution graph prepares the image,
 runs that Job (`scripts/migrate_valmer.py`), and deploys the FastAPI release only after it
-succeeds. No step references the pipeline Jobs: the backend prepares the image of a referenced
-Job when it admits the workflow run, so a step could not hold the scheduled pipeline back until
-the migration has run. The pipeline Jobs keep their own every-push redeployment. The Jobs
-collection lists the migration Job like any other branch Job, but preflight blocks it: hosted
-migrations run only inside a deployment, never by hand.
+succeeds. Each pipeline Job also has a `prepare_image` step that needs `migrate`, which keeps
+the Jobs in the API's group; the backend still activates a Job's new image, schedule included,
+as soon as the commit image is verified, before the migration runs (see "Workflow
+Declarations" in `docs/deployment.md`).
+
+The workflow grants the API `edit` on each of the sixteen Jobs it launches. Hosted, the API
+sees only the Jobs granted to its workload User, so its Jobs and Job-runs collections list
+those sixteen and not the migration Job. Wherever the migration Job is listed, as in a local
+review that runs with the developer's own access, preflight blocks it: hosted migrations run
+only inside a deployment, never by hand.
 
 `GET /api/v1/control-plane/jobs/{job_uid}/run-parameters` returns the application-owned runtime
 controls for one branch Job. Unprofiled Jobs return an empty parameter list. Vector Jobs expose
@@ -215,7 +221,10 @@ The two repositories must be released in dependency order:
    deployed), then push `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI
    release by `source_path` (`api/valmer_control_plane/main.py`) with every-commit automatic
    redeployment, three retained revisions, and the platform's default static-site CORS policy,
-   gates it on the `migrate-valmer` Job, and declares the pipeline Jobs outside the graph;
+   gates it on the `migrate-valmer` Job, gives each pipeline Job an image step after the
+   migration, declares MetaTables branch access on every workload and grants the API edit on
+   the Jobs it launches. Before the migration step starts, add the new Jobs' workload Users to
+   the Valmer Team (see "Teams And Namespaces" in `docs/deployment.md`);
 2. confirm that the workflow run's `migrate` step succeeded before its `deploy_api` step;
 3. confirm that only one Job per pipeline Job name remains, and delete the old Jobs that are
    still bound to the removed `valmer-control-plane-jobs.yaml` (see "Cleanup After The Push"

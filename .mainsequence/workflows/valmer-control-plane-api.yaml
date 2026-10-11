@@ -5,6 +5,12 @@ name: valmer-control-plane-api
 # Job that gates it, and every pipeline Job. A target's identity is this file
 # path plus its resource key, so rename neither: on the next push a new path or
 # key creates a new target, and the old one is not carried over.
+#
+# Every workload reaches the Environment's MetaTables API, so each declares
+# view on the MetaTables repository's branch. The API also declares edit on
+# every Job it launches: a workload sees and runs only the Jobs granted to it.
+# Table access is not declared here; the Valmer Team grants it (see
+# docs/deployment.md, "Teams And Namespaces").
 
 resources:
   - key: valmer-control-plane-api
@@ -21,6 +27,44 @@ resources:
       env_vars:
         - name: VALMER_CONTROL_PLANE_OPERATOR_UIDS
           value: e2a4f38a-1b5f-40a3-974f-70bc8f065b3f
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
+      # The JOB_LAUNCH_PROFILES of src/valmer_connectors/control_plane/catalog.py.
+      resources:
+        - key: vector-refresh
+          level: edit
+        - key: vector-onedrive-refresh
+          level: edit
+        - key: vector-metatable-refresh
+          level: edit
+        - key: irs-mxn-quotes-refresh
+          level: edit
+        - key: irs-usd-quotes-refresh
+          level: edit
+        - key: banxico-fixings-refresh
+          level: edit
+        - key: banxico-tiie-fixings-refresh
+          level: edit
+        - key: fred-reference-rates-refresh
+          level: edit
+        - key: banxico-policy-refresh
+          level: edit
+        - key: tiie-curve-refresh
+          level: edit
+        - key: sofr-curve-refresh
+          level: edit
+        - key: xccy-curve-refresh
+          level: edit
+        - key: xccy-curve-rebuild
+          level: edit
+        - key: government-curve-refresh
+          level: edit
+        - key: standard-pipeline-refresh
+          level: edit
+        - key: pipeline-verification
+          level: edit
 
   - key: migrate-valmer
     kind: job
@@ -35,12 +79,14 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
-  # Pipeline Jobs. No execution step references them, on purpose: a Job that a
-  # step references gets its new image when the workflow run is admitted, so a
-  # step cannot hold its schedule back until migrate-valmer has run. Each one
-  # redeploys on every push by itself. standard-pipeline-refresh is the only
-  # scheduled Job.
+  # Pipeline Jobs. The control-plane API launches every one of them, and
+  # standard-pipeline-refresh is the only scheduled Job. Each has a
+  # prepare_image step that needs migrate (see execution.steps).
   - key: vector-refresh
     kind: job
     spec:
@@ -54,6 +100,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: vector-onedrive-refresh
     kind: job
@@ -68,6 +118,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: vector-metatable-refresh
     kind: job
@@ -82,6 +136,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: irs-mxn-quotes-refresh
     kind: job
@@ -96,6 +154,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: irs-usd-quotes-refresh
     kind: job
@@ -110,6 +172,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: banxico-fixings-refresh
     kind: job
@@ -124,6 +190,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: banxico-tiie-fixings-refresh
     kind: job
@@ -138,6 +208,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: fred-reference-rates-refresh
     kind: job
@@ -152,6 +226,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: banxico-policy-refresh
     kind: job
@@ -166,6 +244,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: tiie-curve-refresh
     kind: job
@@ -180,6 +262,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: sofr-curve-refresh
     kind: job
@@ -194,6 +280,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: xccy-curve-refresh
     kind: job
@@ -208,6 +298,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: xccy-curve-rebuild
     kind: job
@@ -222,6 +316,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: government-curve-refresh
     kind: job
@@ -236,6 +334,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: standard-pipeline-refresh
     kind: job
@@ -254,6 +356,10 @@ resources:
         schedule:
           type: crontab
           expression: "0 13 * * 1-5"
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: pipeline-verification
     kind: job
@@ -268,6 +374,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
 execution:
   steps:
@@ -280,4 +390,58 @@ execution:
     deploy_api:
       deploy: valmer-control-plane-api
       image_from: image
+      needs: [migrate]
+    # One image step per Job the API launches, after migrate. They put the
+    # Jobs in the API's group: the run reports each Job's image, and a Job
+    # whose declaration fails or is refused stops the API rollout too. They do
+    # not hold a Job's new image back until migrate succeeds: the backend
+    # activates it, schedule included, once the shared commit image is
+    # verified (docs/deployment.md, "Workflow Declarations").
+    vector_refresh_image:
+      prepare_image: vector-refresh
+      needs: [migrate]
+    vector_onedrive_refresh_image:
+      prepare_image: vector-onedrive-refresh
+      needs: [migrate]
+    vector_metatable_refresh_image:
+      prepare_image: vector-metatable-refresh
+      needs: [migrate]
+    irs_mxn_quotes_refresh_image:
+      prepare_image: irs-mxn-quotes-refresh
+      needs: [migrate]
+    irs_usd_quotes_refresh_image:
+      prepare_image: irs-usd-quotes-refresh
+      needs: [migrate]
+    banxico_fixings_refresh_image:
+      prepare_image: banxico-fixings-refresh
+      needs: [migrate]
+    banxico_tiie_fixings_refresh_image:
+      prepare_image: banxico-tiie-fixings-refresh
+      needs: [migrate]
+    fred_reference_rates_refresh_image:
+      prepare_image: fred-reference-rates-refresh
+      needs: [migrate]
+    banxico_policy_refresh_image:
+      prepare_image: banxico-policy-refresh
+      needs: [migrate]
+    tiie_curve_refresh_image:
+      prepare_image: tiie-curve-refresh
+      needs: [migrate]
+    sofr_curve_refresh_image:
+      prepare_image: sofr-curve-refresh
+      needs: [migrate]
+    xccy_curve_refresh_image:
+      prepare_image: xccy-curve-refresh
+      needs: [migrate]
+    xccy_curve_rebuild_image:
+      prepare_image: xccy-curve-rebuild
+      needs: [migrate]
+    government_curve_refresh_image:
+      prepare_image: government-curve-refresh
+      needs: [migrate]
+    standard_pipeline_refresh_image:
+      prepare_image: standard-pipeline-refresh
+      needs: [migrate]
+    pipeline_verification_image:
+      prepare_image: pipeline-verification
       needs: [migrate]
