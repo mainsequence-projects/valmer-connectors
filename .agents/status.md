@@ -88,37 +88,47 @@ Last complete backend lifecycle verification: 2026-08-21
   gate that release and static-site rollouts use. Every target of a group must
   admit the push, so a Job taken off every-push promotion would make the API's
   group skip later pushes unless its step is removed too.
-- Local proof on 2026-10-04 against a fresh, isolated MetaTables 0.1.20 SQLite
-  runtime (its own `METATABLES_LOCAL_STORAGE_DIR`, `serve --local` on a free
-  port with a scratch configuration, SDK session on the development backend
-  `127.0.0.1:8000`; `metatables --local runtime initialize`: `ready`, system
-  revision `0010_cascade_targets`, DataSource
-  `5e49cce4-75e4-52bb-9e67-d792a7d345a0`), at commit `bb7b5b0`, with
-  mainsequence 9.0.6 and ms-markets 2.2.5:
+- Local proof on 2026-10-11 against a fresh, isolated MetaTables 0.1.34 SQLite
+  runtime (its own `METATABLES_LOCAL_STORAGE_DIR`, `serve --local --port
+  63500` with a scratch configuration from `init --local --configuration`,
+  saved SDK session on the development backend `127.0.0.1:8000`; the
+  laptop's shared local API on `18473` and its store were not touched;
+  `metatables --local runtime initialize`: `ready`, system revision
+  `0012_table_creator`, DataSource `1bc7dde9-65d7-5dab-b32a-c0ffe6a08eb2`),
+  with the provider code of commit `e161566`, mainsequence 9.0.22 and
+  ms-markets 2.2.10:
   - `msm_migrations:migration` was applied first as a local stand-in for the
-    ms-markets deployment: `finalized_count: 62`, `failed_count: 0`, `current`
-    `0018 (head)`.
+    ms-markets deployment: `ok: True`, `finalized_count: 62`,
+    `failed_count: 0`, `current` `0020 (head) (mergepoint)`.
   - `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`:
     Alembic ran `-> 0001, current_schema_baseline`, then `ok: True`,
     `finalized_count: 4`, `active_count: 4`, `reserved_count: 0`,
-    `failed_count: 0` (`valmer_connectors__alembic_version`,
-    `valmer_connectors__valmerassetdetails`,
-    `valmer_connectors__vector_de_precios_valmer`,
-    `ms_markets__index_values__t_1d`). `current` printed `0001 (head)`, and all
-    66 catalog tables were `active`, none `reserved` or `failed`.
+    `failed_count: 0`: `valmer_connectors__alembic_version`,
+    `valmer_connectors__valmerassetdetails` and
+    `valmer_connectors__vector_de_precios_valmer` in namespace
+    `valmer_connectors`, `ms_markets__index_values__t_1d` in namespace
+    `mainsequence.markets`, all with provider key
+    `valmer_connectors:valmer_connectors`. `current` printed `0001 (head)`, and
+    all 66 catalog tables were `active`.
   - `PRAGMA foreign_key_list` shows the asset-details key to
-    `ms_markets__asset.uid` as `ON DELETE CASCADE`; the other three keys on
-    Valmer-owned tables stay `RESTRICT`.
-  - `scripts/migrate_valmer.py` after `metatables.configure_local_client()`
-    printed `valmer_connectors.migrations:migration: 0001 (already current) on
-    5e49cce4-75e4-52bb-9e67-d792a7d345a0` and exited 0. After `downgrade base`
-    (three tables `deleted`, the version table kept, `failed_count: 0`), it
-    printed `0001 (migrated)` and exited 0; `current` printed `0001 (head)`
-    and all 66 catalog tables were `active` again.
-  - The 2026-10-03 proof on MetaTables 0.1.18 (commit `75f1342`) also found
-    `MetaTable.get_impact(action="delete_rows")` on `ms_markets__asset`
-    allowed with no blockers, and no Alembic autogenerate differences; those
-    two checks were not repeated on 0.1.20.
+    `ms_markets__asset.uid` as `ON DELETE CASCADE`; the vector key to
+    `ms_markets__asset.unique_identifier` and the two Index-values keys stay
+    `RESTRICT`.
+  - `scripts/migrate_valmer.py`, unchanged, after
+    `metatables.configure_local_client()` printed
+    `valmer_connectors.migrations:migration: 0001 (already current) on
+    1bc7dde9-65d7-5dab-b32a-c0ffe6a08eb2` and exited 0. After `downgrade base`
+    (`ok: True`, three tables deleted, the version table kept,
+    `failed_count: 0`), it printed `0001 (migrated)` and exited 0; `current`
+    printed `0001 (head)` and all 66 catalog tables were `active` again.
+  - Alembic `compare_metadata` with the provider's include hooks found no
+    difference between `VALMER_TARGET_METADATA` and the migrated SQLite
+    schema; a negative control that added one model column reported exactly
+    that `add_column`.
+  - `MetaTable.get_impact(action="delete_rows")` on `ms_markets__asset`:
+    allowed, no blockers, `valmer_connectors__valmerassetdetails` a
+    `cascade_delete` edge and `valmer_connectors__vector_de_precios_valmer` a
+    `restrict` edge.
 
 ## Production Platform State (Read Only, 2026-10-11)
 

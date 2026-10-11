@@ -391,35 +391,43 @@ line per provider, for example
 the first time and `0001 (already current)` afterwards.
 `metatables migrations current` only reads the deployed revision.
 
-## MetaTables 0.1.20 Local Migration Check (2026-10-04)
+## MetaTables 0.1.34 Local Migration Check (2026-10-11)
 
-The Valmer provider was applied to a fresh, isolated MetaTables 0.1.20 local
-SQLite runtime (system migrations through `0010_cascade_targets`) that already
-held the ms-markets 2.2.5 schema (revision `0018`, 62 active tables), as a
-hosted DataSource does once the ms-markets deployment has migrated it:
+The Valmer provider was applied to a fresh, isolated MetaTables 0.1.34 local
+SQLite runtime (system migrations through `0012_table_creator`) that already
+held the ms-markets 2.2.10 schema (revision `0020`, 62 active tables), as a
+hosted DataSource does once the ms-markets deployment has migrated it. The
+runtime had its own storage directory and port, so the laptop's shared local
+runtime was not touched:
 
 - `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`
-  applied revision `0001` and finalized all four Valmer catalog tables as
-  `active` with `failed_count: 0`: `valmer_connectors__alembic_version`,
-  `valmer_connectors__valmerassetdetails`,
-  `valmer_connectors__vector_de_precios_valmer` and
-  `ms_markets__index_values__t_1d`. `migrations current` reports `0001 (head)`,
-  and all 66 catalog tables are `active`.
+  ran `-> 0001, current_schema_baseline` and finalized all four Valmer catalog
+  tables as `active` with `failed_count: 0`: `valmer_connectors__alembic_version`
+  and `valmer_connectors__valmerassetdetails` and
+  `valmer_connectors__vector_de_precios_valmer` in namespace
+  `valmer_connectors`, and `ms_markets__index_values__t_1d` (`IndexValuesTS.1d`)
+  in namespace `mainsequence.markets`, all under provider key
+  `valmer_connectors:valmer_connectors`. `migrations current` reports
+  `0001 (head)`, and all 66 catalog tables are `active`.
 - The asset-details key to `ms_markets__asset.uid` is `ON DELETE CASCADE` in
   the SQLite schema; the other three keys on Valmer-owned tables are
   `RESTRICT`.
-- `scripts/migrate_valmer.py`, run through `metatables.configure_local_client()`,
-  printed `valmer_connectors.migrations:migration: 0001 (already current) on
-  <DataSource UID>`. After `downgrade base`, it printed `0001 (migrated)` and
-  the same four tables were `active` again. Both runs exited 0.
-
-The 0.1.18 check on 2026-10-03 also found that `get_impact(action="delete_rows")`
-on `ms_markets__asset` lists the asset-details key as a `cascade_delete` edge,
-reports the action allowed and has no blockers, and that Alembic autogenerate
-finds no difference between the provider metadata and the migrated schema.
+- `scripts/migrate_valmer.py`, run unchanged through
+  `metatables.configure_local_client()`, printed
+  `valmer_connectors.migrations:migration: 0001 (already current) on
+  <DataSource UID>`. After `downgrade base` (three tables deleted, the version
+  table kept, `failed_count: 0`), it printed `0001 (migrated)` and all 66
+  tables were `active` again. Both runs exited 0.
+- Alembic autogenerate finds no difference between the provider metadata and
+  the migrated schema; the same comparison reports a column added to the
+  models, so it does detect drift.
+- `get_impact(action="delete_rows")` on `ms_markets__asset` is allowed with no
+  blockers, lists the asset-details table as a `cascade_delete` edge and the
+  vector table as a `restrict` edge.
 
 SQLite does not exercise PostgreSQL. The hosted `migrate-valmer` Job is
-unverified until its first workflow run. See `.agents/status.md` for the
+unverified until its first workflow run, which in Production also creates the
+tables, because none of them exist there yet. See `.agents/status.md` for the
 runtime identifiers.
 
 ## Current Platform Verification
