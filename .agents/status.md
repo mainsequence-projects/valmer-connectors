@@ -1,18 +1,22 @@
 # Project Status
 
-Last local verification: 2026-10-11
+Last local verification: 2026-10-14
 Last complete backend lifecycle verification: 2026-08-21
 
-## Dependency And Skill Pins (Verified Locally 2026-10-11)
+## Dependency And Skill Pins (Verified Locally 2026-10-14)
 
-- Locked and installed: `mainsequence` 9.0.22, `mainsequence-metatable` 0.1.34,
-  ms-markets 2.2.10, the newest stable releases on PyPI that day. Declared:
-  `mainsequence>=9.0.22,<10`, `mainsequence-metatable>=0.1.34,<0.2` and
-  exactly `ms-markets==2.2.10`, the release the Markets deployment runs;
-  `requires-python` stays `>=3.13,<3.14`. MetaTables 0.1.34 adds fastembed
-  (onnxruntime, tokenizers, huggingface-hub) and `mainsequence[mcp]` to the
-  lock. On them the full suite passes (339 tests, 1 skipped, 39 subtests) and
-  Ruff passes.
+- Locked and installed: `mainsequence` 9.0.24, `mainsequence-metatable` 0.1.34,
+  ms-markets 2.2.10. Declared: `mainsequence>=9.0.24,<10`,
+  `mainsequence-metatable>=0.1.34,<0.2` and exactly `ms-markets==2.2.10`, the
+  release the Markets deployment runs; `requires-python` stays
+  `>=3.13,<3.14`. MetaTables 0.1.34 adds fastembed (onnxruntime, tokenizers,
+  huggingface-hub) and `mainsequence[mcp]` to the lock. 2026-10-14:
+  `uv lock --upgrade-package mainsequence` moved 9.0.22 to 9.0.24, and the
+  9.0.24 `mcp` extra (`mcp>=2.3,<3`) moved mcp 1.30.0 to 2.3.0, adding
+  mcp-types, httpx2, httpcore2, truststore and the Emscripten-only
+  httpx2-jsfetch and dropping httpx-sse, pydantic-settings and python-dotenv;
+  nothing else moved. On it the full suite passes (339 tests, 1 skipped, 39
+  subtests) and Ruff passes.
 - Identity check against the previous lock (9.0.6, 0.1.20, 2.2.5), offline,
   2026-10-11: the provider (package, namespace, version location, head `0001`,
   version table `valmer_connectors__alembic_version`), the six provider
@@ -45,9 +49,12 @@ Last complete backend lifecycle verification: 2026-08-21
   unchanged through 2.2.10, whose provider head is `0020`. ms-markets talks
   only to the MetaTables API (`MetaTable.execute_operation`), so no workload
   needs access to the MainSequenceMarkets repository's branch.
-- Skills are pinned to SDK 9.0.22, MetaTables 0.1.34 and ms-markets 2.2.10.
+- Skills are pinned to SDK 9.0.24, MetaTables 0.1.34 and ms-markets 2.2.10.
   Platform skills (`.agents/skills/mainsequence_platform/`) are not installed.
-  The managed `AGENTS.md` block matches the SDK 9.0.22 template.
+  SDK 9.0.24 no longer scaffolds `AGENTS.md`: its SDK guidance, including the
+  skill routing the old managed block carried, ships in
+  `.agents/skills/mainsequence/`. `AGENTS.md` keeps only this repository's
+  instructions and has no managed block since 2026-10-14.
 - Since SDK 9.0.5, `code-repository sync` only refreshes dependency files;
   publishing is `git commit` and `git push`, and the single workflow file
   decides what deploys. Every workflow resource declares `tag_regex: null`.
@@ -100,7 +107,9 @@ Last complete backend lifecycle verification: 2026-08-21
   `metatables --local runtime initialize`: `ready`, system revision
   `0012_table_creator`, DataSource `1bc7dde9-65d7-5dab-b32a-c0ffe6a08eb2`),
   with the provider code of commit `e161566`, mainsequence 9.0.22 and
-  ms-markets 2.2.10:
+  ms-markets 2.2.10. Repeated on 2026-10-14 with mainsequence 9.0.24 and mcp
+  2.3.0 on another fresh runtime (`serve --local --port 49619`, DataSource
+  `3829a75f-0397-55e3-b9d3-4a7d0cfaef37`): every result below held.
   - `msm_migrations:migration` was applied first as a local stand-in for the
     ms-markets deployment: `ok: True`, `finalized_count: 62`,
     `failed_count: 0`, `current` `0020 (head) (mergepoint)`.
@@ -161,18 +170,19 @@ Last complete backend lifecycle verification: 2026-08-21
   Bucket `Hitorical Valmer Vector Analytico`, and no registered MetaTable
   `dbo.vector_precios_gubernamental_pip_vista`.
 
-## Wheel Packaging (Verified Locally 2026-10-03, 2026-10-11)
+## Wheel Packaging (Verified Locally 2026-10-03, 2026-10-11, 2026-10-14)
 
-- 2026-10-11: a wheel built from the 0.1.48 tree's tracked files (so no stale
+- 2026-10-14: a wheel built from the 0.1.48 tree's tracked files (so no stale
   `build/`) installs only `valmer_connectors`, 69 files including the Valmer
   skill, the MetaTable source configuration, `script.py.mako` and revision
-  `0001`, and declares `mainsequence<10,>=9.0.22`,
+  `0001`, and declares `mainsequence<10,>=9.0.24`,
   `mainsequence-metatable<0.2,>=0.1.34`, `ms-markets==2.2.10` and
   `Requires-Python <3.14,>=3.13`. In a clean venv it resolves mainsequence
-  9.0.22, mainsequence-metatable 0.1.34 and ms-markets 2.2.10,
+  9.0.24, mainsequence-metatable 0.1.34, ms-markets 2.2.10 and mcp 2.3.0,
   `import msm_migrations, valmer_connectors.migrations` succeeds, and no
   top-level `migrations`, `banxico`, `fred`, `agents`, `cli`,
-  `command_center` or `msm_command_center` module is installed.
+  `command_center` or `msm_command_center` module is installed. The same
+  check passed on 2026-10-11 with mainsequence 9.0.22.
 
 - `valmer-connectors` 0.1.47 installs exactly one top-level import package,
   `valmer_connectors`. The Valmer migration provider is

@@ -8,19 +8,21 @@ below; where the two differ, this entry applies.
 
 ### Dependencies
 
-- Requires `mainsequence>=9.0.22,<10`, `mainsequence-metatable>=0.1.34,<0.2`
+- Requires `mainsequence>=9.0.24,<10`, `mainsequence-metatable>=0.1.34,<0.2`
   and exactly `ms-markets==2.2.10`, the release the Environment's Markets
   deployment runs; `requires-python` stays `>=3.13,<3.14`. The lock selects
-  mainsequence 9.0.22, mainsequence-metatable 0.1.34 and ms-markets 2.2.10,
+  mainsequence 9.0.24, mainsequence-metatable 0.1.34 and ms-markets 2.2.10,
   and adds what MetaTables 0.1.34 depends on: fastembed (with onnxruntime,
-  tokenizers and huggingface-hub) and `mainsequence[mcp]`.
+  tokenizers and huggingface-hub) and `mainsequence[mcp]`, whose 9.0.24 extra
+  selects mcp 2.3.0.
 - Deploy against the Environment's MetaTables API on 0.1.34 and its Markets
   deployment on 2.2.10, with the ms-markets migration applied. The hosted
   MetaTables API 0.1.19 prerequisite of 0.1.47 no longer applies: the 0.1.34
   client ignores unknown `/runtime-context/` fields.
-- SDK 9.0.22 requires the caller's `team_uids` and `is_organization_admin` in
-  every hosted caller assertion; SDK 9.0.6 rejects the assertions the backend
-  signs now, so the hosted API must run this image. The control plane's
+- SDK 9.0.22 and later require the caller's `team_uids` and
+  `is_organization_admin` in every hosted caller assertion; SDK 9.0.6 rejects
+  the assertions the backend signs now, so the hosted API must run this
+  image. The control plane's
   identity code is unchanged, and operators are still only the
   `VALMER_CONTROL_PLANE_OPERATOR_UIDS`: the admin flag and team UIDs grant
   nothing.
@@ -49,8 +51,13 @@ below; where the two differ, this entry applies.
 
 ### Agent skills
 
-- Refreshed the SDK 9.0.22, MetaTables 0.1.34 and ms-markets 2.2.10 skills
-  and the managed `AGENTS.md` block.
+- Refreshed the SDK 9.0.24, MetaTables 0.1.34 and ms-markets 2.2.10 skills.
+- SDK 9.0.24 no longer scaffolds `AGENTS.md`; the SDK guidance, including the
+  skill routing, ships in `.agents/skills/mainsequence/`. `AGENTS.md` drops
+  the SDK preamble, the marker notice and the managed block, keeps this
+  repository's own instructions, and points to the skill namespaces.
+  `docs/deployment.md` no longer lists the removed
+  `code-repository update AGENTS.md` command.
 
 ## 0.1.47 (unreleased)
 

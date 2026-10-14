@@ -77,7 +77,7 @@ Since SDK 9.0.5, `code-repository sync` only runs `uv lock`, `uv sync` and
 bump the version, tag, commit or push. A pushed commit is not deployment
 evidence; inspect the workflow run and its DeploymentRuns.
 
-## Skill And Scaffold Refresh
+## Skill Refresh
 
 Run these only when the update is explicitly requested:
 
@@ -86,13 +86,15 @@ mainsequence code-repository update-agent-skills --path .
 mainsequence code-repository update-platform-skills --path .
 metatables copy-metatables-skills --path .
 msm copy-msm-skills --path .
-mainsequence code-repository update AGENTS.md --path .
 ```
 
 `update-agent-skills` copies the SDK-owned skills offline and replaces
-`.agents/skills/mainsequence/`; `update-platform-skills` needs the signed-in
-session and installs the platform skills under
-`.agents/skills/mainsequence_platform/`.
+`.agents/skills/mainsequence/`; `mainsequence code-repository update-sdk` also
+refreshes them after it upgrades the SDK. `update-platform-skills` needs the
+signed-in session and installs the platform skills under
+`.agents/skills/mainsequence_platform/`. Since SDK 9.0.24 the SDK guidance
+lives only in those skills: `AGENTS.md` is the repository's own file, no SDK
+command writes it, and it carries no SDK-managed block.
 
 ## Migrations
 
@@ -396,14 +398,16 @@ line per provider, for example
 the first time and `0001 (already current)` afterwards.
 `metatables migrations current` only reads the deployed revision.
 
-## MetaTables 0.1.34 Local Migration Check (2026-10-11)
+## MetaTables 0.1.34 Local Migration Check (2026-10-11, 2026-10-14)
 
 The Valmer provider was applied to a fresh, isolated MetaTables 0.1.34 local
 SQLite runtime (system migrations through `0012_table_creator`) that already
 held the ms-markets 2.2.10 schema (revision `0020`, 62 active tables), as a
 hosted DataSource does once the ms-markets deployment has migrated it. The
 runtime had its own storage directory and port, so the laptop's shared local
-runtime was not touched:
+runtime was not touched. The check ran on 2026-10-11 with mainsequence 9.0.22
+and again on 2026-10-14, on another fresh runtime, with mainsequence 9.0.24
+and mcp 2.3.0; every result below held both times:
 
 - `metatables --local migrations upgrade --provider valmer_connectors.migrations:migration head`
   ran `-> 0001, current_schema_baseline` and finalized all four Valmer catalog

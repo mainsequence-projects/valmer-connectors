@@ -18,7 +18,7 @@
 ## Roll valmer-connectors 0.1.48 out to consumers
 
 - Scope: once `main` and the `v0.1.48` tag are pushed, move the three
-  consumers to the commit that tag names, together with mainsequence 9.0.22,
+  consumers to the commit that tag names, together with mainsequence 9.0.24,
   mainsequence-metatable 0.1.34 and ms-markets 2.2.10. 0.1.47 was tagged
   locally only and never published, so every consumer moves from 0.1.46 or
   an unpublished 0.1.47 build.

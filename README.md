@@ -119,7 +119,7 @@ Detailed guides:
 ### Requirements
 
 - CPython 3.13.x (the repository currently excludes Python 3.14)
-- A working MainSequence environment: `mainsequence>=9.0.22,<10` for identity,
+- A working MainSequence environment: `mainsequence>=9.0.24,<10` for identity,
   CodeRepository, Job, and Artifact APIs, plus the
   `mainsequence-metatable>=0.1.34,<0.2` client (imported and run as
   `metatables`) for MetaTables, updaters, and migrations, and exactly
