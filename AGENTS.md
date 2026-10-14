@@ -16,7 +16,7 @@ promotion policy to the API's group (see "Workflow Declarations" in `docs/deploy
 every revision backward compatible (expand first). Every workload declares view on the
 `MetaTables` branch, and the API declares edit on each Job of `JOB_LAUNCH_PROFILES`: add a launch
 profile and its grant together.
-A push needs the Environment's MetaTables API on 0.1.34 (the locked client's release), its
+A push needs the Environment's MetaTables API on 0.1.35 (the locked client's release), its
 ms-markets deployment on 2.2.10 with its migration applied, and the Valmer Team with Writer on the
 `valmer_connectors` and `mainsequence.markets` namespaces, including every new workload User. See
 "Publishing" and "Teams And Namespaces" in `docs/deployment.md`.

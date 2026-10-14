@@ -8,16 +8,16 @@ below; where the two differ, this entry applies.
 
 ### Dependencies
 
-- Requires `mainsequence>=9.0.24,<10`, `mainsequence-metatable>=0.1.34,<0.2`
+- Requires `mainsequence>=9.0.24,<10`, `mainsequence-metatable>=0.1.35,<0.2`
   and exactly `ms-markets==2.2.10`, the release the Environment's Markets
   deployment runs; `requires-python` stays `>=3.13,<3.14`. The lock selects
-  mainsequence 9.0.24, mainsequence-metatable 0.1.34 and ms-markets 2.2.10,
-  and adds what MetaTables 0.1.34 depends on: fastembed (with onnxruntime,
+  mainsequence 9.0.24, mainsequence-metatable 0.1.35 and ms-markets 2.2.10,
+  and adds what MetaTables 0.1.35 depends on: fastembed (with onnxruntime,
   tokenizers and huggingface-hub) and `mainsequence[mcp]`, whose 9.0.24 extra
   selects mcp 2.3.0.
-- Deploy against the Environment's MetaTables API on 0.1.34 and its Markets
+- Deploy against the Environment's MetaTables API on 0.1.35 and its Markets
   deployment on 2.2.10, with the ms-markets migration applied. The hosted
-  MetaTables API 0.1.19 prerequisite of 0.1.47 no longer applies: the 0.1.34
+  MetaTables API 0.1.19 prerequisite of 0.1.47 no longer applies: the 0.1.35
   client ignores unknown `/runtime-context/` fields.
 - SDK 9.0.22 and later require the caller's `team_uids` and
   `is_organization_admin` in every hosted caller assertion; SDK 9.0.6 rejects
@@ -51,7 +51,9 @@ below; where the two differ, this entry applies.
 
 ### Agent skills
 
-- Refreshed the SDK 9.0.24, MetaTables 0.1.34 and ms-markets 2.2.10 skills.
+- Refreshed the SDK 9.0.24, MetaTables 0.1.35 and ms-markets 2.2.10 skills.
+  The MetaTables refresh removes the retired `metatables-upgrade-legacy-app`
+  skill.
 - SDK 9.0.24 no longer scaffolds `AGENTS.md`; the SDK guidance, including the
   skill routing, ships in `.agents/skills/mainsequence/`. `AGENTS.md` drops
   the SDK preamble, the marker notice and the managed block, keeps this

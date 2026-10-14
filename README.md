@@ -121,11 +121,11 @@ Detailed guides:
 - CPython 3.13.x (the repository currently excludes Python 3.14)
 - A working MainSequence environment: `mainsequence>=9.0.24,<10` for identity,
   CodeRepository, Job, and Artifact APIs, plus the
-  `mainsequence-metatable>=0.1.34,<0.2` client (imported and run as
+  `mainsequence-metatable>=0.1.35,<0.2` client (imported and run as
   `metatables`) for MetaTables, updaters, and migrations, and exactly
   `ms-markets==2.2.10`, the release the Environment's Markets deployment runs
 - For hosted runs and deployment, an Environment whose MetaTables API runs
-  0.1.34 and whose ms-markets deployment runs 2.2.10 and has migrated its
+  0.1.35 and whose ms-markets deployment runs 2.2.10 and has migrated its
   schema, and a Team that owns the Valmer namespaces (see "Teams And
   Namespaces" in `docs/deployment.md`)
 - Access to the Valmer artifact bucket and to the Valmer benchmark CSV endpoint
@@ -156,7 +156,7 @@ rollout while the previous release keeps serving. Do not run
 `metatables migrations upgrade` or `downgrade` against a hosted runtime, and do
 not migrate at application startup.
 
-Push only after the Environment's MetaTables API runs 0.1.34, the release of
+Push only after the Environment's MetaTables API runs 0.1.35, the release of
 the locked client, and the ms-markets deployment's migration Job has succeeded
 in the same DataSource. Before the first push in an Environment, an
 Organization admin sets up the Valmer Team: `migrate-valmer` needs Writer on

@@ -22,9 +22,9 @@ decides what deploys. It declares the control-plane FastAPI release, the
 Push only when the Environment is ready for this image:
 
 - its MetaTables API, the API release of the `MetaTables` repository's branch
-  in that Environment, runs 0.1.34, the release of the locked
+  in that Environment, runs 0.1.35, the release of the locked
   `mainsequence-metatable` client. Keep the client and the API on one
-  release. The 0.1.34 client ignores unknown `/runtime-context/` fields, so the
+  release. The 0.1.35 client ignores unknown `/runtime-context/` fields, so the
   failure of the 0.1.20 client against an API on 0.1.18 or older
   ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33))
   no longer applies;
@@ -41,7 +41,7 @@ it before the migration runs.
 
 To check the MetaTables API, run `metatables runtime status` without
 `--local`, after `mainsequence login`, from a checkout whose branch is
-registered in that Environment. It is a read-only request. With 0.1.34 its
+registered in that Environment. It is a read-only request. With 0.1.35 its
 `bootstrap.current_revisions` is `["0012_table_creator"]` and nothing is
 pending.
 
@@ -107,7 +107,7 @@ database already at head is left unchanged. A failed Job blocks the API
 deployment and the previous release keeps serving; fix the revision and push
 again. Redeploying an older image does not roll the schema back.
 
-The Job needs the Environment's MetaTables API on 0.1.34, the release of the
+The Job needs the Environment's MetaTables API on 0.1.35, the release of the
 locked client, and its workload User in the Valmer Team (see
 [Teams And Namespaces](#teams-and-namespaces)). `upgrade_application` waits up
 to five minutes for a waking API, then finalizes the provider's tables in

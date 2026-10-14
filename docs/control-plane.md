@@ -222,7 +222,7 @@ and key.
 
 The two repositories must be released in dependency order:
 
-1. confirm that the Environment's MetaTables API runs 0.1.34, that its ms-markets deployment
+1. confirm that the Environment's MetaTables API runs 0.1.35, that its ms-markets deployment
    runs 2.2.10 and its migration Job has succeeded in the same DataSource, and that the Valmer
    Team holds Writer on the `valmer_connectors` and `mainsequence.markets` namespaces (see
    "Publishing" and "Teams And Namespaces" in `docs/deployment.md`), then push

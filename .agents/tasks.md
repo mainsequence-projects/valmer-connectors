@@ -19,7 +19,7 @@
 
 - Scope: once `main` and the `v0.1.48` tag are pushed, move the three
   consumers to the commit that tag names, together with mainsequence 9.0.24,
-  mainsequence-metatable 0.1.34 and ms-markets 2.2.10. 0.1.47 was tagged
+  mainsequence-metatable 0.1.35 and ms-markets 2.2.10. 0.1.47 was tagged
   locally only and never published, so every consumer moves from 0.1.46 or
   an unpublished 0.1.47 build.
   - mexicofundcompetition: its `[tool.uv.sources]` git source has no `rev`
@@ -36,7 +36,7 @@
   ms-markets 2.0.x; ms-markets 2.1 and later install no top-level `migrations`
   package. Consumers do not apply the Valmer or ms-markets providers; those
   deployments migrate their own schemas.
-- Hosted prerequisite: the consumer's Environment runs MetaTables 0.1.34 and
+- Hosted prerequisite: the consumer's Environment runs MetaTables 0.1.35 and
   ms-markets 2.2.10, and in its DataSource the ms-markets migration and then
   `migrate-valmer` have succeeded before the consumer is pushed.
 - Expected output: each consumer locks valmer-connectors 0.1.48 from that
@@ -51,7 +51,7 @@
 
 - Scope: the API 2.3.0 workflow, the only workflow file, validates through
   `POST /api/v1/code-repository-branches/{uid}/validate-workflow/` (2026-10-11).
-  Before the push, confirm that the Environment's MetaTables API runs 0.1.34
+  Before the push, confirm that the Environment's MetaTables API runs 0.1.35
   (`metatables runtime status`: system revision `0012_table_creator`, nothing
   pending), that its ms-markets deployment runs 2.2.10 and its migration Job
   has succeeded in the target DataSource (the Valmer foreign keys need its

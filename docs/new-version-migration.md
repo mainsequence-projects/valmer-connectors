@@ -35,7 +35,6 @@ Relevant repository skills:
 - `.agents/skills/metatables/metatables-time-index-table-updates/SKILL.md`
 - `.agents/skills/metatables/metatables-meta-tables/SKILL.md`
 - `.agents/skills/metatables/metatables-migrations/SKILL.md`
-- `.agents/skills/metatables/metatables-upgrade-legacy-app/SKILL.md`
 - `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
 - `.agents/skills/ms_markets/assets/asset_indexed_data_nodes/SKILL.md`
 - `.agents/skills/ms_markets/platform/bootstrap_registration/SKILL.md`
@@ -46,7 +45,7 @@ Relevant repository skills:
 Current declared package constraints:
 
 - `mainsequence>=9.0.24,<10`
-- `mainsequence-metatable>=0.1.34,<0.2`
+- `mainsequence-metatable>=0.1.35,<0.2`
 - `ms-markets==2.2.10`, exactly the release the Environment's Markets
   deployment runs
 - `streamlit>=1.58.0`
@@ -68,13 +67,13 @@ and later run one local API per local storage directory, which
 `metatables --local` and `metatables.configure_local_client()` reach from any
 checkout. SDK 9.0.6 and later never replay a write request.
 
-Under mainsequence 9.0.24 (and 9.0.22), mainsequence-metatable 0.1.34 and
-ms-markets 2.2.10 the Valmer provider, its tables, revision `0001`, the updater
-hashes and the bond pricing serialization are unchanged, so the upgrade needs no
-revision. SDK 9.0.22 and later require the caller's `team_uids` and
-`is_organization_admin` in every hosted caller assertion, and the 0.1.34 client
+Under mainsequence 9.0.24 (and 9.0.22), mainsequence-metatable 0.1.35 (and
+0.1.34) and ms-markets 2.2.10 the Valmer provider, its tables, revision `0001`,
+the updater hashes and the bond pricing serialization are unchanged, so the
+upgrade needs no revision. SDK 9.0.22 and later require the caller's `team_uids` and
+`is_organization_admin` in every hosted caller assertion, and the 0.1.35 client
 ignores unknown `/runtime-context/` fields. Deploy against the Environment's
-MetaTables API on 0.1.34 and its Markets deployment on 2.2.10; see
+MetaTables API on 0.1.35 and its Markets deployment on 2.2.10; see
 "Publishing" in `deployment.md`.
 
 ## Migration Status

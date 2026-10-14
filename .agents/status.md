@@ -5,11 +5,11 @@ Last complete backend lifecycle verification: 2026-08-21
 
 ## Dependency And Skill Pins (Verified Locally 2026-10-14)
 
-- Locked and installed: `mainsequence` 9.0.24, `mainsequence-metatable` 0.1.34,
+- Locked and installed: `mainsequence` 9.0.24, `mainsequence-metatable` 0.1.35,
   ms-markets 2.2.10. Declared: `mainsequence>=9.0.24,<10`,
-  `mainsequence-metatable>=0.1.34,<0.2` and exactly `ms-markets==2.2.10`, the
+  `mainsequence-metatable>=0.1.35,<0.2` and exactly `ms-markets==2.2.10`, the
   release the Markets deployment runs; `requires-python` stays
-  `>=3.13,<3.14`. MetaTables 0.1.34 adds fastembed (onnxruntime, tokenizers,
+  `>=3.13,<3.14`. MetaTables 0.1.35 adds fastembed (onnxruntime, tokenizers,
   huggingface-hub) and `mainsequence[mcp]` to the lock. 2026-10-14:
   `uv lock --upgrade-package mainsequence` moved 9.0.22 to 9.0.24, and the
   9.0.24 `mcp` extra (`mcp>=2.3,<3`) moved mcp 1.30.0 to 2.3.0, adding
@@ -30,9 +30,9 @@ Last complete backend lifecycle verification: 2026-08-21
   and so rejects what the backend signs now. The API tests sign both claims,
   refuse an assertion without them, and keep an Organization admin outside
   `VALMER_CONTROL_PLANE_OPERATOR_UIDS` a viewer.
-- MetaTables 0.1.34's client reads `/runtime-context/` with
+- MetaTables 0.1.35's client reads `/runtime-context/` with
   `extra="ignore"` (0.1.20 used `extra="forbid"`), so MetaTables issue #33
-  no longer applies. A push needs the Environment's MetaTables API on 0.1.34;
+  no longer applies. A push needs the Environment's MetaTables API on 0.1.35;
   the hosted Production API reported system revision `0012_table_creator`,
   nothing pending, on 2026-10-11.
 - MetaTables registers cascading foreign keys since 0.1.17, and 0.1.18 makes
@@ -49,7 +49,7 @@ Last complete backend lifecycle verification: 2026-08-21
   unchanged through 2.2.10, whose provider head is `0020`. ms-markets talks
   only to the MetaTables API (`MetaTable.execute_operation`), so no workload
   needs access to the MainSequenceMarkets repository's branch.
-- Skills are pinned to SDK 9.0.24, MetaTables 0.1.34 and ms-markets 2.2.10.
+- Skills are pinned to SDK 9.0.24, MetaTables 0.1.35 and ms-markets 2.2.10.
   Platform skills (`.agents/skills/mainsequence_platform/`) are not installed.
   SDK 9.0.24 no longer scaffolds `AGENTS.md`: its SDK guidance, including the
   skill routing the old managed block carried, ships in
