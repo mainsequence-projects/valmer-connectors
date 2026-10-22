@@ -34,7 +34,7 @@ cachetools==7.1.7
     #   mainsequence
     #   mainsequence-metatable
     #   ms-markets
-certifi==2026.7.22
+certifi==2026.10.19
     # via
     #   httpcore
     #   httpx
@@ -256,7 +256,7 @@ pillow==12.3.0
     # via
     #   fastembed
     #   streamlit
-pip==26.2.1
+pip==26.2.2
     # via ms-markets
 platformdirs==4.12.2
     # via mainsequence-metatable
