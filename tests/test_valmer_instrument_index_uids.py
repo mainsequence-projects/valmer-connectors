@@ -172,11 +172,44 @@ class ValmerInstrumentIndexUidTests(unittest.TestCase):
             "valmer_connectors.instruments.vector_to_asset._REFERENCE_INDEX_UID_CACHE",
             None,
         ):
-            with patch(
-                "valmer_connectors.instruments.curve_bootstrap.upsert_mexican_reference_indexes",
-                return_value={"CETE_28": fake_index},
+            with (
+                patch(
+                    "msm.api.indices.Index.get_many_by_unique_identifier",
+                    return_value={"CETE_28": fake_index},
+                ) as read,
+                patch(
+                    "valmer_connectors.instruments.curve_bootstrap.upsert_mexican_reference_indexes",
+                    side_effect=AssertionError("a uid lookup must not upsert Index rows"),
+                ),
             ):
                 self.assertEqual(resolve_reference_index_uid("CETE_28"), index_uid)
+                with self.assertRaisesRegex(KeyError, "bootstrapped Index row"):
+                    resolve_reference_index_uid("TIIE_28")
+
+        self.assertIn("CETE_28", read.call_args.args[0])
+
+    def test_reference_index_uid_map_is_cached_only_when_complete(self):
+        from valmer_connectors.instruments import vector_to_asset
+        from valmer_connectors.instruments.curve_bootstrap import (
+            MEXICAN_REFERENCE_INDEX_DEFINITIONS,
+        )
+
+        rows = {
+            definition.unique_identifier: type("FakeIndex", (), {"uid": uuid.uuid4()})()
+            for definition in MEXICAN_REFERENCE_INDEX_DEFINITIONS
+        }
+        partial = dict(list(rows.items())[:1])
+        with patch.object(vector_to_asset, "_REFERENCE_INDEX_UID_CACHE", None):
+            with patch(
+                "msm.api.indices.Index.get_many_by_unique_identifier",
+                side_effect=[partial, rows],
+            ) as read:
+                vector_to_asset._reference_index_uid_map()
+                self.assertIsNone(vector_to_asset._REFERENCE_INDEX_UID_CACHE)
+                vector_to_asset._reference_index_uid_map()
+                self.assertEqual(set(vector_to_asset._REFERENCE_INDEX_UID_CACHE), set(rows))
+                vector_to_asset._reference_index_uid_map()
+            self.assertEqual(read.call_count, 2)
 
     def test_subyacente_map_never_uses_synthetic_government_bond_index(self):
         self.assertNotIn("MXN_GOVERNMENT_BOND", set(SUBYACENTE_TO_INDEX_MAP.values()))

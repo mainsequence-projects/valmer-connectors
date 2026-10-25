@@ -81,18 +81,33 @@ def resolve_reference_index_uid(index_unique_identifier: str) -> uuid.UUID:
 
 
 def _reference_index_uid_map() -> dict[str, uuid.UUID]:
-    global _REFERENCE_INDEX_UID_CACHE
-    if _REFERENCE_INDEX_UID_CACHE is None:
-        from valmer_connectors.instruments.curve_bootstrap import (
-            upsert_mexican_reference_indexes,
-        )
+    """Read the bootstrapped Mexican reference Index rows; never create them.
 
-        indexes = upsert_mexican_reference_indexes(attach_runtime=False)
-        _REFERENCE_INDEX_UID_CACHE = {
-            unique_identifier: uuid.UUID(str(index.uid))
-            for unique_identifier, index in indexes.items()
-        }
-    return _REFERENCE_INDEX_UID_CACHE
+    Pricing hydration only needs their uids. Seeding the rows is
+    ``bootstrap_runtime``'s job, so a lookup here must not write registry rows.
+    The map is cached once every reference index exists, so a later bootstrap
+    in the same process is still seen.
+    """
+
+    global _REFERENCE_INDEX_UID_CACHE
+    if _REFERENCE_INDEX_UID_CACHE is not None:
+        return _REFERENCE_INDEX_UID_CACHE
+
+    from msm.api.indices import Index
+
+    from valmer_connectors.instruments.curve_bootstrap import (
+        MEXICAN_REFERENCE_INDEX_DEFINITIONS,
+    )
+
+    identifiers = [definition.unique_identifier for definition in MEXICAN_REFERENCE_INDEX_DEFINITIONS]
+    indexes = Index.get_many_by_unique_identifier(identifiers)
+    uid_map = {
+        unique_identifier: uuid.UUID(str(index.uid))
+        for unique_identifier, index in indexes.items()
+    }
+    if set(identifiers).issubset(uid_map):
+        _REFERENCE_INDEX_UID_CACHE = uid_map
+    return uid_map
 
 
 # =============================================================================

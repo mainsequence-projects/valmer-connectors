@@ -61,6 +61,17 @@ below; where the two differ, this entry applies.
   `docs/deployment.md` no longer lists the removed
   `code-repository update AGENTS.md` command.
 
+### Fixed
+
+- Resolving a Mexican reference index uid during bond pricing hydration
+  (`resolve_reference_index_uid`) no longer writes registry rows. It used to
+  call `upsert_mexican_reference_indexes`, so every pricing process upserted
+  the interest-rate IndexType and seven Index rows just to read their uids. It
+  now reads them with `Index.get_many_by_unique_identifier`; seeding stays
+  `bootstrap_runtime`'s job, and a missing row raises the existing
+  "bootstrapped Index row" error. The uid map is cached only once every
+  reference index exists.
+
 ## 0.1.47 (unreleased)
 
 ### Packaging
