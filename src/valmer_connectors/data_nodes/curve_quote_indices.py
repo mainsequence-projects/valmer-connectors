@@ -167,7 +167,7 @@ def normalize_valmer_usd_quote_snapshot(
 def upsert_valmer_curve_quote_indexes(frame: pd.DataFrame) -> dict[str, Any]:
     """Register semantic Index types and every Index identity in a quote frame.
 
-    Three set-based row calls whatever the frame size (Markets API calls under
+    Two set-based row calls whatever the frame size (Markets API calls under
     the remote backend, ms-markets ADR 0047).
     """
 

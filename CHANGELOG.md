@@ -16,8 +16,9 @@ of holding Writer on the `mainsequence.markets` namespace.
   written with `Asset.upsert_many`; asset snapshots go through
   `AssetSnapshots.publish`; current pricing details are read with
   `AssetCurrentPricingDetails.get_many_by_asset_uid`; Index and IndexType rows
-  are written with `upsert_many` (a `calculation_method` change is still
-  refused). Every Markets read or write is set-based.
+  are written with `upsert_many`, which refuses a `calculation_method` change
+  on an index with formulas or observations as `Index.upsert` does. Every
+  Markets read or write is set-based.
 - `read_valmer_asset_detail_alias_frame` and the other asset-detail readers
   query Valmer's own table and merge Markets assets from batch row calls
   instead of joining `AssetTable`.

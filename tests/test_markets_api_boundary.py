@@ -192,23 +192,17 @@ def test_bootstrap_keeps_the_runtime_attachment_for_runtime_importers(monkeypatc
     assert attached["pricing"] == valmer_pricing_runtime_models()
 
 
-def test_custom_indexes_are_upserted_in_two_row_calls(monkeypatch) -> None:
+def test_custom_indexes_are_upserted_in_one_row_call(monkeypatch) -> None:
     from msm.api.indices import Index
 
     from valmer_connectors.instruments.index_registry import upsert_custom_indexes
 
-    calls: list[tuple[str, Any]] = []
-    existing = {"TIIE_28": SimpleNamespace(calculation_method="custom")}
-    monkeypatch.setattr(
-        Index,
-        "get_many_by_unique_identifier",
-        classmethod(lambda cls, identifiers: calls.append(("get", identifiers)) or existing),
-    )
+    calls: list[Any] = []
     monkeypatch.setattr(
         Index,
         "upsert_many",
         classmethod(
-            lambda cls, values: calls.append(("upsert_many", values))
+            lambda cls, values: calls.append(values)
             or [SimpleNamespace(unique_identifier=value["unique_identifier"]) for value in values]
         ),
     )
@@ -218,7 +212,7 @@ def test_custom_indexes_are_upserted_in_two_row_calls(monkeypatch) -> None:
     ]
 
     assert set(upsert_custom_indexes(payloads)) == {"TIIE_28", "TIIE_91"}
-    assert calls == [("get", ["TIIE_28", "TIIE_91"]), ("upsert_many", payloads)]
+    assert calls == [payloads]
 
 
 def test_custom_index_upsert_sends_each_identifier_once(monkeypatch) -> None:
@@ -229,9 +223,6 @@ def test_custom_index_upsert_sends_each_identifier_once(monkeypatch) -> None:
     from valmer_connectors.instruments.index_registry import upsert_custom_indexes
 
     sent: list[list[dict[str, Any]]] = []
-    monkeypatch.setattr(
-        Index, "get_many_by_unique_identifier", classmethod(lambda cls, identifiers: {})
-    )
     monkeypatch.setattr(
         Index,
         "upsert_many",
@@ -251,22 +242,50 @@ def test_custom_index_upsert_sends_each_identifier_once(monkeypatch) -> None:
     assert sent == [[{"unique_identifier": "X", "display_name": "last", "calculation_method": "custom"}]]
 
 
-def test_custom_index_upsert_refuses_a_calculation_method_change(monkeypatch) -> None:
+def test_a_calculation_method_change_is_refused_by_ms_markets(monkeypatch) -> None:
+    """Index.upsert_many guards an index with formulas or observations; nothing is written."""
+
+    from msm.api.base import MarketsMetaTableRow
     from msm.api.indices import Index
 
     from valmer_connectors.instruments.index_registry import upsert_custom_indexes
 
+    existing = Index(
+        uid=uuid.uuid4(),
+        unique_identifier="TIIE_28",
+        index_type="interest_rate",
+        display_name="TIIE 28D",
+        calculation_method="formula",
+        value_format="percent",
+    )
     monkeypatch.setattr(
         Index,
         "get_many_by_unique_identifier",
-        classmethod(lambda cls, identifiers: {"X": SimpleNamespace(calculation_method="formula")}),
+        classmethod(lambda cls, identifiers: {"TIIE_28": existing}),
+    )
+    monkeypatch.setattr(Index, "_active_context", classmethod(lambda cls: object()))
+    # The index already has a formula definition.
+    monkeypatch.setattr(
+        "msm.repositories.crud.count_model", lambda context, **kwargs: {"rows": [{"count": 1}]}
     )
     monkeypatch.setattr(
-        Index, "upsert_many", classmethod(lambda cls, values: pytest.fail("must not write"))
+        MarketsMetaTableRow,
+        "upsert_many",
+        classmethod(lambda cls, values: pytest.fail("a refused payload must not be written")),
     )
 
-    with pytest.raises(ValueError, match="calculation_method"):
-        upsert_custom_indexes([{"unique_identifier": "X", "calculation_method": "custom"}])
+    with pytest.raises(ValueError, match="calculation_method cannot change"):
+        upsert_custom_indexes(
+            [
+                {
+                    "unique_identifier": "TIIE_28",
+                    "index_type": "interest_rate",
+                    "display_name": "TIIE 28D",
+                    "calculation_method": "custom",
+                    "value_format": "percent",
+                }
+            ]
+        )
 
 
 def test_curve_quote_registration_is_set_based(monkeypatch) -> None:
@@ -282,11 +301,6 @@ def test_curve_quote_registration_is_set_based(monkeypatch) -> None:
         IndexType,
         "upsert_many",
         classmethod(lambda cls, values: calls.append(f"types:{len(values)}") or []),
-    )
-    monkeypatch.setattr(
-        Index,
-        "get_many_by_unique_identifier",
-        classmethod(lambda cls, identifiers: calls.append("get") or {}),
     )
     monkeypatch.setattr(
         Index,
@@ -311,7 +325,7 @@ def test_curve_quote_registration_is_set_based(monkeypatch) -> None:
 
     upsert_valmer_curve_quote_indexes(frame)
 
-    assert calls == ["types:3", "get", "indexes:3"]
+    assert calls == ["types:3", "indexes:3"]
 
 
 def test_default_bindings_name_the_attached_core_storages_under_the_markets_api(
