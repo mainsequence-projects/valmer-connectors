@@ -142,7 +142,7 @@ class PricingDetailsRepairTests(unittest.TestCase):
 
         with (
             patch(
-                "valmer_connectors.services.pricing_details_repair.bootstrap_runtime"
+                "valmer_connectors.services.pricing_details_repair._attach_repair_runtime"
             ),
             patch(
                 "valmer_connectors.services.pricing_details_repair._load_index_uid_by_identifier",
@@ -181,7 +181,7 @@ class PricingDetailsRepairTests(unittest.TestCase):
 
         with (
             patch(
-                "valmer_connectors.services.pricing_details_repair.bootstrap_runtime"
+                "valmer_connectors.services.pricing_details_repair._attach_repair_runtime"
             ),
             patch(
                 "valmer_connectors.services.pricing_details_repair._load_index_uid_by_identifier",
@@ -218,7 +218,7 @@ class PricingDetailsRepairTests(unittest.TestCase):
 
         with (
             patch(
-                "valmer_connectors.services.pricing_details_repair.bootstrap_runtime"
+                "valmer_connectors.services.pricing_details_repair._attach_repair_runtime"
             ),
             patch(
                 "valmer_connectors.services.pricing_details_repair._load_index_uid_by_identifier",
@@ -236,6 +236,34 @@ class PricingDetailsRepairTests(unittest.TestCase):
 
         self.assertTrue(summary.applied)
         self.assertEqual(summary.patched_current_rows, 1)
+
+    def test_the_repair_attaches_the_markets_tables_it_queries(self):
+        """bootstrap_runtime() attaches only Valmer's tables; the repair adds its own."""
+
+        from msm.models import AssetTable, IndexTable
+        from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
+        from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
+
+        from valmer_connectors.services import pricing_details_repair
+
+        with (
+            patch.object(pricing_details_repair, "bootstrap_runtime") as bootstrap,
+            patch("msm_pricing.bootstrap.attach_pricing_schemas") as attach_pricing,
+        ):
+            pricing_details_repair._attach_repair_runtime()
+
+        bootstrap.assert_called_once_with(
+            seed_static_rows=False, extra_markets_models=[AssetTable, IndexTable]
+        )
+        attach_pricing.assert_called_once_with(
+            models=[
+                AssetTable,
+                IndexTable,
+                AssetCurrentPricingDetailsTable,
+                AssetPricingDetailsStorage,
+            ],
+            seed_default_market_data_bindings=False,
+        )
 
 
 if __name__ == "__main__":

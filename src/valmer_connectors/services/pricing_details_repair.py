@@ -169,6 +169,31 @@ class PricingDetailsRepairSummary:
         }
 
 
+def _attach_repair_runtime() -> None:
+    """Attach the tables the repair reads and writes (ms-markets' runtime backend).
+
+    The repair is an operator-only exception to the Markets API: it queries the
+    pricing-detail payloads with JSON filters and writes them back with the
+    operator's grants. ``bootstrap_runtime()`` attaches only Valmer's tables, so
+    the repair adds the Markets Asset and Index registries and attaches the
+    pricing-detail tables with the pricing schemas itself. Both calls are
+    idempotent within a process.
+    """
+
+    from msm_pricing.bootstrap import attach_pricing_schemas
+
+    bootstrap_runtime(seed_static_rows=False, extra_markets_models=[AssetTable, IndexTable])
+    attach_pricing_schemas(
+        models=[
+            AssetTable,
+            IndexTable,
+            AssetCurrentPricingDetailsTable,
+            AssetPricingDetailsStorage,
+        ],
+        seed_default_market_data_bindings=False,
+    )
+
+
 class PricingDetailsRepairError(RuntimeError):
     """Raised when persisted Valmer pricing details cannot be repaired safely."""
 
@@ -197,7 +222,7 @@ def repair_valmer_asset_pricing_details(
     if limit is not None and limit < 1:
         raise ValueError("limit must be positive when provided.")
 
-    bootstrap_runtime(seed_static_rows=False)
+    _attach_repair_runtime()
     resolved_batch_size = resolve_valmer_pricing_details_batch_size(batch_size)
     index_uid_by_identifier = _load_index_uid_by_identifier()
 
@@ -708,7 +733,7 @@ def _row_from_operation_result(
 
 
 def _load_index_uid_by_identifier() -> dict[str, uuid.UUID]:
-    bootstrap_runtime(seed_static_rows=False)
+    _attach_repair_runtime()
     identifiers = sorted(
         {
             *REFERENCE_INDEX_IDENTIFIERS,
