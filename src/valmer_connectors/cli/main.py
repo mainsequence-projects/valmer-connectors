@@ -85,7 +85,7 @@ def _time_series_backfill_command(args: argparse.Namespace) -> int:
 
     report = backfill_valmer_time_series(
         series=args.series,
-        dry_run=args.dry_run,
+        dry_run=not args.execute,
         rollback=args.rollback,
     )
     print(json.dumps(report, indent=2, sort_keys=True))
@@ -444,9 +444,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Copy only this series; repeat for several (default: all three).",
     )
     time_series_backfill_parser.add_argument(
-        "--dry-run",
+        "--execute",
         action="store_true",
-        help="Only report the rows each target is missing.",
+        help="Copy the rows; without it only report the rows each target is missing.",
     )
     time_series_backfill_parser.add_argument(
         "--rollback",

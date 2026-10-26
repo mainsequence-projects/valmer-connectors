@@ -444,11 +444,11 @@ def test_the_backfill_job_and_cli_forward_their_options(monkeypatch, capsys) -> 
         lambda **kwargs: calls.append(kwargs) or {"complete": True},
     )
 
-    assert main(["time-series", "backfill", "--series", "index_fixings", "--dry-run"]) == 0
-    assert main(["time-series", "backfill", "--rollback"]) == 0
+    assert main(["time-series", "backfill", "--series", "index_fixings"]) == 0
+    assert main(["time-series", "backfill", "--execute", "--rollback"]) == 0
     script = str(Path(__file__).resolve().parents[1] / "scripts" / "backfill_valmer_time_series.py")
     previous_argv = sys.argv
-    sys.argv = [script, "--rollback"]
+    sys.argv = [script, "--execute", "--rollback"]
     try:
         with pytest.raises(SystemExit) as exit_info:
             runpy.run_path(script, run_name="__main__")
@@ -474,16 +474,17 @@ def test_msm_series_loads_the_valmer_moves() -> None:
     assert [move.label for move in moves] == ["discount_curves", "index_fixings", "index_values"]
 
 
-def test_the_control_plane_launches_the_rollback_with_its_flag() -> None:
+def test_the_control_plane_launches_the_backfill_with_its_flags() -> None:
     from valmer_connectors.control_plane.catalog import JOB_LAUNCH_PROFILES_BY_KEY
     from valmer_connectors.control_plane.service import _job_command_args
 
     profile = JOB_LAUNCH_PROFILES_BY_KEY["time-series-backfill"]
 
+    # Without ``execute`` the Job only counts the rows to copy.
     assert _job_command_args(profile, {}) == []
-    assert _job_command_args(profile, {"rollback": True}) == ["--rollback"]
-    assert _job_command_args(profile, {"dry_run": True, "rollback": True}) == [
-        "--dry-run",
+    assert _job_command_args(profile, {"execute": True}) == ["--execute"]
+    assert _job_command_args(profile, {"execute": True, "rollback": True}) == [
+        "--execute",
         "--rollback",
     ]
 

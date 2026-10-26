@@ -5,7 +5,8 @@ rows of the Markets discount-curve, Index-fixing and daily Index-value tables
 that ``valmer_connectors__discountcurvests__valmer``,
 ``valmer_connectors__indexfixingsts__valmer`` and
 ``valmer_connectors__index_values__t_1d`` lack (ms-markets'
-``msm.storage_copies``), and fails while a row is still missing. ``--rollback``
+``msm.storage_copies``) with ``--execute``, only counts them without it, and
+fails while a row is still missing. ``--rollback``
 copies the rows Valmer's tables gained back into the Markets tables. It makes no
 Markets row call, so it does not select the Markets API.
 """
@@ -29,9 +30,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Copy only this series; repeat for several (default: all three).",
     )
     parser.add_argument(
-        "--dry-run",
+        "--execute",
         action="store_true",
-        help="Only report the rows each target is missing.",
+        help="Copy the rows; without it only report the rows each target is missing.",
     )
     parser.add_argument(
         "--rollback",
@@ -41,7 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     report = backfill_valmer_time_series(
         series=args.series,
-        dry_run=args.dry_run,
+        dry_run=not args.execute,
         rollback=args.rollback,
     )
     print(json.dumps(report, indent=2, sort_keys=True), flush=True)

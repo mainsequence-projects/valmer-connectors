@@ -205,12 +205,14 @@ DATA_PRODUCTS: tuple[DataProductDefinition, ...] = (
 )
 
 
-TIME_SERIES_DRY_RUN_PARAMETER = JobParameterDefinition(
-    key="dry_run",
+TIME_SERIES_EXECUTE_PARAMETER = JobParameterDefinition(
+    key="execute",
     input_type="boolean",
-    label="Only count",
-    description="Report the rows each target table lacks without copying them.",
-    command_flag="--dry-run",
+    label="Copy rows",
+    description=(
+        "Copy the rows each target table lacks. Leave it off to only count them."
+    ),
+    command_flag="--execute",
     default=False,
 )
 
@@ -311,7 +313,7 @@ JOB_LAUNCH_PROFILES: tuple[JobLaunchProfile, ...] = (
     JobLaunchProfile(
         key="time-series-backfill",
         execution_path="scripts/backfill_valmer_time_series.py",
-        parameters=(TIME_SERIES_DRY_RUN_PARAMETER, TIME_SERIES_ROLLBACK_PARAMETER),
+        parameters=(TIME_SERIES_EXECUTE_PARAMETER, TIME_SERIES_ROLLBACK_PARAMETER),
     ),
 )
 
