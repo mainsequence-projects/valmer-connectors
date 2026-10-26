@@ -10,8 +10,8 @@ from metatables import TimeIndexTableRef
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from msm_pricing.data_interface.data_interface import dimension_range_for_identity
-from msm_pricing.data_nodes.curve_codec import decompress_string_to_curve
-from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER_DIMENSION
+from msm_pricing.time_index.curve_codec import decompress_string_to_curve
+from msm_pricing.time_index.curves import CURVE_IDENTIFIER_DIMENSION
 
 from valmer_connectors.data_nodes.nodes import ImportValmer
 from valmer_connectors.instruments.asset_identity import resolve_valmer_assets
