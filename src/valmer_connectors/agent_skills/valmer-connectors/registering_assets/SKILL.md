@@ -39,18 +39,18 @@ build unique_identifier = tipovalor_emisora_serie
 classify explicit asset_type
     |
     v
-resolve existing AssetTable refs
+resolve existing AssetTable refs        Asset.filter(unique_identifier__in=...) per batch
     |
     +-- raise on asset_type conflicts
     |
     v
-upsert missing AssetTable rows
+upsert missing AssetTable rows         Asset.upsert_many(...) per batch
     |
     v
 upsert ValmerAssetDetailsTable rows
     |
     v
-publish AssetSnapshot rows when requested
+publish AssetSnapshot rows when requested    AssetSnapshots.publish(...)
     |
     v
 build and persist pricing details when requested and supported

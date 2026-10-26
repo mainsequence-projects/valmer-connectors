@@ -23,8 +23,13 @@ Vector Analitico CETES and M Bonos rows.
   universe.
 - Registers Mexican TIIE/CETE index identities, pricing conventions, Valmer
   curve identities, curve build details, and explicit `mid` market-data-set
-  curve bindings through `bootstrap_runtime()` and
+  curve bindings through the `registry-seed` Job
+  (`valmer-connectors registries seed`) and
   `src/valmer_connectors/instruments/curve_bootstrap.py`.
+- Reaches those Markets registries, assets, asset snapshots and pricing
+  details through the Markets API (ms-markets ADR 0047): its Jobs, CLI and
+  control-plane API select ms-markets' remote row backend and attach only the
+  Valmer tables (see "Markets API Access" in `docs/deployment.md`).
 - Publishes the Valmer TIIE curve through the canonical
   `msm_pricing.data_nodes.DiscountCurvesNode` path.
 - Publishes the Valmer USD SOFR curve through the same
@@ -159,10 +164,26 @@ not migrate at application startup.
 Push only after the Environment's MetaTables API runs 0.1.35, the release of
 the locked client, and the ms-markets deployment's migration Job has succeeded
 in the same DataSource. Before the first push in an Environment, an
-Organization admin sets up the Valmer Team: `migrate-valmer` needs Writer on
-the `valmer_connectors` and `mainsequence.markets` namespaces, and otherwise
-fails with `namespace_not_writable` and stops the API rollout. "Publishing" and
-"Teams And Namespaces" in `docs/deployment.md` describe both checks.
+Organization admin sets up the Valmer Team: `migrate-valmer` needs `editor` on
+the `valmer_connectors` namespace, and on `mainsequence.markets` for the daily
+Index values table its provider still registers there, and otherwise fails
+with `namespace_not_writable` and stops the API rollout. The Jobs' workload
+Users also need entries in the Markets `MARKETS_REGISTRY_WRITERS` constant.
+"Publishing", "Teams And Namespaces" and "Markets API Access" in
+`docs/deployment.md` describe these checks.
+
+### Importing `valmer_connectors`
+
+Applications that import this package keep the backend they choose:
+`bootstrap_runtime()` never selects one. Under ms-markets' runtime backend it
+attaches the Markets registries and pricing tables as before; after
+`use_remote_backend(LazyRemoteBackend())` (or `MSM_API_BACKEND=remote`) it
+attaches only the Valmer tables, and `resolve_valmer_asset_refs`,
+`read_valmer_asset_detail_alias_frame` and the other read helpers reach Markets
+assets with row calls. Since 0.2.0 `bootstrap_runtime()` defaults to
+`seed_static_rows=False`: an application that relied on it seeding the static
+registry rows must pass `seed_static_rows=True`, or rely on Valmer's
+`registry-seed` Job having run in that Environment.
 
 The Job applies only the Valmer provider. The ms-markets tables that the Valmer
 tables reference are owned and migrated by the ms-markets deployment, so they

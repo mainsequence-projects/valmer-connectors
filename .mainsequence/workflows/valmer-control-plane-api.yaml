@@ -7,10 +7,15 @@ name: valmer-control-plane-api
 # key creates a new target, and the old one is not carried over.
 #
 # Every workload reaches the Environment's MetaTables API, so each declares
-# view on the MetaTables repository's branch. The API also declares edit on
-# every Job it launches: a workload sees and runs only the Jobs granted to it.
-# Table access is not declared here; the Valmer Team grants it (see
-# docs/deployment.md, "Teams And Namespaces").
+# view on the MetaTables repository's branch. Every workload that reaches
+# Markets registries through the Markets API (ms-markets ADR 0047) also
+# declares view on the MainSequenceMarkets branch, which lets it find that API;
+# the migration Job and the read-only verification Job do not. The API also
+# declares edit on every Job it launches: a workload sees and runs only the
+# Jobs granted to it. Table access is not declared here; the Valmer Team
+# grants it, and the Markets MARKETS_REGISTRY_WRITERS constant lists the
+# registries each workload may write (see docs/deployment.md, "Teams And
+# Namespaces" and "Markets API Access").
 
 resources:
   - key: valmer-control-plane-api
@@ -30,6 +35,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
       # The JOB_LAUNCH_PROFILES of src/valmer_connectors/control_plane/catalog.py.
       resources:
@@ -110,6 +117,8 @@ resources:
       branches:
         - repository: MetaTables
           level: view
+        - repository: MainSequenceMarkets
+          level: view
 
   - key: vector-onedrive-refresh
     kind: job
@@ -127,6 +136,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
 
   - key: vector-metatable-refresh
@@ -146,6 +157,8 @@ resources:
       branches:
         - repository: MetaTables
           level: view
+        - repository: MainSequenceMarkets
+          level: view
 
   - key: irs-mxn-quotes-refresh
     kind: job
@@ -163,6 +176,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
 
   - key: irs-usd-quotes-refresh
@@ -182,6 +197,8 @@ resources:
       branches:
         - repository: MetaTables
           level: view
+        - repository: MainSequenceMarkets
+          level: view
 
   - key: banxico-fixings-refresh
     kind: job
@@ -199,6 +216,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
 
   - key: banxico-tiie-fixings-refresh
@@ -218,6 +237,8 @@ resources:
       branches:
         - repository: MetaTables
           level: view
+        - repository: MainSequenceMarkets
+          level: view
 
   - key: fred-reference-rates-refresh
     kind: job
@@ -235,6 +256,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
 
   - key: banxico-policy-refresh
@@ -254,6 +277,8 @@ resources:
       branches:
         - repository: MetaTables
           level: view
+        - repository: MainSequenceMarkets
+          level: view
 
   - key: tiie-curve-refresh
     kind: job
@@ -271,6 +296,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
 
   - key: sofr-curve-refresh
@@ -290,6 +317,8 @@ resources:
       branches:
         - repository: MetaTables
           level: view
+        - repository: MainSequenceMarkets
+          level: view
 
   - key: xccy-curve-refresh
     kind: job
@@ -307,6 +336,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
 
   - key: xccy-curve-rebuild
@@ -326,6 +357,8 @@ resources:
       branches:
         - repository: MetaTables
           level: view
+        - repository: MainSequenceMarkets
+          level: view
 
   - key: government-curve-refresh
     kind: job
@@ -343,6 +376,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
 
   - key: standard-pipeline-refresh
@@ -365,6 +400,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
 
   - key: pipeline-verification
@@ -404,6 +441,8 @@ resources:
     access:
       branches:
         - repository: MetaTables
+          level: view
+        - repository: MainSequenceMarkets
           level: view
 
 execution:

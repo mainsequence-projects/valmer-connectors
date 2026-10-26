@@ -5,19 +5,21 @@
 A plain `git push` publishes this repository. `.mainsequence/workflows/` holds
 one workflow file, `valmer-control-plane-api.yaml` (workflow API 2.3.0), and it
 decides what deploys. It declares the control-plane FastAPI release, the
-`migrate-valmer` Job and the sixteen pipeline Jobs. Every resource declares
+`migrate-valmer` Job and the seventeen pipeline Jobs. Every resource declares
 `tag_regex: null`, so every push to the branch is eligible:
 
 - the execution graph prepares the code repository image, runs the
   `migrate-valmer` Job from it, and only then deploys the API
   (`needs: [migrate]`);
-- no step references the sixteen pipeline Jobs, all of which the API
+- no step references the seventeen pipeline Jobs, all of which the API
   launches, so each one redeploys on every push by itself; its new image is
   active as soon as the commit image is verified, before the migration runs
   (see [Workflow Declarations](#workflow-declarations));
-- every workload declares view on the MetaTables repository's branch, and the
-  API declares edit on the sixteen Jobs (see
-  [Teams And Namespaces](#teams-and-namespaces) for table access).
+- every workload declares view on the MetaTables repository's branch, every
+  workload that calls the Markets API also on the `MainSequenceMarkets`
+  branch, and the API declares edit on the seventeen Jobs (see
+  [Teams And Namespaces](#teams-and-namespaces) for table access and
+  [Markets API Access](#markets-api-access) for registry writes).
 
 Push only when the Environment is ready for this image:
 
@@ -30,10 +32,14 @@ Push only when the Environment is ready for this image:
   no longer applies;
 - its ms-markets deployment runs 2.2.10 and that deployment's migration Job has
   succeeded in the same DataSource (see [Migrations](#migrations));
-- the Valmer Team holds Writer on `valmer_connectors` and
-  `mainsequence.markets`, and the Job and release workload Users that the push
-  creates are added to it before the `migrate` step starts (see
-  [Teams And Namespaces](#teams-and-namespaces)).
+- the Valmer Team owns `valmer_connectors` and holds the table roles on
+  `mainsequence.markets` that [Teams And Namespaces](#teams-and-namespaces)
+  lists, and the Job and release workload Users that the push creates are
+  added to it before the `migrate` step starts;
+- the Environment's `MARKETS_REGISTRY_WRITERS` constant lists those workload
+  Users under the Markets resources they write (see
+  [Markets API Access](#markets-api-access)); the Markets API refuses any
+  other registry write with 403.
 
 When `migrate-valmer` fails, `deploy_api` never runs and the push deploys no
 API. The pipeline Jobs still take the new image, because the backend activates
@@ -149,7 +155,7 @@ platform catalog deliberately excludes launch configurations that depend on a
 developer workstation or exist only to run UI, debugging, examples, or
 migration administration.
 
-Only the API and `migrate-valmer` are in `execution.steps`. The sixteen
+Only the API and `migrate-valmer` are in `execution.steps`. The seventeen
 pipeline Jobs, the `JOB_LAUNCH_PROFILES` of
 `src/valmer_connectors/control_plane/catalog.py` with the scheduled
 `standard-pipeline-refresh` and `pipeline-verification` among them, stay out
@@ -197,13 +203,16 @@ Every workload of the workflow declares
 `access.branches: [{repository: MetaTables, level: view}]`, view on the
 MetaTables repository's branch in its Environment, which a workload needs to
 discover that Environment's MetaTables API. Without it `upgrade_application`
-and every table read or write fail to resolve the API. A grant on another
+and every table read or write fail to resolve the API. Every workload except
+`migrate-valmer` and `pipeline-verification` also declares
+`{repository: MainSequenceMarkets, level: view}`, which it needs to discover
+the Markets API (see [Markets API Access](#markets-api-access)). A grant on another
 repository's branch needs a push that the platform resolves to a person (a
 member whose GitHub account an Organization admin linked) who manages the
 workload and holds view on that branch. Otherwise the resource fails with
 `declared_access_not_granted`, and nothing of its group is applied.
 
-The API also declares `access.resources` at `edit` on each of the sixteen
+The API also declares `access.resources` at `edit` on each of the seventeen
 Jobs it launches. A workload has no implicit access to the other workloads of
 its branch: the hosted API lists, and can launch, only the Jobs granted to it,
 and a launch needs edit. `migrate-valmer` is not granted, so the hosted Jobs
@@ -225,26 +234,105 @@ provider registers its tables in two namespaces:
 | `valmer_connectors` | `valmer_connectors__alembic_version`; `valmer_connectors__valmerassetdetails` (`valmer_connectors.ValmerAssetDetails`); `valmer_connectors__vector_de_precios_valmer` (`valmer_connectors.vector_de_precios_valmer`) |
 | `mainsequence.markets` | `ms_markets__index_values__t_1d` (`IndexValuesTS.1d`), the canonical daily Index values |
 
-The pipeline Jobs also write tables that the ms-markets provider registers in
-`mainsequence.markets`: assets, current pricing details, Index and Index type
-rows, Index fixings and discount curves. As the MetaTables guide
+Markets registries (assets, Index and Index type rows, conventions, curves,
+market-data bindings, current pricing details) and the Markets tables Valmer
+publishes into (asset snapshots, timestamped pricing details) are no longer
+written with MetaTables grants: the Jobs reach them through the Markets API
+(see [Markets API Access](#markets-api-access)). What Valmer still writes
+directly in `mainsequence.markets` is three time-index storages: the daily
+Index values table its provider creates there, and the core discount-curve
+(`ms_markets__discountcurvests`) and Index-fixing (`ms_markets__indexfixingsts`)
+storages, until the curves and fixings move to instances in Valmer's own
+namespace. As the MetaTables guide
 (`deploy-application-migrations.md` in the `metatables-migrations` skill)
 describes, one Team per Environment owns the Valmer tables, for example
-`valmer-connectors-production`:
+`valmer-connectors-production`. With the MetaTables role names (`owner`,
+`editor`, `data_writer`, `data_viewer`, `metadata_viewer`):
 
-- an Organization admin creates the `valmer_connectors` namespace in that
-  Environment's MetaTables and grants the Team Writer on it, and also grants
-  the Team Writer on `mainsequence.markets`;
-- its members are the workload Users of `migrate-valmer` and of every Job
-  that writes (each pipeline Job except `pipeline-verification`), and of the
-  two readers, `pipeline-verification` and the API. A Reader grant would do
-  for those two; membership keeps the Team the tables' one owner. Each Job
-  and release reports its `workload_user_uid`.
+| Grant to the Valmer Team | Why |
+| --- | --- |
+| `editor` (or `owner`) on the namespace `valmer_connectors` | its tables, the migration and the updaters of the vector storage |
+| table `editor` on `ms_markets__index_values__t_1d`, `ms_markets__discountcurvests` and `ms_markets__indexfixingsts` | Valmer's updaters run on them (`tables.operate_updaters`) and its curve builders and verification read them |
+| `metadata_viewer` on the tables those three reference (`ms_markets__index`, `ms_markets__indexformuladefinition`, `ms_markets__curve`) and on the tables their foreign keys reach in turn | attaching a Markets-namespace storage also attaches its foreign-key targets |
+| nothing else on `mainsequence.markets` | registries go through the Markets API |
+
+The migration provider registers `ms_markets__index_values__t_1d` in
+`mainsequence.markets`, so `migrate-valmer` still needs `tables.create` there
+(`editor` on that namespace) until ms-markets adopts the table. These grants
+follow the MetaTables permission matrix (`security/permissions.md` in the
+`metatables-migrations` skill); confirm them in each Environment before
+removing the old namespace-wide grant.
+
+The Team's members are the workload Users of `migrate-valmer` and of every Job
+that writes (each pipeline Job except `pipeline-verification`), and of the two
+readers, `pipeline-verification` and the API. A `data_viewer` grant would do for
+those two; membership keeps the Team the tables' one owner. Each Job and
+release reports its `workload_user_uid`.
 
 A Job or release created by a push, including one moved to another file or
 key, has a new workload User that must be added. Until `migrate-valmer`'s
 workload User is a member and the namespace exists, the migration fails with
 `namespace_not_writable` and blocks the API rollout.
+
+## Markets API Access
+
+Valmer reaches Markets registries through the Markets API (ms-markets ADR 0047),
+not through MetaTables grants on `mainsequence.markets`:
+
+- its composition roots select ms-markets' remote row backend with
+  `valmer_connectors.runtime.use_markets_api()`: every Job script that touches
+  Markets, the `valmer-connectors` CLI and the control-plane API module. The
+  backend finds the Markets API (the FastAPI release `api` of the
+  `MainSequenceMarkets` repository) on the first row call; `MARKETS_API_URL`
+  and `MARKETS_API_TOKEN` select a local one;
+- `bootstrap_runtime()` then attaches only Valmer's tables and the three
+  Markets-namespace storages listed in [Teams And Namespaces](#teams-and-namespaces);
+  `Asset.filter`/`Asset.upsert_many`, `Index.upsert_many`,
+  `AssetSnapshots.publish`, `AssetPricingDetails.add_many`,
+  `AssetCurrentPricingDetails.get_many_by_asset_uid`, the curve, convention
+  and market-data binding composites run on the Markets API;
+- library code never selects a backend: an application that imports
+  `valmer_connectors` keeps the one it chose, and under the runtime backend
+  `bootstrap_runtime()` still attaches the Markets registries and pricing
+  tables as before.
+
+Two things make the calls work in each Environment:
+
+- the workflow grants every workload except `migrate-valmer` and
+  `pipeline-verification` view on the `MainSequenceMarkets` branch, which lets
+  it find the Markets API;
+- an Environment admin adds the workload User uids of the Jobs and the API to
+  the Markets `MARKETS_REGISTRY_WRITERS` constant under the resources they
+  write. The Markets API refuses an application's write to any other resource
+  with 403 (`MarketsAccessError`).
+
+| Workloads | `MARKETS_REGISTRY_WRITERS` resources |
+| --- | --- |
+| `vector-refresh`, `vector-onedrive-refresh`, `vector-metatable-refresh` | `asset`, `asset-snapshots`, `asset-pricing-details` (writes timestamped and current pricing details) |
+| `irs-mxn-quotes-refresh`, `irs-usd-quotes-refresh`, `fred-reference-rates-refresh`, `banxico-policy-refresh` | `index-type`, `index` (the Index rows and the dataset reconcile after each run) |
+| `registry-seed` | `index-type`, `index`, `index-convention-details`, `curve`, `curve-building-details`, `pricing-market-data-set` (only when the default set is missing), `pricing-market-data-set-curve-binding` |
+| `tiie-curve-refresh`, `sofr-curve-refresh`, `xccy-curve-refresh`, `xccy-curve-rebuild` | `index-type`, `index` (they can run their quote updaters as dependencies) |
+| `standard-pipeline-refresh` | the union of the rows above, since it runs every stage in its own workload |
+| `banxico-fixings-refresh`, `banxico-tiie-fixings-refresh`, `government-curve-refresh`, the API | none: they only read registries |
+
+The control-plane API reads current pricing details through the Markets API
+and Valmer's own tables through MetaTables, so it attaches no markets runtime.
+
+Still outside the Markets API, each for a stated reason:
+
+- the daily Index values table `ms_markets__index_values__t_1d`, which the
+  Valmer migration provider creates in the Markets namespace. ms-markets must
+  adopt it in its own migrations before Valmer can stop creating and writing
+  it there;
+- the core discount-curve and Index-fixing storages, until the curves and
+  fixings move to instances in Valmer's own namespace;
+- `scripts/patch_valmer_asset_pricing_details.py`, an operator-only repair
+  that stays on the runtime backend: it finds stale payloads with JSON queries
+  on the core pricing-detail tables, and no Markets route reads timestamped
+  pricing details or filters pricing details by payload;
+- in-process pricing (for example `build_valuation_position_from_sheet`)
+  reads curves and fixings from the table the default market-data set's
+  bindings name, through MetaTables, as every `msm_pricing` consumer does.
 
 ### Objects Outside MetaTables
 

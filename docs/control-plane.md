@@ -33,11 +33,15 @@ Collection responses use the SDK `command-center.resource_collection@v1` shape. 
 preflight, and execution use the installed Command Center SDK 0.1.18 contracts. Discovery
 payloads are validated with the SDK runtime parser rather than a copied schema.
 
-The Assets collection joins persisted platform state by responsibility: canonical identity comes
-from `AssetTable`, vendor descriptors come from `ValmerAssetDetailsTable`, pricing-target status
-comes from the existence of an `AssetCurrentPricingDetails` row, and time-varying price and risk
-observations come from the published Valmer vector TimeIndexMetaTable. It never reclassifies
-pricing targets from columns in the latest vector observation.
+The Assets collection joins persisted platform state by responsibility: identity and vendor
+descriptors come from `ValmerAssetDetailsTable` (its `asset_uid` is the canonical Asset uid),
+pricing-target status comes from the existence of an `AssetCurrentPricingDetails` row, read
+through the Markets API (ms-markets ADR 0047) for those asset uids in batches of 500, and
+time-varying price and risk observations come from the published Valmer vector
+TimeIndexMetaTable. It never reclassifies pricing targets from columns in the latest vector
+observation. The "Current pricing details" data product counts the registered Valmer assets that
+have such a row. `api/valmer_control_plane/main.py` selects the Markets API and attaches no markets
+runtime; the API holds no grant on the Markets registries.
 
 The data-product catalog contains only product names, descriptions, approved identity filters, and
 freshness thresholds. Runtime table identifiers are derived from the installed SQLAlchemy storage
@@ -146,9 +150,9 @@ schedule included, as soon as the commit image is verified, whatever a step's `n
 a Job in the graph would tie its promotion policy to the API's group. The pipeline Jobs keep
 their own every-push redeployment (see "Workflow Declarations" in `docs/deployment.md`).
 
-The workflow grants the API `edit` on each of the sixteen Jobs it launches. Hosted, the API
+The workflow grants the API `edit` on each of the seventeen Jobs it launches. Hosted, the API
 sees only the Jobs granted to its workload User, so its Jobs and Job-runs collections list
-those sixteen and not the migration Job. Wherever the migration Job is listed, as in a local
+those seventeen and not the migration Job. Wherever the migration Job is listed, as in a local
 review that runs with the developer's own access, preflight blocks it: hosted migrations run
 only inside a deployment, never by hand.
 
@@ -175,7 +179,7 @@ path exists only on the developer workstation. The migration current/revision/up
 local API/Vite host are development or administration launchers, not production workload Jobs.
 
 The workflow declaration is desired repository state, not proof that the Jobs exist. Overview and
-Pipeline responses reconcile all sixteen configured pipeline launch profiles with live branch
+Pipeline responses reconcile all seventeen configured pipeline launch profiles with live branch
 Jobs by execution path. Missing pipeline Jobs are reported as configuration failures, and an
 existing Job without a run is reported as
 `not-run`. Launch responses must contain the platform JobRun UID. When the platform omits a status,
@@ -223,14 +227,16 @@ and key.
 The two repositories must be released in dependency order:
 
 1. confirm that the Environment's MetaTables API runs 0.1.35, that its ms-markets deployment
-   runs 2.2.10 and its migration Job has succeeded in the same DataSource, and that the Valmer
-   Team holds Writer on the `valmer_connectors` and `mainsequence.markets` namespaces (see
-   "Publishing" and "Teams And Namespaces" in `docs/deployment.md`), then push
+   runs 2.2.10 and its migration Job has succeeded in the same DataSource, that the Valmer
+   Team holds the grants "Teams And Namespaces" lists and the Markets `MARKETS_REGISTRY_WRITERS`
+   constant lists the Valmer workloads (see "Publishing", "Teams And Namespaces" and "Markets API
+   Access" in `docs/deployment.md`), then push
    `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI
    release by `source_path` (`api/valmer_control_plane/main.py`) with every-commit automatic
    redeployment, three retained revisions, and the platform's default static-site CORS policy,
    gates it on the `migrate-valmer` Job, keeps the pipeline Jobs outside the graph, declares
-   MetaTables branch access on every workload and grants the API edit on the Jobs it launches.
+   MetaTables branch access on every workload, MainSequenceMarkets branch access on every workload
+   that calls the Markets API, and grants the API edit on the Jobs it launches.
    Before the migration step starts, add the new Jobs' workload Users to the Valmer Team (see
    "Teams And Namespaces" in `docs/deployment.md`);
 2. confirm that the workflow run's `migrate` step succeeded before its `deploy_api` step;

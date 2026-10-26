@@ -25,6 +25,15 @@ API_KEY = "valmer-control-plane-api"
 MIGRATION_JOB_KEY = "migrate-valmer"
 # The MetaTables repository's exact platform name; every workload discovers its API.
 METATABLES_BRANCH_VIEW = [{"repository": "MetaTables", "level": "view"}]
+# Workloads that reach Markets registries through the Markets API (ms-markets
+# ADR 0047) also discover it on the MainSequenceMarkets branch.
+MARKETS_BRANCH_VIEW = [
+    *METATABLES_BRANCH_VIEW,
+    {"repository": "MainSequenceMarkets", "level": "view"},
+]
+# The migration Job applies only Valmer's provider and the verification Job
+# only reads tables; neither calls the Markets API.
+WITHOUT_MARKETS_API = {"migrate-valmer", "pipeline-verification"}
 # Resource-level fields this file uses. Workflow API 2.3.0 also accepts
 # acts_for_requester on a fastapi resource, which no agent here needs.
 RESOURCE_FIELDS = {"key", "kind", "spec", "access"}
@@ -207,7 +216,10 @@ def _resources() -> dict[str, dict]:
 def test_every_workload_declares_view_on_the_metatables_branch() -> None:
     for key, resource in _resources().items():
         assert set(resource) <= RESOURCE_FIELDS, key
-        assert resource["access"]["branches"] == METATABLES_BRANCH_VIEW, key
+        expected_branches = (
+            METATABLES_BRANCH_VIEW if key in WITHOUT_MARKETS_API else MARKETS_BRANCH_VIEW
+        )
+        assert resource["access"]["branches"] == expected_branches, key
         expected = {"branches", "resources"} if key == API_KEY else {"branches"}
         assert set(resource["access"]) == expected, key
 

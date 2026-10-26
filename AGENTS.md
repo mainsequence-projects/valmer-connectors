@@ -14,12 +14,24 @@ each target by workflow file path and key, so a new file or key creates a new ta
 stay out of the graph, because a step would not hold their new image back and would tie their
 promotion policy to the API's group (see "Workflow Declarations" in `docs/deployment.md`). Keep
 every revision backward compatible (expand first). Every workload declares view on the
-`MetaTables` branch, and the API declares edit on each Job of `JOB_LAUNCH_PROFILES`: add a launch
-profile and its grant together.
+`MetaTables` branch, every workload that calls the Markets API also view on the
+`MainSequenceMarkets` branch, and the API declares edit on each Job of `JOB_LAUNCH_PROFILES`: add a
+launch profile and its grant together.
 A push needs the Environment's MetaTables API on 0.1.35 (the locked client's release), its
-ms-markets deployment on 2.2.10 with its migration applied, and the Valmer Team with Writer on the
-`valmer_connectors` and `mainsequence.markets` namespaces, including every new workload User. See
-"Publishing" and "Teams And Namespaces" in `docs/deployment.md`.
+ms-markets deployment on 2.2.10 with its migration applied, the Valmer Team owning
+`valmer_connectors` with the table roles on `mainsequence.markets` that "Teams And Namespaces"
+lists, including every new workload User, and those workload Users in the Markets
+`MARKETS_REGISTRY_WRITERS` constant. See "Publishing", "Teams And Namespaces" and "Markets API
+Access" in `docs/deployment.md`.
+
+Markets registries are reached only through the Markets API (ms-markets ADR 0047): the composition
+roots (Job scripts, the CLI, the control-plane API module) call
+`valmer_connectors.runtime.use_markets_api()`, and Markets rows are read and written with set-based
+`msm.api` row calls (`filter(...__in=...)`, `upsert_many`, `get_many_by_*`, publication composites),
+never one call per row. Never import a Markets table class to build a statement, never use a Markets
+row class's `_active_context()`, and never select a backend in library code: applications import
+`valmer_connectors` and choose their own. `bootstrap_runtime()` only attaches tables; the static
+registry rows are written by the `registry-seed` Job (`valmer-connectors registries seed`).
 
 The control-plane API learns its caller only from the SDK request identity that `create_app` in
 `src/valmer_connectors/control_plane/api.py` installs once per application; route code gets the

@@ -11,31 +11,43 @@ The single project bootstrap entry point is:
 valmer_connectors.instruments.bootstrap.bootstrap_runtime()
 ```
 
-It attaches already-migrated runtime tables and seeds static pricing reference
-rows. It does not create schemas at runtime. It is also the composition point
-for downstream libraries that need additional shared `ms-markets` runtime
-models.
+It attaches already-migrated runtime tables once per process and, since 0.2.0,
+seeds nothing unless asked (`seed_static_rows=True`). It does not create
+schemas at runtime. It is also the composition point for downstream libraries
+that need additional shared `ms-markets` runtime models.
+
+It follows the backend the process selected. Valmer's own processes select the
+Markets API (ms-markets ADR 0047, `valmer_connectors.runtime.use_markets_api()`
+in the Job scripts, the CLI and the control-plane API); an importing
+application keeps whatever backend it chose:
 
 ```text
 bootstrap_runtime()
     |
-    v
-msm.start_engine(...) or a wrapper over the same shared runtime
+    +-- Markets API selected (Valmer's Jobs, CLI, API)
+    |       msm.start_engine(models=[ValmerAssetDetailsTable,
+    |                                ValmerVectorPricesStorage,
+    |                                IndexValuesTS.1d, DiscountCurvesTS,
+    |                                IndexFixingsTS, *extra_markets_models])
+    |       registries (Asset, Index, Curve, bindings ...) are API row calls
     |
-    +-- AssetType
-    +-- Asset
-    +-- IndexType
-    +-- Index
-    +-- ValmerAssetDetailsTable
-    +-- ValmerVectorPricesStorage
-    +-- optional extra_markets_models
-    |
-    v
-msm_pricing.bootstrap.attach_pricing_schemas(models=[...])
-    |
-    v
-seed static pricing rows
+    +-- runtime backend (applications that still hold Markets grants)
+            msm.start_engine(models=[AssetType, Asset, IndexType, Index,
+                                     ValmerAssetDetailsTable,
+                                     ValmerVectorPricesStorage, IndexValuesTS.1d,
+                                     IndexDatasetAvailability, IndexFormulaInput,
+                                     *extra_markets_models])
+            msm_pricing.bootstrap.attach_pricing_schemas(models=[...])
 ```
+
+The static pricing reference rows (the interest-rate IndexType, the Mexican
+and USD reference indexes, their conventions, the four Valmer curves and their
+building details, the default market-data set's curve selections and source
+bindings) are written only by the `registry-seed` Job
+(`scripts/seed_valmer_registries.py`, `valmer-connectors registries seed`),
+which is also the first stage of the standard pipeline. Run it once per
+Environment and after a release that changes those definitions; the curve and
+fixing producers only reference the rows.
 
 Callers that extend Valmer with portfolio or project-local market tables must
 compose those tables into the first Valmer bootstrap call:

@@ -116,23 +116,30 @@ derive unique_identifier = tipovalor_emisora_serie
 classify supported Valmer asset type
     |
     v
-resolve existing AssetTable refs
+resolve existing AssetTable refs        Asset.filter(unique_identifier__in=...) per batch
     |
     +-- raise on asset_type conflicts
     |
     v
-upsert missing AssetTable rows
+upsert missing AssetTable rows         Asset.upsert_many(...) per batch
     |
     v
 upsert ValmerAssetDetailsTable rows
     |
     v
-publish AssetSnapshot rows
+publish AssetSnapshot rows             AssetSnapshots.publish(...)
     |
     v
 build and persist pricing details when requested and when a supported pricing
 adapter exists
 ```
+
+Every Markets step is one set-based `msm.api` row call per batch, never one
+call per asset. In Valmer's own processes they run on the Markets API
+(ms-markets ADR 0047; write-policy resources `asset`, `asset-snapshots` and
+`asset-pricing-details`); only `ValmerAssetDetailsTable` is written with
+MetaTables. An application that imports the helper runs them on whichever
+backend it selected.
 
 Import path:
 

@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+Valmer reaches Markets through the Markets API (ms-markets ADR 0047) instead
+of holding Writer on the `mainsequence.markets` namespace.
+
+### Markets API boundary
+
+- Valmer's composition roots (every Job script that touches Markets, the
+  `valmer-connectors` CLI, the control-plane API module and the dashboards)
+  call `valmer_connectors.runtime.use_markets_api()`, which selects
+  ms-markets' remote row backend; the Markets API is found on the first row
+  call. Library code never selects a backend.
+- Assets are resolved with `Asset.filter(unique_identifier__in=...)` and
+  written with `Asset.upsert_many`; asset snapshots go through
+  `AssetSnapshots.publish`; current pricing details are read with
+  `AssetCurrentPricingDetails.get_many_by_asset_uid`; Index and IndexType rows
+  are written with `upsert_many` (a `calculation_method` change is still
+  refused). Every Markets read or write is set-based.
+- `read_valmer_asset_detail_alias_frame` and the other asset-detail readers
+  query Valmer's own table and merge Markets assets from batch row calls
+  instead of joining `AssetTable`.
+- The control plane reads pricing-target status through the Markets API and
+  attaches no markets runtime; its "Current pricing details" product now counts
+  registered Valmer assets with current pricing details.
+- The default pricing market-data set is created only when missing; under the
+  Markets API its curve and fixing source bindings are read, not rewritten.
+- Every workload except `migrate-valmer` and `pipeline-verification` declares
+  view on the `MainSequenceMarkets` branch. The Valmer Team drops Writer on
+  `mainsequence.markets` for table roles on the three Markets-namespace
+  storages Valmer still writes, and the Markets `MARKETS_REGISTRY_WRITERS`
+  constant must list the Valmer workloads (see "Teams And Namespaces" and
+  "Markets API Access" in `docs/deployment.md`).
+
+### Seeding (breaking for importers)
+
+- `bootstrap_runtime()` defaults to `seed_static_rows=False`: it only attaches
+  tables, under whichever backend the importing process selected (under the
+  runtime backend it attaches the Markets registries and pricing tables as
+  before). An importer that relied on the old default seeding must pass
+  `seed_static_rows=True` or rely on the `registry-seed` Job.
+- The static registry rows are written by the new `registry-seed` Job
+  (`scripts/seed_valmer_registries.py`, `valmer-connectors registries seed`),
+  the first stage of the standard pipeline and launchable from the control
+  plane. `runtime validate` keeps seeding explicitly.
+
+### Tests
+
+- The control-plane caller-assertion tests sign the claim set of
+  `mainsequence>=9.0.29`, which refuses an assertion that lists `team_uids`.
+
 ## 0.1.48 (unreleased)
 
 0.1.47 was tagged in a local checkout but never published. Consumers move
