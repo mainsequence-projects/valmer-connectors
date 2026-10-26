@@ -77,8 +77,8 @@ API and the tests. The SDK middleware authenticates the caller before any route 
 
 - hosted, it verifies the platform-signed `X-MainSequence-Caller-Assertion`: an EdDSA signature
   from the platform's published key, checked against the issuer, release and Environment that the
-  deployment's trusted configuration names, with a lifetime of at most five minutes, and since
-  SDK 9.0.22 stating the caller's `team_uids` and `is_organization_admin`;
+  deployment's trusted configuration names, with a lifetime of at most five minutes, stating the
+  caller's `is_organization_admin` and, since SDK 9.0.29, no `team_uids`;
 - locally, without hosted markers, it validates a direct `Authorization: Bearer` token against
   `MAINSEQUENCE_ENDPOINT/api/v1/users/me/`.
 
@@ -226,8 +226,9 @@ and key.
 
 The two repositories must be released in dependency order:
 
-1. confirm that the Environment's MetaTables API runs 0.1.35, that its ms-markets deployment
-   runs 2.2.10 and its migration Job has succeeded in the same DataSource, that the Valmer
+1. confirm that the Environment's MetaTables API runs the locked client's release, that its
+   ms-markets deployment runs 3.0.0, has applied revision `0022` in the same DataSource and
+   serves the Markets API, that the Valmer
    Team holds the grants "Teams And Namespaces" lists and the Markets `MARKETS_REGISTRY_WRITERS`
    constant lists the Valmer workloads (see "Publishing", "Teams And Namespaces" and "Markets API
    Access" in `docs/deployment.md`), then push

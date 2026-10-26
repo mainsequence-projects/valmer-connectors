@@ -17,8 +17,9 @@ every revision backward compatible (expand first). Every workload declares view 
 `MetaTables` branch, every workload that calls the Markets API also view on the
 `MainSequenceMarkets` branch, and the API declares edit on each Job of `JOB_LAUNCH_PROFILES`: add a
 launch profile and its grant together.
-A push needs the Environment's MetaTables API on 0.1.35 (the locked client's release), its
-ms-markets deployment on 2.2.10 with its migration applied, the Valmer Team owning
+A push needs the Environment's MetaTables API on the locked client's release (0.1.57 or later), its
+ms-markets deployment on 3.0.0 with its migration (revision `0022`) applied and its Markets API
+deployed, the Valmer Team owning
 `valmer_connectors` with the table roles on `mainsequence.markets` that "Teams And Namespaces"
 lists, including every new workload User, and those workload Users in the Markets
 `MARKETS_REGISTRY_WRITERS` constant. See "Publishing", "Teams And Namespaces" and "Markets API
@@ -44,10 +45,11 @@ The control-plane API learns its caller only from the SDK request identity that 
 caller through `User.get_logged_user()`. Do not read the caller from headers or `request.state`, and
 do not add a UID-header, process-account or other unauthenticated fallback. The platform launcher
 refuses to serve the app without that installation, and hosted requests must carry the
-platform-signed caller assertion, which since SDK 9.0.22 must also state the caller's `team_uids`
-and `is_organization_admin`. Operators are only the UIDs in `VALMER_CONTROL_PLANE_OPERATOR_UIDS`;
-the admin flag and team UIDs grant nothing here. The installed SDK 9.0.24 API-surfaces skill
-describes this contract. See "Request Identity" in `docs/control-plane.md`.
+platform-signed caller assertion, which must state the caller's `is_organization_admin` and, since
+SDK 9.0.29 (which ms-markets 3.0 requires), must not list its `team_uids`: membership is checked on
+demand. Operators are only the UIDs in `VALMER_CONTROL_PLANE_OPERATOR_UIDS`; the admin flag and team
+membership grant nothing here. The SDK API-surfaces skill describes this contract (the vendored copy
+under `.agents/skills/mainsequence/` is still the 9.0.24 one until the skills are refreshed). See "Request Identity" in `docs/control-plane.md`.
 
 Main Sequence SDK guidance: `.agents/skills/mainsequence/`; MetaTables and ms-markets guidance:
 `.agents/skills/metatables/` and `.agents/skills/ms_markets/`.

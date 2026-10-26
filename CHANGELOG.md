@@ -5,6 +5,18 @@
 Valmer reaches Markets through the Markets API (ms-markets ADR 0047) instead
 of holding Writer on the `mainsequence.markets` namespace.
 
+### Dependencies
+
+- Requires exactly `ms-markets==3.0.0` (the remote row backend, `msm.client`,
+  the publication composites and `msm.storage_instances`), and therefore
+  `mainsequence>=9.0.29,<10` and `mainsequence-metatable>=0.1.57,<0.2`.
+  `uv.lock` and `requirements.txt` still resolve 2.2.10: regenerate them with
+  `mainsequence code-repository sync --path .` once 3.0.0 is on PyPI.
+- Deploy against an Environment whose ms-markets deployment runs 3.0.0, has
+  applied revision `0022` and serves the Markets API, whose MetaTables API runs
+  the locked client's release, and whose backend signs the SDK 9.0.29 caller
+  assertion (no `team_uids`).
+
 ### Markets API boundary
 
 - Valmer's composition roots (every Job script that touches Markets, the

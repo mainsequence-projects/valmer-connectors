@@ -24,14 +24,17 @@ decides what deploys. It declares the control-plane FastAPI release, the
 Push only when the Environment is ready for this image:
 
 - its MetaTables API, the API release of the `MetaTables` repository's branch
-  in that Environment, runs 0.1.35, the release of the locked
-  `mainsequence-metatable` client. Keep the client and the API on one
-  release. The 0.1.35 client ignores unknown `/runtime-context/` fields, so the
-  failure of the 0.1.20 client against an API on 0.1.18 or older
+  in that Environment, runs the release of the locked `mainsequence-metatable`
+  client (ms-markets 3.0.0 needs 0.1.57 or later; regenerate the lock once
+  3.0.0 is on PyPI). Keep the client and the API on one release. Clients since
+  0.1.35 ignore unknown `/runtime-context/` fields, so the failure of the 0.1.20
+  client against an API on 0.1.18 or older
   ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33))
   no longer applies;
-- its ms-markets deployment runs 2.2.10 and that deployment's migration Job has
-  succeeded in the same DataSource (see [Migrations](#migrations));
+- its ms-markets deployment runs 3.0.0, that deployment's migration Job has
+  applied revision `0022` in the same DataSource (see [Migrations](#migrations)),
+  and its Markets API (the `api` release of the `MainSequenceMarkets`
+  repository) is deployed;
 - the Valmer Team owns `valmer_connectors` and holds the table roles on
   `mainsequence.markets` that [Teams And Namespaces](#teams-and-namespaces)
   lists, and the Job and release workload Users that the push creates are
@@ -63,10 +66,12 @@ needs the backend's caller-assertion signing and key discovery
 (`/fastapi/caller-keys/`) and a gateway that forwards
 `X-MainSequence-Caller-Assertion`. Without them the new revision starts but every
 API request answers 401 (503 while key discovery is down); nothing falls back to
-`X-User-UID`. Since SDK 9.0.22 the assertion must also state the caller's
-`team_uids` and `is_organization_admin`, which the backend signs (ADR-0048,
-section 7). SDK 9.0.6 accepts only its older, exact claim set, so an image
-built on it rejects every assertion the backend signs now.
+`X-User-UID`. The assertion must state the caller's `is_organization_admin`;
+since SDK 9.0.29, which ms-markets 3.0 requires, it must not list the caller's
+`team_uids` (membership is checked on demand), and an assertion that does is
+refused. The Environment's backend must therefore sign that claim set before
+this image serves requests; an image on SDK 9.0.22 to 9.0.28 expected
+`team_uids`, and SDK 9.0.6 only its older, exact claim set.
 
 ```bash
 git add <reviewed paths>
@@ -116,8 +121,8 @@ database already at head is left unchanged. A failed Job blocks the API
 deployment and the previous release keeps serving; fix the revision and push
 again. Redeploying an older image does not roll the schema back.
 
-The Job needs the Environment's MetaTables API on 0.1.35, the release of the
-locked client, and its workload User in the Valmer Team (see
+The Job needs the Environment's MetaTables API on the release of the locked
+client, and its workload User in the Valmer Team (see
 [Teams And Namespaces](#teams-and-namespaces)). `upgrade_application` waits up
 to five minutes for a waking API, then finalizes the provider's tables in
 batches. A workload User without Writer on a namespace the provider registers
