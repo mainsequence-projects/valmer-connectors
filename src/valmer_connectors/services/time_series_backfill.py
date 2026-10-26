@@ -43,6 +43,7 @@ def backfill_valmer_time_series(
     """
 
     import msm
+    from metatables import UpdateStatistics
 
     plans = time_series_copy_plans(series)
     # One process, one runtime: the core tables it reads and the instances it fills.
@@ -63,7 +64,10 @@ def backfill_valmer_time_series(
                 ),
                 output_table=plan.instance_table,
             ).set_page_size(page_size)
-            result = updater.run()
+            # Without stored statistics the runner keeps rows older than the
+            # instance's latest observation (the gaps a second pass fills) and
+            # inserts instead of overwriting; the copier only returns missing keys.
+            result = updater.run(override_update_stats=UpdateStatistics.return_empty())
             error = result[0] if isinstance(result, tuple) else None
             if error:
                 raise RuntimeError(f"Copying {plan.series} into {plan.instance_table.__table__.name} failed.")

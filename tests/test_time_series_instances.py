@@ -283,7 +283,11 @@ def test_the_backfill_copies_every_series_and_fails_on_gaps(monkeypatch) -> None
             self.page_size = page_size
             return self
 
-        def run(self):
+        def run(self, *, override_update_stats=None):
+            # Empty statistics: the runner must not drop rows older than the
+            # instance's latest observation, which is what a gap is.
+            assert override_update_stats is not None
+            assert override_update_stats.max_time_index_value is None
             ran.append((self.config.series, self.output_table, self.page_size))
             return (False, pd.DataFrame())
 
