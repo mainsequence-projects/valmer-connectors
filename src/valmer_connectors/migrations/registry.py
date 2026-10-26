@@ -7,6 +7,7 @@ from msm.base import MarketsBase
 def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
     from valmer_connectors.data_nodes.canonical_index_values import (
         MarketsDailyIndexValuesStorage,
+        ValmerDailyIndexValuesStorage,
     )
     from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
     from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
@@ -15,10 +16,16 @@ def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
     return [
         ValmerAssetDetailsTable,
         ValmerVectorPricesStorage,
+        # The Markets table ms_markets__index_values__t_1d that revision 0001
+        # created in mainsequence.markets. Kept until every Environment has moved
+        # to ValmerDailyIndexValuesStorage (docs/time-series-instances.md); the
+        # migration Job keeps its role on it until then.
         MarketsDailyIndexValuesStorage,
         # Valmer's instances of the Markets discount-curve and Index-fixing
         # storages (ms-markets ADR 0047), created by revision 0002.
         *valmer_time_series_instances(),
+        # Valmer's own daily Index-value table, created by revision 0003.
+        ValmerDailyIndexValuesStorage,
     ]
 
 

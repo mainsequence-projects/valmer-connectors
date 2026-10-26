@@ -18,6 +18,7 @@ from sqlalchemy import create_engine
 
 from valmer_connectors.data_nodes.canonical_index_values import (
     MarketsDailyIndexValuesStorage,
+    ValmerDailyIndexValuesStorage,
 )
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.markets import (
@@ -79,6 +80,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
                 MarketsDailyIndexValuesStorage,
                 valmer_discount_curves_instance(),
                 valmer_index_fixings_instance(),
+                ValmerDailyIndexValuesStorage,
             ),
         )
         self.assertEqual(METATABLE_PROVIDER_MODELS, VALMER_MIGRATION_MODELS)
@@ -92,6 +94,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
                 MarketsDailyIndexValuesStorage,
                 valmer_discount_curves_instance(),
                 valmer_index_fixings_instance(),
+                ValmerDailyIndexValuesStorage,
             ),
         )
         self.assertEqual(tuple(migration.metatable_models), VALMER_MIGRATION_MODELS)
@@ -156,6 +159,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
                 MarketsDailyIndexValuesStorage.__table__.name,
                 "valmer_connectors__discountcurvests__valmer",
                 "valmer_connectors__indexfixingsts__valmer",
+                "valmer_connectors__index_values__t_1d",
                 AssetTable.__table__.name,
                 IndexTable.__table__.name,
                 IndexFormulaDefinitionTable.__table__.name,
@@ -224,7 +228,7 @@ class ValmerAssetDetailsCascadeTests(unittest.TestCase):
         scripts = ScriptDirectory.from_config(
             alembic_config_for_provider(migration, sqlalchemy_url="sqlite://")
         )
-        self.assertEqual(scripts.get_heads(), ["0002"])
+        self.assertEqual(scripts.get_heads(), ["0003"])
         baseline = scripts.get_revision("0001").module
         asset_uid = "a" * 32
 
@@ -340,6 +344,50 @@ class ValmerTimeSeriesInstanceMigrationTests(unittest.TestCase):
                     (key,) = connection.execute(f"PRAGMA foreign_key_list({table})").fetchall()
                     self.assertEqual(key[2], target)
                     self.assertEqual(key[6], "RESTRICT")
+            finally:
+                connection.close()
+
+
+    def test_revision_0003_creates_valmer_daily_index_values_on_sqlite(self):
+        scripts = ScriptDirectory.from_config(
+            alembic_config_for_provider(migration, sqlalchemy_url="sqlite://")
+        )
+        revision = scripts.get_revision("0003")
+        self.assertEqual(revision.down_revision, "0002")
+        table_name = ValmerDailyIndexValuesStorage.__table__.name
+        self.assertEqual(table_name, "valmer_connectors__index_values__t_1d")
+        # The legacy Markets table stays registered until every Environment moved.
+        self.assertIn(MarketsDailyIndexValuesStorage, VALMER_MIGRATION_MODELS)
+
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "valmer.sqlite"
+            engine = create_engine(f"sqlite:///{database}")
+            try:
+                with engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "CREATE TABLE ms_markets__index (unique_identifier VARCHAR(255) UNIQUE)"
+                    )
+                    connection.exec_driver_sql(
+                        "CREATE TABLE ms_markets__indexformuladefinition (uid CHAR(32) PRIMARY KEY)"
+                    )
+                    with Operations.context(MigrationContext.configure(connection)):
+                        revision.module.upgrade()
+            finally:
+                engine.dispose()
+
+            connection = sqlite3.connect(database)
+            try:
+                targets = {
+                    key[2] for key in connection.execute(f"PRAGMA foreign_key_list({table_name})")
+                }
+                self.assertEqual(
+                    targets, {"ms_markets__index", "ms_markets__indexformuladefinition"}
+                )
+                indexes = {
+                    row[1]: row[2] for row in connection.execute(f"PRAGMA index_list({table_name})")
+                }
+                self.assertEqual(len(indexes), 4)
+                self.assertEqual(sum(indexes.values()), 1)
             finally:
                 connection.close()
 
