@@ -80,6 +80,18 @@ def _registries_seed_command(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _time_series_backfill_command(args: argparse.Namespace) -> int:
+    from valmer_connectors.services.time_series_backfill import backfill_valmer_time_series
+
+    report = backfill_valmer_time_series(
+        series=args.series,
+        page_size=args.page_size,
+        dry_run=args.dry_run,
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
 def _vector_update_command(args: argparse.Namespace) -> int:
     from valmer_connectors.services.vector_update import run_vector_update
 
@@ -407,6 +419,41 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     registries_seed_parser.set_defaults(func=_registries_seed_command)
+
+    time_series_parser = subcommands.add_parser(
+        "time-series",
+        help="Valmer's curve and fixing storages (docs/time-series-instances.md).",
+    )
+    time_series_subcommands = time_series_parser.add_subparsers(
+        dest="time_series_command",
+        required=True,
+    )
+    time_series_backfill_parser = time_series_subcommands.add_parser(
+        "backfill",
+        help=(
+            "Copy, never recompute, Valmer's curves and fixings from the core Markets "
+            "tables into Valmer's own instances (the time-series-backfill Job)."
+        ),
+    )
+    time_series_backfill_parser.add_argument(
+        "--series",
+        action="append",
+        choices=("discount_curves", "index_fixings"),
+        default=None,
+        help="Copy only this series; repeat for both (default: both).",
+    )
+    time_series_backfill_parser.add_argument(
+        "--page-size",
+        type=_positive_int,
+        default=200,
+        help="Rows per source read.",
+    )
+    time_series_backfill_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only report the rows each instance is missing.",
+    )
+    time_series_backfill_parser.set_defaults(func=_time_series_backfill_command)
 
     vector_parser = subcommands.add_parser("vector", help="Valmer vector commands.")
     vector_subcommands = vector_parser.add_subparsers(

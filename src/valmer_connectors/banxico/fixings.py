@@ -382,10 +382,14 @@ def run_banxico_fixings_update(
     node_kwargs = {}
     if hash_namespace:
         node_kwargs["hash_namespace"] = hash_namespace
+    from valmer_connectors.storage import index_fixings_storage
+
     node = BanxicoFixingsNode(
         fixing_config=IndexFixingConfiguration(
             index_unique_identifiers=[item.index_identifier for item in selected],
         ),
+        # The core Index-fixing table or Valmer's instance (VALMER_TIME_SERIES_STORAGE).
+        output_table=index_fixings_storage(),
         **node_kwargs,
     ).set_fixing_builders(builders)
     node.run()

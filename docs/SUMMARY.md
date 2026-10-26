@@ -29,6 +29,10 @@
   single workflow file and its declared access, the deployment migration Job,
   the Valmer namespaces and Team, the cleanup of the Jobs that moved files, and
   verification commands.
+- `docs/time-series-instances.md`: runbook that moves Valmer's discount curves
+  and Banxico fixings from the core Markets tables to Valmer's own instances
+  (revision `0002`, `VALMER_TIME_SERIES_STORAGE`, the `time-series-backfill`
+  Job, rebinding and rollback).
 - `docs/new-version-migration.md`: migration status against current SDK and
   `ms-markets` architecture.
 

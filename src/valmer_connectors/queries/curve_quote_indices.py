@@ -13,7 +13,6 @@ from msm.repositories.base import (
     execute_markets_operation,
 )
 from msm_pricing.data_nodes.curves.key_nodes import decompress_key_nodes_from_string
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from sqlalchemy import and_, select
 
 from valmer_connectors.data_nodes.canonical_index_values import (
@@ -165,13 +164,17 @@ def validate_valmer_curve_quote_snapshot(
 
 def load_discount_curve_key_nodes(
     *,
-    output_table=DiscountCurvesStorage,
+    output_table=None,
     time_index: Any,
     curve_identifiers: Iterable[str],
     timeout: int | float | tuple[float, float] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Read and decode exact-date upstream curve key nodes for XCCY construction."""
 
+    if output_table is None:
+        from valmer_connectors.storage import discount_curves_storage
+
+        output_table = discount_curves_storage()
     target = _utc_midnight(time_index)
     identifiers = tuple(str(value) for value in curve_identifiers)
     table = output_table.__table__

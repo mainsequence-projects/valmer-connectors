@@ -4,14 +4,13 @@ from dataclasses import dataclass
 from typing import Literal
 
 from msm.models import AssetTable
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
 from valmer_connectors.data_nodes.canonical_index_values import DailyIndexValuesStorage
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 from valmer_connectors.services.migrations import MIGRATION_JOB_EXECUTION_PATH
+from valmer_connectors.storage import discount_curves_storage, index_fixings_storage
 
 
 @dataclass(frozen=True)
@@ -89,8 +88,10 @@ VECTOR_PARAMETERS = (
 )
 
 
-DISCOUNT_CURVE_TABLE_IDENTIFIER = DiscountCurvesStorage.__table__.name
-INDEX_FIXINGS_TABLE_IDENTIFIER = IndexFixingsStorage.__table__.name
+# The storages the producers write: core Markets tables or Valmer's instances
+# (VALMER_TIME_SERIES_STORAGE, read when the catalog is imported).
+DISCOUNT_CURVE_TABLE_IDENTIFIER = discount_curves_storage().__table__.name
+INDEX_FIXINGS_TABLE_IDENTIFIER = index_fixings_storage().__table__.name
 INDEX_VALUES_TABLE_IDENTIFIER = DailyIndexValuesStorage.__table__.name
 CANONICAL_ASSET_TABLE_IDENTIFIER = AssetTable.__table__.name
 CURRENT_PRICING_DETAILS_TABLE_IDENTIFIER = (
@@ -283,6 +284,10 @@ JOB_LAUNCH_PROFILES: tuple[JobLaunchProfile, ...] = (
         key="registry-seed",
         execution_path="scripts/seed_valmer_registries.py",
     ),
+    JobLaunchProfile(
+        key="time-series-backfill",
+        execution_path="scripts/backfill_valmer_time_series.py",
+    ),
 )
 
 JOB_LAUNCH_PROFILES_BY_KEY = {
@@ -361,6 +366,15 @@ PIPELINE_STAGES: tuple[dict[str, object], ...] = (
             "banxico-tiie-fixings-refresh",
             "xccy-curve-rebuild",
         ],
+    },
+    {
+        "id": "storage-migration",
+        "label": "Storage migration",
+        "description": (
+            "Copy Valmer's curves and fixings from the Markets tables into Valmer's "
+            "own instances (docs/time-series-instances.md)."
+        ),
+        "actions": ["time-series-backfill"],
     },
 )
 

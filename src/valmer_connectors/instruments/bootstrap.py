@@ -37,12 +37,15 @@ def valmer_table_models() -> list[Any]:
 
 
 def valmer_pricing_storage_models() -> list[Any]:
-    """The discount-curve and Index-fixing storages Valmer's updaters write."""
+    """The discount-curve and Index-fixing storages Valmer's updaters write.
 
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+    The core Markets storages, or Valmer's own instances of them when
+    ``VALMER_TIME_SERIES_STORAGE=valmer`` (see ``valmer_connectors.storage``).
+    """
 
-    return [DiscountCurvesStorage, IndexFixingsStorage]
+    from valmer_connectors.storage import discount_curves_storage, index_fixings_storage
+
+    return [discount_curves_storage(), index_fixings_storage()]
 
 
 def valmer_runtime_models() -> list[Any]:
@@ -70,6 +73,7 @@ def _valmer_markets_models(
     """
 
     from valmer_connectors.runtime import markets_api_selected
+    from valmer_connectors.storage import VALMER_TIME_SERIES_STORAGE, resolve_time_series_storage
 
     if markets_api_selected():
         markets_models = valmer_runtime_models()
@@ -83,6 +87,10 @@ def _valmer_markets_models(
             IndexDatasetAvailabilityTable,
             IndexFormulaInputTable,
         ]
+        if resolve_time_series_storage() == VALMER_TIME_SERIES_STORAGE:
+            # The pricing schemas attach the core storages; Valmer's instances
+            # are its own tables.
+            markets_models.extend(valmer_pricing_storage_models())
     if extra_markets_models is not None:
         markets_models.extend(extra_markets_models)
     return markets_models

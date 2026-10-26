@@ -138,8 +138,12 @@ class ValmerUsdMxnCollateralDiscountCurveNode(DiscountCurvesNode):
 
     def __init__(self, curve_config: ValmerXccyCurveConfig, **kwargs: Any):
         self.quote_dependency = ValmerIrsMxnIndexValuesNode(mxn_quote_config())
-        self.tiie_curve_dependency = ValmerTiieDiscountCurveNode(tiie_curve_config())
-        self.sofr_curve_dependency = ValmerUsdSofrDiscountCurveNode(sofr_curve_config())
+        # The upstream curves are the producers of the storage this curve reads.
+        upstream = {"output_table": curve_config.curve_storage_table}
+        self.tiie_curve_dependency = ValmerTiieDiscountCurveNode(tiie_curve_config(), **upstream)
+        self.sofr_curve_dependency = ValmerUsdSofrDiscountCurveNode(
+            sofr_curve_config(), **upstream
+        )
         super().__init__(curve_config=curve_config, **kwargs)
         self.set_key_nodes_validator(validate_usd_mxn_xccy_key_nodes)
 
@@ -201,12 +205,14 @@ def sofr_curve_config() -> ValmerQuoteBackedCurveConfig:
 
 
 def xccy_curve_config() -> ValmerXccyCurveConfig:
+    from valmer_connectors.storage import discount_curves_storage
+
     return ValmerXccyCurveConfig(
         curve_unique_identifier=(
             VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER
         ),
         quote_storage_table=DailyIndexValuesStorage,
-        curve_storage_table=DiscountCurvesStorage,
+        curve_storage_table=discount_curves_storage(),
         source_families=("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),
     )
 

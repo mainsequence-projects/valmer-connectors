@@ -14,6 +14,7 @@ nav:
   - Command Center Control Plane: control-plane.md
   - Dashboards: dashboards.md
   - Deployment: deployment.md
+  - Time-Series Instances: time-series-instances.md
   - New Version Migration: new-version-migration.md
   - Implementation Plans:
       - MetaTable Source Import Plan: implementation/metatable-source-import-plan.md

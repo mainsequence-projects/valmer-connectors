@@ -13,6 +13,7 @@ from msm.settings import (
     markets_auto_register_namespace,
     markets_identifier,
 )
+from msm_pricing.models.curves import CurveTable
 
 from valmer_connectors.markets import (
     VALMER_MARKETS_NAMESPACE,
@@ -21,10 +22,14 @@ from valmer_connectors.markets import (
 from valmer_connectors.migrations.registry import metatable_provider_models
 
 VALMER_MIGRATION_MODELS = tuple(metatable_provider_models())
+# Markets tables the Valmer tables reference by foreign key. They are copied into
+# the provider's metadata only so the keys resolve; include_name excludes them,
+# so the provider never creates, alters or attaches them.
 VALMER_REFERENCE_MODELS = (
     AssetTable,
     IndexTable,
     IndexFormulaDefinitionTable,
+    CurveTable,
 )
 VALMER_TARGET_METADATA = metadata_for_models(
     (*VALMER_MIGRATION_MODELS, *VALMER_REFERENCE_MODELS)

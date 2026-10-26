@@ -31,9 +31,10 @@ MARKETS_BRANCH_VIEW = [
     *METATABLES_BRANCH_VIEW,
     {"repository": "MainSequenceMarkets", "level": "view"},
 ]
-# The migration Job applies only Valmer's provider and the verification Job
-# only reads tables; neither calls the Markets API.
-WITHOUT_MARKETS_API = {"migrate-valmer", "pipeline-verification"}
+# The migration Job applies only Valmer's provider, the verification Job only
+# reads tables and the time-series backfill only copies table rows; none calls
+# the Markets API.
+WITHOUT_MARKETS_API = {"migrate-valmer", "pipeline-verification", "time-series-backfill"}
 # Resource-level fields this file uses. Workflow API 2.3.0 also accepts
 # acts_for_requester on a fastapi resource, which no agent here needs.
 RESOURCE_FIELDS = {"key", "kind", "spec", "access"}

@@ -13,6 +13,7 @@ from msm.models.assets import AssetTable
 from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import markets_auto_register_namespace
+from msm_pricing.models.curves import CurveTable
 from sqlalchemy import create_engine
 
 from valmer_connectors.data_nodes.canonical_index_values import (
@@ -34,6 +35,10 @@ from valmer_connectors.migrations import (
 from valmer_connectors.migrations.registry import (
     METATABLE_PROVIDER_MODELS,
     metatable_provider_models,
+)
+from valmer_connectors.storage import (
+    valmer_discount_curves_instance,
+    valmer_index_fixings_instance,
 )
 
 
@@ -72,6 +77,8 @@ class ValmerMigrationProviderTests(unittest.TestCase):
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
                 DailyIndexValuesStorage,
+                valmer_discount_curves_instance(),
+                valmer_index_fixings_instance(),
             ),
         )
         self.assertEqual(METATABLE_PROVIDER_MODELS, VALMER_MIGRATION_MODELS)
@@ -83,6 +90,8 @@ class ValmerMigrationProviderTests(unittest.TestCase):
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
                 DailyIndexValuesStorage,
+                valmer_discount_curves_instance(),
+                valmer_index_fixings_instance(),
             ),
         )
         self.assertEqual(tuple(migration.metatable_models), VALMER_MIGRATION_MODELS)
@@ -145,16 +154,22 @@ class ValmerMigrationProviderTests(unittest.TestCase):
                 ValmerAssetDetailsTable.__table__.name,
                 ValmerVectorPricesStorage.__table__.name,
                 DailyIndexValuesStorage.__table__.name,
+                "valmer_connectors__discountcurvests__valmer",
+                "valmer_connectors__indexfixingsts__valmer",
                 AssetTable.__table__.name,
                 IndexTable.__table__.name,
                 IndexFormulaDefinitionTable.__table__.name,
+                CurveTable.__table__.name,
             },
         )
         self.assertIn(AssetTable.__table__.name, target_table_names)
         self.assertIn(IndexTable.__table__.name, target_table_names)
         self.assertEqual(
             VALMER_REFERENCE_MODELS,
-            (AssetTable, IndexTable, IndexFormulaDefinitionTable),
+            (AssetTable, IndexTable, IndexFormulaDefinitionTable, CurveTable),
+        )
+        self.assertFalse(
+            migration.include_name(CurveTable.__table__.name, "table", {"schema_name": None})
         )
         self.assertNotIn(IndexTable, VALMER_MIGRATION_MODELS)
 
@@ -209,7 +224,7 @@ class ValmerAssetDetailsCascadeTests(unittest.TestCase):
         scripts = ScriptDirectory.from_config(
             alembic_config_for_provider(migration, sqlalchemy_url="sqlite://")
         )
-        self.assertEqual(scripts.get_heads(), ["0001"])
+        self.assertEqual(scripts.get_heads(), ["0002"])
         baseline = scripts.get_revision("0001").module
         asset_uid = "a" * 32
 
@@ -255,6 +270,76 @@ class ValmerAssetDetailsCascadeTests(unittest.TestCase):
                     connection.execute(f"SELECT COUNT(*) FROM {ASSET_DETAILS_TABLE}").fetchone(),
                     (0,),
                 )
+            finally:
+                connection.close()
+
+
+
+class ValmerTimeSeriesInstanceMigrationTests(unittest.TestCase):
+    """Revision 0002 creates Valmer's curve and fixing instances in its namespace."""
+
+    def test_instances_copy_the_core_storage_contracts(self):
+        from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+        from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
+
+        for core, instance, name, identifier in (
+            (
+                DiscountCurvesStorage,
+                valmer_discount_curves_instance(),
+                "valmer_connectors__discountcurvests__valmer",
+                "valmer_connectors.DiscountCurvesTS.valmer",
+            ),
+            (
+                IndexFixingsStorage,
+                valmer_index_fixings_instance(),
+                "valmer_connectors__indexfixingsts__valmer",
+                "valmer_connectors.IndexFixingsTS.valmer",
+            ),
+        ):
+            with self.subTest(table=name):
+                table = instance.__table__
+                self.assertEqual(table.name, name)
+                self.assertEqual(table.info["namespace"], VALMER_MARKETS_NAMESPACE)
+                self.assertEqual(table.info["identifier"], identifier)
+                self.assertEqual(
+                    [column.name for column in table.columns],
+                    [column.name for column in core.__table__.columns],
+                )
+                self.assertEqual(instance.__index_names__, core.__index_names__)
+                self.assertLessEqual(len(name), 63)
+
+    def test_revision_0002_creates_both_instances_on_sqlite(self):
+        scripts = ScriptDirectory.from_config(
+            alembic_config_for_provider(migration, sqlalchemy_url="sqlite://")
+        )
+        instances = scripts.get_revision("0002").module
+        self.assertEqual(scripts.get_revision("0002").down_revision, "0001")
+
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "valmer.sqlite"
+            engine = create_engine(f"sqlite:///{database}")
+            try:
+                with engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "CREATE TABLE ms_markets__curve (unique_identifier VARCHAR(255) UNIQUE)"
+                    )
+                    connection.exec_driver_sql(
+                        "CREATE TABLE ms_markets__index (unique_identifier VARCHAR(255) UNIQUE)"
+                    )
+                    with Operations.context(MigrationContext.configure(connection)):
+                        instances.upgrade()
+            finally:
+                engine.dispose()
+
+            connection = sqlite3.connect(database)
+            try:
+                for table, target in (
+                    ("valmer_connectors__discountcurvests__valmer", "ms_markets__curve"),
+                    ("valmer_connectors__indexfixingsts__valmer", "ms_markets__index"),
+                ):
+                    (key,) = connection.execute(f"PRAGMA foreign_key_list({table})").fetchall()
+                    self.assertEqual(key[2], target)
+                    self.assertEqual(key[6], "RESTRICT")
             finally:
                 connection.close()
 

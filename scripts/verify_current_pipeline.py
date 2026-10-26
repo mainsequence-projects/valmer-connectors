@@ -13,8 +13,6 @@ from msm.repositories.base import (
     execute_markets_operation,
 )
 from msm_pricing.data_nodes.curves.key_nodes import decompress_key_nodes_from_string
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from sqlalchemy import func, select
 
 from valmer_connectors.data_nodes.canonical_index_values import DailyIndexValuesStorage
@@ -35,6 +33,7 @@ from valmer_connectors.runtime import use_markets_api
 from valmer_connectors.services.curve_update import (
     load_mxn_government_curve_source_from_vector_storage,
 )
+from valmer_connectors.storage import discount_curves_storage, index_fixings_storage
 
 CURVE_IDENTIFIERS = (
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
@@ -208,7 +207,9 @@ def main() -> None:
     if non_quote_observations == 0:
         raise RuntimeError("No persisted reference-rate observations were found.")
 
-    fixing_table = IndexFixingsStorage.__table__
+    # The selected storages: core Markets tables or Valmer's instances
+    # (VALMER_TIME_SERIES_STORAGE).
+    fixing_table = index_fixings_storage().__table__
     fixing_stats = _rows(
         select(
             fixing_table.c.index_identifier,
@@ -233,7 +234,7 @@ def main() -> None:
         for row in government_source.itertuples(index=False)
     }
 
-    curve_table = DiscountCurvesStorage.__table__
+    curve_table = discount_curves_storage().__table__
     curve_rows = _rows(
         select(
             curve_table.c.time_index,

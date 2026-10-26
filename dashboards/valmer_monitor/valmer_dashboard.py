@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pandas as pd
 import streamlit as st
 from metatables import TimeIndexTableRef
-from msm.settings import ASSET_IDENTIFIER_DIMENSION, markets_data_node_identifier
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from msm_pricing.data_interface.data_interface import dimension_range_for_identity
 from msm_pricing.data_nodes.curve_codec import decompress_string_to_curve
@@ -19,9 +19,11 @@ from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
 )
 from valmer_connectors.meta_tables.valmer_asset_details import resolve_valmer_asset_details
+from valmer_connectors.storage import discount_curves_storage, storage_table_identifier
 
 VECTOR_TABLE_IDENTIFIER = "vector_de_precios_valmer"
-DISCOUNT_CURVE_TABLE_IDENTIFIER = markets_data_node_identifier("DiscountCurvesTS")
+# The core Markets table or Valmer's instance (VALMER_TIME_SERIES_STORAGE).
+DISCOUNT_CURVE_TABLE_IDENTIFIER = storage_table_identifier(discount_curves_storage())
 
 NUMERIC_VECTOR_COLUMNS = (
     "open",

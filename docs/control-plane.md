@@ -150,9 +150,9 @@ schedule included, as soon as the commit image is verified, whatever a step's `n
 a Job in the graph would tie its promotion policy to the API's group. The pipeline Jobs keep
 their own every-push redeployment (see "Workflow Declarations" in `docs/deployment.md`).
 
-The workflow grants the API `edit` on each of the seventeen Jobs it launches. Hosted, the API
+The workflow grants the API `edit` on each of the eighteen Jobs it launches. Hosted, the API
 sees only the Jobs granted to its workload User, so its Jobs and Job-runs collections list
-those seventeen and not the migration Job. Wherever the migration Job is listed, as in a local
+those eighteen and not the migration Job. Wherever the migration Job is listed, as in a local
 review that runs with the developer's own access, preflight blocks it: hosted migrations run
 only inside a deployment, never by hand.
 
@@ -179,7 +179,7 @@ path exists only on the developer workstation. The migration current/revision/up
 local API/Vite host are development or administration launchers, not production workload Jobs.
 
 The workflow declaration is desired repository state, not proof that the Jobs exist. Overview and
-Pipeline responses reconcile all seventeen configured pipeline launch profiles with live branch
+Pipeline responses reconcile all eighteen configured pipeline launch profiles with live branch
 Jobs by execution path. Missing pipeline Jobs are reported as configuration failures, and an
 existing Job without a run is reported as
 `not-run`. Launch responses must contain the platform JobRun UID. When the platform omits a status,

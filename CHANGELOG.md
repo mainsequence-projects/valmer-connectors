@@ -45,6 +45,25 @@ of holding Writer on the `mainsequence.markets` namespace.
   the first stage of the standard pipeline and launchable from the control
   plane. `runtime validate` keeps seeding explicitly.
 
+### Curves and fixings in Valmer's namespace (expand only)
+
+- Revision `0002` creates Valmer's instances of the Markets discount-curve and
+  Index-fixing storages, `valmer_connectors__discountcurvests__valmer` and
+  `valmer_connectors__indexfixingsts__valmer`, in `valmer_connectors`
+  (`msm.storage_instances.configured_time_index_instance`; the migration
+  provider references `ms_markets__curve` for the new foreign key).
+- `VALMER_TIME_SERIES_STORAGE` (`markets` by default, `valmer`) selects the
+  storage the curve and Banxico fixing producers write, the cross-currency
+  builder, verification, control plane and dashboards read, and the registry
+  seed binds to the default market-data set. Nothing changes until it is set.
+- The `time-series-backfill` Job (`valmer-connectors time-series backfill`)
+  copies, never recomputes, Valmer's rows from the core tables into the
+  instances and fails while a row is missing. `docs/time-series-instances.md`
+  is the runbook: backfill, set the variable, rebind with `registry-seed`,
+  backfill again, verify, revoke.
+- The daily Index values table stays where it is: ms-markets has to adopt
+  `ms_markets__index_values__t_1d` first.
+
 ### Tests
 
 - The control-plane caller-assertion tests sign the claim set of

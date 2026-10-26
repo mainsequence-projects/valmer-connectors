@@ -32,6 +32,10 @@ never one call per row. Never import a Markets table class to build a statement,
 row class's `_active_context()`, and never select a backend in library code: applications import
 `valmer_connectors` and choose their own. `bootstrap_runtime()` only attaches tables; the static
 registry rows are written by the `registry-seed` Job (`valmer-connectors registries seed`).
+Discount curves and Index fixings go to the storage `valmer_connectors.storage` selects
+(`VALMER_TIME_SERIES_STORAGE`: core Markets tables by default, Valmer's own instances after the
+backfill in `docs/time-series-instances.md`); never hard-code `DiscountCurvesStorage` or
+`IndexFixingsStorage` in a producer or reader.
 
 The control-plane API learns its caller only from the SDK request identity that `create_app` in
 `src/valmer_connectors/control_plane/api.py` installs once per application; route code gets the

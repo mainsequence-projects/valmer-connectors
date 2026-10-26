@@ -76,8 +76,9 @@ def test_every_markets_job_script_selects_the_markets_api() -> None:
     """Every Job entry point except the migration and the pipeline driver selects it.
 
     The migration Job only applies Valmer's provider, the pipeline driver runs the
-    other scripts as subprocesses, and the operator-only pricing-details repair
-    stays on the runtime backend (see docs/deployment.md, Markets API Access).
+    other scripts as subprocesses, the time-series backfill only copies table
+    rows, and the operator-only pricing-details repair stays on the runtime
+    backend (see docs/deployment.md, Markets API Access).
     """
 
     exempt = {
@@ -85,6 +86,7 @@ def test_every_markets_job_script_selects_the_markets_api() -> None:
         "migrate_valmer.py",
         "run_control_plane_pipeline.py",
         "patch_valmer_asset_pricing_details.py",
+        "backfill_valmer_time_series.py",
         "test_script.py",
     }
     for path in sorted((REPOSITORY_ROOT / "scripts").glob("*.py")):
@@ -149,14 +151,13 @@ def _attach(monkeypatch) -> dict[str, Any]:
 
 def test_bootstrap_attaches_only_valmer_tables_under_the_markets_api(monkeypatch) -> None:
     from msm.api.remote import use_remote_backend
+    from msm.models.registration import resolve_markets_meta_table_models
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 
     from valmer_connectors.data_nodes.canonical_index_values import DailyIndexValuesStorage
     from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
     from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
-
-    from msm.models.registration import resolve_markets_meta_table_models
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 
     use_remote_backend(SimpleNamespace(call=lambda *args: pytest.fail("no row call")))
     attached = _attach(monkeypatch)
@@ -336,6 +337,10 @@ MARKETS_TABLE_CLASSES = {
     "PricingMarketDataSetTable",
     "PricingMarketDataSetBindingTable",
     "PricingMarketDataSetCurveBindingTable",
+    # Core time-series storages: read through valmer_connectors.storage, which
+    # selects them or Valmer's own instances.
+    "DiscountCurvesStorage",
+    "IndexFixingsStorage",
 }
 STATEMENT_BUILDERS = {
     "compile_markets_statement",
@@ -353,6 +358,9 @@ REMAINING_DIRECT_ACCESS = {
     # Operator-only repair of stored pricing-detail payloads: no Markets route
     # reads timestamped pricing details or filters them by payload content.
     "src/valmer_connectors/services/pricing_details_repair.py",
+    # One-off copy of Valmer's own curve and fixing rows out of the core tables
+    # into Valmer's instances (docs/time-series-instances.md).
+    "src/valmer_connectors/data_nodes/time_series_backfill.py",
 }
 
 

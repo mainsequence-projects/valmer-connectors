@@ -38,6 +38,7 @@ from valmer_connectors.instruments.mexican_government_bond_curve import (
     build_mxn_government_curve_frame,
     select_mxn_government_bootstrap_instruments,
 )
+from valmer_connectors.storage import discount_curves_storage
 
 CurveBuilder = Callable[..., pd.DataFrame]
 KeyNodesValidator = Callable[..., Any]
@@ -96,7 +97,9 @@ def _run_valmer_discount_curve_update(
     bootstrap_runtime()
     configure_valmer_discount_curves_cadence()
     resolved_node_class = node_class or DiscountCurvesNode
-    node_kwargs = {}
+    # The selected discount-curve storage: the core table or Valmer's instance
+    # (VALMER_TIME_SERIES_STORAGE); the output table is not part of update_hash.
+    node_kwargs: dict[str, Any] = {"output_table": discount_curves_storage()}
     if hash_namespace:
         node_kwargs["hash_namespace"] = hash_namespace
     node = resolved_node_class(
@@ -171,7 +174,8 @@ def run_tiie_irs_mxn_curve_update(
             curve_unique_identifier=curve_identifier,
             quote_storage_table=DailyIndexValuesStorage,
             source_families=("tiie_ois",),
-        )
+        ),
+        output_table=discount_curves_storage(),
     ).run()
 
 
@@ -188,7 +192,8 @@ def run_usd_sofr_curve_update(
             curve_unique_identifier=curve_identifier,
             quote_storage_table=DailyIndexValuesStorage,
             source_families=("sofr_future", "sofr_ois"),
-        )
+        ),
+        output_table=discount_curves_storage(),
     ).run()
 
 
@@ -202,16 +207,19 @@ def run_usd_mxn_xccy_curve_update(
 
     bootstrap_runtime()
     configure_valmer_discount_curves_cadence()
+    curve_storage = discount_curves_storage()
     node = ValmerUsdMxnCollateralDiscountCurveNode(
         curve_config=ValmerXccyCurveConfig(
             curve_unique_identifier=curve_identifier,
             quote_storage_table=DailyIndexValuesStorage,
-            curve_storage_table=DiscountCurvesNode._required_output_table(),
+            # The XCCY curve reads its upstream curves where they are written.
+            curve_storage_table=curve_storage,
             source_families=("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),
             tiie_curve_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
             sofr_curve_identifier=VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
         ),
         hash_namespace=hash_namespace,
+        output_table=curve_storage,
     )
     if rebuild_current:
         node.run(override_update_stats=UpdateStatistics.return_empty())

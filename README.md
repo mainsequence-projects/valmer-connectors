@@ -165,9 +165,9 @@ Push only after the Environment's MetaTables API runs 0.1.35, the release of
 the locked client, and the ms-markets deployment's migration Job has succeeded
 in the same DataSource. Before the first push in an Environment, an
 Organization admin sets up the Valmer Team: `migrate-valmer` needs `editor` on
-the `valmer_connectors` namespace, and on `mainsequence.markets` for the daily
-Index values table its provider still registers there, and otherwise fails
-with `namespace_not_writable` and stops the API rollout. The Jobs' workload
+the `valmer_connectors` namespace and a role on the daily Index values table its
+provider still registers in `mainsequence.markets`, and otherwise fails with
+`namespace_not_writable` and stops the API rollout. The Jobs' workload
 Users also need entries in the Markets `MARKETS_REGISTRY_WRITERS` constant.
 "Publishing", "Teams And Namespaces" and "Markets API Access" in
 `docs/deployment.md` describe these checks.

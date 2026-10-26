@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import pandas as pd
+from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 
 import valmer_connectors.services as services
 from valmer_connectors.instruments.curve_key_nodes import (
@@ -47,7 +48,11 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         bootstrap.assert_called_once_with()
         configure_cadence.assert_called_once_with()
         curve_config.assert_called_once_with(curve_unique_identifier="TEST_CURVE")
-        node_class.assert_called_once_with(curve_config=curve_config.return_value)
+        # The default storage is the core Markets table (VALMER_TIME_SERIES_STORAGE unset).
+        node_class.assert_called_once_with(
+            curve_config=curve_config.return_value,
+            output_table=DiscountCurvesStorage,
+        )
         node.run.assert_called_once_with()
 
         wrapped_builder = node.set_curve_builder.call_args.args[0]
@@ -133,6 +138,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
 
         node_class.assert_called_once_with(
             curve_config=curve_config.return_value,
+            output_table=DiscountCurvesStorage,
             hash_namespace="pytest-xccy",
         )
         update_stats.return_empty.assert_called_once_with()
