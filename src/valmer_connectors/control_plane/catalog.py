@@ -279,6 +279,10 @@ JOB_LAUNCH_PROFILES: tuple[JobLaunchProfile, ...] = (
         key="pipeline-verification",
         execution_path="scripts/verify_current_pipeline.py",
     ),
+    JobLaunchProfile(
+        key="registry-seed",
+        execution_path="scripts/seed_valmer_registries.py",
+    ),
 )
 
 JOB_LAUNCH_PROFILES_BY_KEY = {
@@ -299,6 +303,15 @@ DEPLOYMENT_ONLY_JOB_BLOCKER = (
 
 
 PIPELINE_STAGES: tuple[dict[str, object], ...] = (
+    {
+        "id": "registries",
+        "label": "Registries",
+        "description": (
+            "Index, convention, curve and market-data binding rows the producers "
+            "reference, written through the Markets API."
+        ),
+        "actions": ["registry-seed"],
+    },
     {
         "id": "sources",
         "label": "Source producers",

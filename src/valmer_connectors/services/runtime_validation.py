@@ -6,9 +6,13 @@ from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 
 
 def validate_runtime(*, override: bool = True) -> dict[str, Any]:
-    """Bootstrap runtime tables and return a compact validation payload."""
+    """Attach the runtime, seed the static registry rows and summarize them.
 
-    result = bootstrap_runtime(override=override)
+    Seeding is explicit since ``bootstrap_runtime`` stopped seeding by default;
+    this command keeps doing it, because its summary is the seeded rows.
+    """
+
+    result = bootstrap_runtime(override=override, seed_static_rows=True)
     if result is None:
         return {
             "index_type": None,

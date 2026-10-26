@@ -9,6 +9,9 @@ from pathlib import Path
 logger = logging.getLogger("valmer_control_plane_pipeline")
 
 PIPELINE_SCRIPTS: tuple[str, ...] = (
+    # Registry rows first: bootstrap_runtime() no longer seeds them, and every
+    # curve and fixing below references them.
+    "seed_valmer_registries.py",
     "update_vector_valmer.py",
     "update_valmer_irs_mxn_quotes.py",
     "update_valmer_irs_usd_quotes.py",

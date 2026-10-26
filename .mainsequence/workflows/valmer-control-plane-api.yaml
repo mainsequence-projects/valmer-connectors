@@ -65,6 +65,8 @@ resources:
           level: edit
         - key: pipeline-verification
           level: edit
+        - key: registry-seed
+          level: edit
 
   - key: migrate-valmer
     kind: job
@@ -374,6 +376,27 @@ resources:
       cpu_request: "0.5"
       memory_request: "2"
       max_runtime_seconds: 3600
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
+
+  # Writes the static Markets registry rows (Index, conventions, curves,
+  # market-data bindings) that bootstrap_runtime() no longer seeds by default.
+  # The standard pipeline runs it as its first stage.
+  - key: registry-seed
+    kind: job
+    spec:
+      name: Valmer Registry Seed
+      description: Write the Index, convention, curve and market-data binding rows the Valmer producers reference.
+      execution_path: scripts/seed_valmer_registries.py
+      cpu_request: "0.5"
+      memory_request: "2"
+      max_runtime_seconds: 1800
       spot: false
       automatic_redeployment:
         enabled: true

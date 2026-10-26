@@ -69,6 +69,17 @@ def _runtime_validate_command(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _registries_seed_command(_args: argparse.Namespace) -> int:
+    from valmer_connectors.services.registry_seed import (
+        seed_valmer_registries,
+        summarize_seeded_registries,
+    )
+
+    result = seed_valmer_registries()
+    print(json.dumps(summarize_seeded_registries(result), indent=2, sort_keys=True))
+    return 0
+
+
 def _vector_update_command(args: argparse.Namespace) -> int:
     from valmer_connectors.services.vector_update import run_vector_update
 
@@ -376,9 +387,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     runtime_validate_parser = runtime_subcommands.add_parser(
         "validate",
-        help="Bootstrap runtime tables and print a JSON validation payload.",
+        help="Bootstrap runtime tables, seed the static registry rows and print a summary.",
     )
     runtime_validate_parser.set_defaults(func=_runtime_validate_command)
+
+    registries_parser = subcommands.add_parser(
+        "registries",
+        help="Markets registry rows Valmer publishes against.",
+    )
+    registries_subcommands = registries_parser.add_subparsers(
+        dest="registries_command",
+        required=True,
+    )
+    registries_seed_parser = registries_subcommands.add_parser(
+        "seed",
+        help=(
+            "Write the Index, convention, curve and market-data binding rows Valmer's "
+            "producers reference (idempotent; the registry-seed Job)."
+        ),
+    )
+    registries_seed_parser.set_defaults(func=_registries_seed_command)
 
     vector_parser = subcommands.add_parser("vector", help="Valmer vector commands.")
     vector_subcommands = vector_parser.add_subparsers(

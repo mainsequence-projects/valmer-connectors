@@ -121,11 +121,21 @@ def seed_defaults(**runtime_kwargs: Any) -> dict[str, Any]:
 def bootstrap_runtime(
     *,
     override: bool = False,
-    seed_static_rows: bool = True,
+    seed_static_rows: bool = False,
     extra_markets_models: Sequence[Any] | None = None,
     **runtime_kwargs: Any,
 ) -> dict[str, Any] | None:
-    """Attach runtime tables and seed current Valmer static pricing rows.
+    """Attach the Valmer runtime tables once per process; seed only when asked.
+
+    It follows the importing process's backend: under the Markets API
+    (``valmer_connectors.runtime.use_markets_api``) it attaches only Valmer's
+    tables, otherwise also the Markets registries and pricing tables.
+
+    ``seed_static_rows`` (default ``False`` since 0.2.0) also writes Valmer's
+    static registry rows (Index types and reference indexes, index conventions,
+    curves and their building details, market-data bindings); the
+    ``registry-seed`` Job (``valmer-connectors registries seed``) is the one
+    process that passes it. Before 0.2.0 every call seeded by default.
 
     ``extra_markets_models`` extends the single shared markets runtime startup
     with downstream portfolio or project-local SQLAlchemy models before pricing
