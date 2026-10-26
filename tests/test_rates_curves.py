@@ -3,12 +3,12 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pandas as pd
-from msm_pricing.data_nodes import DiscountCurvesNode
 from msm_pricing.pricing_engine.curves import (
     StaticRateHelperRuntimeResolver,
     helper_specs_from_key_nodes,
     parse_cross_currency_key_node,
 )
+from msm_pricing.time_index import DiscountCurvesUpdater
 
 from valmer_connectors.instruments import rates_curves as rates_curves_module
 from valmer_connectors.instruments.curve_key_nodes import (
@@ -218,7 +218,7 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         self.assertNotIn("FX.USD.MXN.ON", identifiers)
         self.assertNotIn("Swap.104W.MXN.FTIIE.1D/USD.SOFR.1D.SOFR", identifiers)
 
-        normalized = DiscountCurvesNode._normalize_builder_frame(
+        normalized = DiscountCurvesUpdater._normalize_builder_frame(
             frame,
             curve_identifier="VALMER_TIIE_OVERNIGHT",
         )
@@ -338,7 +338,7 @@ class ValmerRatesCurvesTests(unittest.TestCase):
         self.assertNotIn("Swap.1Y.USD.FEDFUNDS.1D/1Y.FEDFUNDS1", identifiers)
         self.assertNotIn("Swap.USD.10Y.FEDFUNDS.1D/SOFR.1D.SOFR", identifiers)
 
-        normalized = DiscountCurvesNode._normalize_builder_frame(
+        normalized = DiscountCurvesUpdater._normalize_builder_frame(
             frame,
             curve_identifier="VALMER_USD_SOFR_OVERNIGHT",
         )

@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 import structlog
 from metatables import UpdateStatistics
-from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
+from msm_pricing.time_index import CurveConfig, DiscountCurvesUpdater
 
 from valmer_connectors.data_nodes.canonical_index_values import ValmerDailyIndexValuesStorage
 from valmer_connectors.data_nodes.curve_building import (
@@ -73,7 +73,7 @@ _VECTOR_CURVE_SOURCE_COLUMNS = [
 _DISCOUNT_CURVE_REQUIRED_PAYLOAD_COLUMNS = frozenset({"curve", "key_nodes"})
 
 
-class ValmerMxnGovernmentBondDiscountCurvesNode(DiscountCurvesNode):
+class ValmerMxnGovernmentBondDiscountCurvesNode(DiscountCurvesUpdater):
     """Government curve updater with the Valmer vector availability boundary."""
 
     OFFSET_START = VALMER_MXN_GOVERNMENT_BOND_OFFSET_START
@@ -84,7 +84,7 @@ def _run_valmer_discount_curve_update(
     curve_identifier: str,
     curve_builder: CurveBuilder,
     logger=None,
-    node_class: type[DiscountCurvesNode] | None = None,
+    node_class: type[DiscountCurvesUpdater] | None = None,
     key_nodes_validator: KeyNodesValidator | None = None,
     hash_namespace: str | None = None,
     rebuild_current: bool = False,
@@ -92,7 +92,7 @@ def _run_valmer_discount_curve_update(
     """Run a Valmer discount curve builder through the canonical pricing node."""
 
     bootstrap_runtime()
-    resolved_node_class = node_class or DiscountCurvesNode
+    resolved_node_class = node_class or DiscountCurvesUpdater
     # Valmer's discount-curve table; the output table is not part of update_hash.
     node_kwargs: dict[str, Any] = {"output_table": valmer_discount_curves_instance()}
     if hash_namespace:
@@ -225,7 +225,7 @@ def run_mxn_government_curve_update(
     bucket_name: str | None = None,
     debug_artifact_path: str | None = None,
 ) -> None:
-    """Publish the Valmer MXN government bond curve through DiscountCurvesNode."""
+    """Publish the Valmer MXN government bond curve through DiscountCurvesUpdater."""
 
     if bucket_name is not None or debug_artifact_path is not None:
         LOGGER.warning(

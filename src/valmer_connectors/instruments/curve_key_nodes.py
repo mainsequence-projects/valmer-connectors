@@ -5,11 +5,11 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
-from msm_pricing.data_nodes import CurveKeyNode
 from msm_pricing.pricing_engine.curves import (
     parse_bond_helper_key_node,
     parse_cross_currency_key_node,
 )
+from msm_pricing.time_index import CurveKeyNode
 
 from valmer_connectors.instruments.curve_bootstrap import (
     TIIE_OVERNIGHT_INDEX_UNIQUE_IDENTIFIER,
@@ -39,7 +39,7 @@ def validate_tiie_ois_key_nodes(
     row: Mapping[str, Any],
     curve_identifier: str,
 ) -> list[dict[str, Any]]:
-    """Validate Valmer IRS MXN key nodes before DiscountCurvesNode compression."""
+    """Validate Valmer IRS MXN key nodes before DiscountCurvesUpdater compression."""
 
     nodes = _curve_key_node_list(value, curve_identifier=curve_identifier)
     for node in nodes:
@@ -185,7 +185,7 @@ def validate_usd_sofr_key_nodes(
     row: Mapping[str, Any],
     curve_identifier: str,
 ) -> list[dict[str, Any]]:
-    """Validate Valmer IRS USD SOFR key nodes before DiscountCurvesNode compression."""
+    """Validate Valmer IRS USD SOFR key nodes before DiscountCurvesUpdater compression."""
 
     nodes = _curve_key_node_list(value, curve_identifier=curve_identifier)
     has_future = False

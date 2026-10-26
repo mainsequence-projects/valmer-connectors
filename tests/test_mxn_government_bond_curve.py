@@ -1,8 +1,8 @@
 import unittest
 
 import pandas as pd
-from msm_pricing.data_nodes import DiscountCurvesNode
 from msm_pricing.pricing_engine.curves import parse_bond_helper_key_node
+from msm_pricing.time_index import DiscountCurvesUpdater
 
 from valmer_connectors.instruments.curve_key_nodes import validate_mxn_government_key_nodes
 from valmer_connectors.instruments.mexican_government_bond_curve import (
@@ -200,7 +200,7 @@ class MxnGovernmentBondCurveTests(unittest.TestCase):
         self.assertNotIn("metadata_json", frame.reset_index().columns)
         self.assertGreaterEqual(len(row["curve"]), 2)
 
-        normalized = DiscountCurvesNode._normalize_builder_frame(
+        normalized = DiscountCurvesUpdater._normalize_builder_frame(
             frame,
             curve_identifier="VALMER_MXN_GOVERNMENT_BOND",
         )

@@ -17,8 +17,8 @@ from msm_pricing.api.pricing_details import (
     AssetCurrentPricingDetails,
     AssetPricingDetails,
 )
-from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
+from msm_pricing.time_index.pricing_details.storage import AssetPricingDetailsStorage
 from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 

@@ -12,7 +12,7 @@ from msm.repositories.base import (
     compile_markets_statement,
     execute_markets_operation,
 )
-from msm_pricing.data_nodes.curves.key_nodes import decompress_key_nodes_from_string
+from msm_pricing.time_index.curves.key_nodes import decompress_key_nodes_from_string
 from sqlalchemy import and_, select
 
 # Canonical IndexValuesTS has no unit column. Quote type/unit and raw-source

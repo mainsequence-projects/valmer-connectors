@@ -241,8 +241,8 @@ class PricingDetailsRepairTests(unittest.TestCase):
         """bootstrap_runtime() attaches only Valmer's tables; the repair adds its own."""
 
         from msm.models import AssetTable, IndexTable
-        from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
         from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
+        from msm_pricing.time_index.pricing_details.storage import AssetPricingDetailsStorage
 
         from valmer_connectors.services import pricing_details_repair
 

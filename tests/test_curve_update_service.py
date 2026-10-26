@@ -30,7 +30,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime") as bootstrap,
             patch("valmer_connectors.services.curve_update.CurveConfig") as curve_config,
-            patch("valmer_connectors.services.curve_update.DiscountCurvesNode") as node_class,
+            patch("valmer_connectors.services.curve_update.DiscountCurvesUpdater") as node_class,
         ):
             node = Mock()
             node.set_curve_builder.return_value = node
@@ -81,7 +81,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
             patch("valmer_connectors.services.curve_update.CurveConfig"),
-            patch("valmer_connectors.services.curve_update.DiscountCurvesNode") as node_class,
+            patch("valmer_connectors.services.curve_update.DiscountCurvesUpdater") as node_class,
         ):
             node = Mock()
             node.set_curve_builder.return_value = node
@@ -114,7 +114,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
             patch("valmer_connectors.services.curve_update.CurveConfig") as curve_config,
-            patch("valmer_connectors.services.curve_update.DiscountCurvesNode") as node_class,
+            patch("valmer_connectors.services.curve_update.DiscountCurvesUpdater") as node_class,
             patch("valmer_connectors.services.curve_update.UpdateStatistics") as update_stats,
         ):
             node = Mock()
@@ -271,7 +271,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         self.assertTrue(
             issubclass(
                 curve_update.ValmerMxnGovernmentBondDiscountCurvesNode,
-                curve_update.DiscountCurvesNode,
+                curve_update.DiscountCurvesUpdater,
             )
         )
         self.assertEqual(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from msm_pricing.data_nodes.curves.key_nodes import (
+from msm_pricing.time_index.curves.key_nodes import (
     compress_key_nodes_to_string,
     decompress_key_nodes_from_string,
 )

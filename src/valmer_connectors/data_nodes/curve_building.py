@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 from metatables import PlatformTimeIndexMetaTable
-from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
+from msm_pricing.time_index import CurveConfig, DiscountCurvesUpdater
 from pydantic import Field
 
 from valmer_connectors.data_nodes.canonical_index_values import (
@@ -73,7 +73,7 @@ class ValmerXccyCurveConfig(ValmerQuoteBackedCurveConfig):
     )
 
 
-class ValmerTiieDiscountCurveNode(DiscountCurvesNode):
+class ValmerTiieDiscountCurveNode(DiscountCurvesUpdater):
     """Build TIIE only after its complete IRS_MXN quote snapshot is persisted."""
 
     def __init__(self, curve_config: ValmerQuoteBackedCurveConfig, **kwargs: Any):
@@ -103,7 +103,7 @@ class ValmerTiieDiscountCurveNode(DiscountCurvesNode):
         return _concat_curve_frames(frames)
 
 
-class ValmerUsdSofrDiscountCurveNode(DiscountCurvesNode):
+class ValmerUsdSofrDiscountCurveNode(DiscountCurvesUpdater):
     """Build SOFR only after every IRS_USD quote, including Fed Funds, persists."""
 
     def __init__(self, curve_config: ValmerQuoteBackedCurveConfig, **kwargs: Any):
@@ -133,7 +133,7 @@ class ValmerUsdSofrDiscountCurveNode(DiscountCurvesNode):
         return _concat_curve_frames(frames)
 
 
-class ValmerUsdMxnCollateralDiscountCurveNode(DiscountCurvesNode):
+class ValmerUsdMxnCollateralDiscountCurveNode(DiscountCurvesUpdater):
     """Build XCCY from persisted MXN quotes and exact-date TIIE/SOFR curves."""
 
     def __init__(self, curve_config: ValmerXccyCurveConfig, **kwargs: Any):

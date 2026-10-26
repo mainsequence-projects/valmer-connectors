@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
-from msm_pricing.data_nodes import FixingRatesNode, IndexFixingConfiguration
+from msm_pricing.time_index import FixingRatesUpdater, IndexFixingConfiguration
 
 from valmer_connectors.banxico.settings import (
     BANXICO_FIXING_INDEX_IDENTIFIERS,
@@ -32,7 +32,7 @@ class BanxicoFixingError(RuntimeError):
     """Raised when Banxico fixing configuration or payloads are invalid."""
 
 
-class BanxicoFixingsNode(FixingRatesNode):
+class BanxicoFixingsNode(FixingRatesUpdater):
     """Fixing node for Banxico-published Mexican reference-rate observations."""
 
     OFFSET_START = BANXICO_FIXING_OFFSET_START
@@ -326,7 +326,7 @@ def make_banxico_fixing_builders(
     end_date: dt.date | str | pd.Timestamp | None = None,
     offset_start: dt.date | dt.datetime | str | pd.Timestamp = BANXICO_FIXING_OFFSET_START,
 ):
-    """Create `FixingRatesNode` builders keyed by pricing index identifier."""
+    """Create `FixingRatesUpdater` builders keyed by pricing index identifier."""
 
     selected = select_series_definitions(index_identifiers, definitions=definitions)
     if validate_metadata:
