@@ -484,6 +484,26 @@ def test_no_module_borrows_a_markets_row_runtime_context() -> None:
     assert offenders == []
 
 
+def test_no_module_uses_a_pre_3_0_ms_markets_name() -> None:
+    """ms-markets 3.0 deprecates the pre-3.0 import paths and class names (ADR 0048).
+
+    The aliases re-export the same classes until ms-markets 4.0 removes them;
+    Valmer imports the 3.0 names. Committed migration revisions are never edited.
+    """
+
+    from msm_cli.rename_preflight import scan
+
+    roots = [
+        REPOSITORY_ROOT / name for name in ("src", "scripts", "tests", "dashboards", "api", ".vscode")
+    ]
+    findings = [
+        f"{finding.path}:{finding.line} {finding.old} -> {finding.new}"
+        for finding in scan(roots)
+        if "migrations/versions/" not in Path(finding.path).as_posix()
+    ]
+    assert findings == []
+
+
 # The core Markets time-series tables Valmer wrote before it had its own.
 CORE_TIME_SERIES_TABLES = {
     "DiscountCurvesStorage",
