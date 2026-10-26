@@ -24,7 +24,7 @@ index and foreign keys (to `ms_markets__curve.unique_identifier` and
 
 | Value | Producers write | Curve builders, verification, control plane, dashboards read | `registry-seed` binds | Attached |
 | --- | --- | --- | --- | --- |
-| `markets` (default, unset) | core tables | core tables | nothing; it reads the existing bindings | core tables |
+| `markets` (default, unset) | core tables | core tables | the core tables | core tables |
 | `valmer` | instances | instances | the instances | instances |
 
 Switching never changes an updater's `update_hash`: output tables are not part
@@ -74,8 +74,8 @@ no catalog through which it would find a provider instance of them.
   set before you continue.
 - The Markets `MARKETS_REGISTRY_WRITERS` constant lists the `registry-seed` and
   `standard-pipeline-refresh` workload Users under
-  `pricing-market-data-set-binding`, the resource the seed writes once the
-  bindings point at the instances.
+  `pricing-market-data-set-binding`, the resource the seed writes the bindings
+  through.
 
 ## Steps
 
@@ -119,10 +119,8 @@ no catalog through which it would find a provider instance of them.
 
 ## Rolling Back
 
-Before step 6: remove `VALMER_TIME_SERIES_STORAGE` from the workflow and push,
-then rebind the core tables with ms-markets
-(`msm_pricing.bootstrap.seed_default_pricing_market_data_bindings(replace=True)`
-from the Markets deployment), because Valmer under the Markets API does not
-write bindings to tables it does not attach. The rows written to the instances
-in between are not in the core tables; copy them back before you rebind, or
-accept the gap.
+Before step 6: remove `VALMER_TIME_SERIES_STORAGE` from the workflow, push,
+and launch `registry-seed`, which binds the core tables again. The rows written
+to the instances in between are not in the core tables; copy them back before
+you rebind (nothing in this repository does that direction), or accept the
+gap.

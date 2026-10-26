@@ -24,8 +24,9 @@ of holding Writer on the `mainsequence.markets` namespace.
 - The control plane reads pricing-target status through the Markets API and
   attaches no markets runtime; its "Current pricing details" product now counts
   registered Valmer assets with current pricing details.
-- The default pricing market-data set is created only when missing; under the
-  Markets API its curve and fixing source bindings are read, not rewritten.
+- The default pricing market-data set is created only when missing. Its
+  `discount_curves` and `interest_rate_index_fixings` bindings name the storage
+  Valmer writes, as before, now through the Markets API.
 - Every workload except `migrate-valmer` and `pipeline-verification` declares
   view on the `MainSequenceMarkets` branch. The Valmer Team drops Writer on
   `mainsequence.markets` for table roles on the three Markets-namespace

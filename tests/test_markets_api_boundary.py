@@ -314,15 +314,28 @@ def test_curve_quote_registration_is_set_based(monkeypatch) -> None:
     assert calls == ["types:3", "get", "indexes:3"]
 
 
-def test_default_bindings_are_read_not_written_under_the_markets_api(monkeypatch) -> None:
+def test_default_bindings_name_the_attached_core_storages_under_the_markets_api(
+    monkeypatch,
+) -> None:
+    """The seed binds the storage bootstrap_runtime() attached; the write is an API call."""
+
     from msm.api.remote import use_remote_backend
     from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 
     from valmer_connectors.instruments.curve_bootstrap import (
         upsert_valmer_market_data_source_bindings,
     )
 
     use_remote_backend(SimpleNamespace(call=lambda *args: pytest.fail("faked")))
+    monkeypatch.delenv("VALMER_TIME_SERIES_STORAGE", raising=False)
+    curves_uid, fixings_uid = uuid.uuid4(), uuid.uuid4()
+    for storage, uid in ((DiscountCurvesStorage, curves_uid), (IndexFixingsStorage, fixings_uid)):
+        monkeypatch.setattr(storage, "get_meta_table_uid", classmethod(lambda cls, uid=uid: uid))
+        monkeypatch.setattr(
+            storage, "get_identifier", classmethod(lambda cls: cls.__table__.info["identifier"])
+        )
     default_set = SimpleNamespace(uid=uuid.uuid4())
     monkeypatch.setattr(
         PricingMarketDataSet, "get_by_key", classmethod(lambda cls, key: default_set)
@@ -330,23 +343,21 @@ def test_default_bindings_are_read_not_written_under_the_markets_api(monkeypatch
     monkeypatch.setattr(
         PricingMarketDataSet, "upsert", classmethod(lambda cls, *a, **k: pytest.fail("exists"))
     )
-    monkeypatch.setattr(
-        PricingMarketDataSetBinding, "upsert", classmethod(lambda cls, *a, **k: pytest.fail("read"))
-    )
-    bindings = [
-        SimpleNamespace(concept_key="discount_curves"),
-        SimpleNamespace(concept_key="interest_rate_index_fixings"),
-    ]
+    upserts: list[dict[str, Any]] = []
     monkeypatch.setattr(
         PricingMarketDataSetBinding,
-        "filter_for_set_and_concepts",
-        classmethod(lambda cls, **kwargs: bindings),
+        "upsert",
+        classmethod(lambda cls, payload: upserts.append(payload) or SimpleNamespace(**payload)),
     )
 
     result = upsert_valmer_market_data_source_bindings()
 
     assert result["market_data_set"] is default_set
-    assert result["discount_curves"] is bindings[0]
+    assert {payload["concept_key"]: payload["storage_table_uid"] for payload in upserts} == {
+        "discount_curves": curves_uid,
+        "interest_rate_index_fixings": fixings_uid,
+    }
+    assert {payload["market_data_set_uid"] for payload in upserts} == {default_set.uid}
 
 
 # Markets tables (namespace mainsequence.markets) that a statement could target.

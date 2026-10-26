@@ -1304,19 +1304,16 @@ def resolve_default_pricing_market_data_set() -> Any:
 
 
 def upsert_valmer_market_data_source_bindings() -> dict[str, Any]:
-    """Resolve the default market-data set and its curve and fixing source bindings.
+    """Bind the default market-data set's curve and fixing concepts to Valmer's storage.
 
     The ``discount_curves`` and ``interest_rate_index_fixings`` bindings name the
     storage table pricing reads Valmer's curves and fixings from; their
     ``storage_table_uid`` is how Markets and every pricing consumer find them.
-
-    - With ``VALMER_TIME_SERIES_STORAGE=valmer`` Valmer binds its own instances
-      (``valmer_connectors.storage``), whose uids its runtime attached.
-    - Otherwise, under the runtime backend, it binds the attached core storage
-      tables, as before.
-    - Otherwise, under the Markets API (ms-markets ADR 0047), Valmer does not
-      attach the core tables and cannot resolve their uids, so it reads the
-      existing bindings and raises when one is missing.
+    They name the storage ``valmer_connectors.storage`` selects: the core Markets
+    tables, or Valmer's own instances with ``VALMER_TIME_SERIES_STORAGE=valmer``.
+    ``bootstrap_runtime()`` attaches that storage under either backend, so its
+    table uid is known; under the Markets API the binding write is an API call
+    (write-policy resource ``pricing-market-data-set-binding``).
     """
 
     from msm_pricing.api import PricingMarketDataSetBinding
@@ -1325,57 +1322,25 @@ def upsert_valmer_market_data_source_bindings() -> dict[str, Any]:
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     )
 
-    from valmer_connectors.runtime import markets_api_selected
-    from valmer_connectors.storage import (
-        VALMER_TIME_SERIES_STORAGE,
-        discount_curves_storage,
-        index_fixings_storage,
-        resolve_time_series_storage,
-    )
+    from valmer_connectors.storage import discount_curves_storage, index_fixings_storage
 
-    concepts = (
-        PRICING_CONCEPT_DISCOUNT_CURVES,
-        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    )
     market_data_set = resolve_default_pricing_market_data_set()
-    if (
-        resolve_time_series_storage() != VALMER_TIME_SERIES_STORAGE
-        and markets_api_selected()
-    ):
-        bindings = {
-            str(binding.concept_key): binding
-            for binding in PricingMarketDataSetBinding.filter_for_set_and_concepts(
-                market_data_set_uid=market_data_set.uid,
-                concept_keys=list(concepts),
-            )
-        }
-        missing = [concept for concept in concepts if concept not in bindings]
-        if missing:
-            raise RuntimeError(
-                "The default pricing market-data set has no "
-                f"{', '.join(missing)} binding. Valmer reads it through the Markets "
-                "API and cannot bind a Markets storage table it does not attach; "
-                "seed the default bindings with ms-markets "
-                "(msm_pricing.bootstrap.seed_default_pricing_market_data_bindings), "
-                "or bind Valmer's own instances with VALMER_TIME_SERIES_STORAGE=valmer."
-            )
-    else:
-        storages = {
-            PRICING_CONCEPT_DISCOUNT_CURVES: discount_curves_storage(),
-            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: index_fixings_storage(),
-        }
-        bindings = {
-            concept: PricingMarketDataSetBinding.upsert(
-                {
-                    "market_data_set_uid": market_data_set.uid,
-                    "concept_key": concept,
-                    "storage_table_uid": storage.get_meta_table_uid(),
-                    "storage_table_identifier": storage.get_identifier(),
-                    "source": VALMER_SOURCE,
-                }
-            )
-            for concept, storage in storages.items()
-        }
+    storages = {
+        PRICING_CONCEPT_DISCOUNT_CURVES: discount_curves_storage(),
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: index_fixings_storage(),
+    }
+    bindings = {
+        concept: PricingMarketDataSetBinding.upsert(
+            {
+                "market_data_set_uid": market_data_set.uid,
+                "concept_key": concept,
+                "storage_table_uid": storage.get_meta_table_uid(),
+                "storage_table_identifier": storage.get_identifier(),
+                "source": VALMER_SOURCE,
+            }
+        )
+        for concept, storage in storages.items()
+    }
     return {
         "market_data_set": market_data_set,
         "discount_curves": bindings[PRICING_CONCEPT_DISCOUNT_CURVES],

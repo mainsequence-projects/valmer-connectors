@@ -318,7 +318,7 @@ Two things make the calls work in each Environment:
 | --- | --- |
 | `vector-refresh`, `vector-onedrive-refresh`, `vector-metatable-refresh` | `asset`, `asset-snapshots`, `asset-pricing-details` (writes timestamped and current pricing details) |
 | `irs-mxn-quotes-refresh`, `irs-usd-quotes-refresh`, `fred-reference-rates-refresh`, `banxico-policy-refresh` | `index-type`, `index` (the Index rows and the dataset reconcile after each run) |
-| `registry-seed` | `index-type`, `index`, `index-convention-details`, `curve`, `curve-building-details`, `pricing-market-data-set` (only when the default set is missing), `pricing-market-data-set-curve-binding`, and `pricing-market-data-set-binding` once `VALMER_TIME_SERIES_STORAGE=valmer` |
+| `registry-seed` | `index-type`, `index`, `index-convention-details`, `curve`, `curve-building-details`, `pricing-market-data-set` (only when the default set is missing), `pricing-market-data-set-curve-binding`, `pricing-market-data-set-binding` |
 | `tiie-curve-refresh`, `sofr-curve-refresh`, `xccy-curve-refresh`, `xccy-curve-rebuild` | `index-type`, `index` (they can run their quote updaters as dependencies) |
 | `standard-pipeline-refresh` | the union of the rows above, since it runs every stage in its own workload |
 | `banxico-fixings-refresh`, `banxico-tiie-fixings-refresh`, `government-curve-refresh`, the API | none: they only read registries |
