@@ -154,6 +154,10 @@ def test_bootstrap_attaches_only_valmer_tables_under_the_markets_api(monkeypatch
     from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
     from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 
+    from msm.models.registration import resolve_markets_meta_table_models
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+
     use_remote_backend(SimpleNamespace(call=lambda *args: pytest.fail("no row call")))
     attached = _attach(monkeypatch)
 
@@ -161,8 +165,16 @@ def test_bootstrap_attaches_only_valmer_tables_under_the_markets_api(monkeypatch
         ValmerAssetDetailsTable,
         ValmerVectorPricesStorage,
         DailyIndexValuesStorage,
+        DiscountCurvesStorage,
+        IndexFixingsStorage,
     ]
     assert "pricing" not in attached
+    # The Markets registries are not attached: AssetTable is only the foreign-key
+    # target of Valmer's tables. Index, IndexFormulaDefinition and Curve still are,
+    # as targets of the Markets-namespace storages Valmer writes directly.
+    resolved = {model.__name__ for model in resolve_markets_meta_table_models(attached["models"])}
+    assert "AssetTable" not in resolved and "AssetTypeTable" not in resolved
+    assert "AssetCurrentPricingDetailsTable" not in resolved
 
 
 def test_bootstrap_keeps_the_runtime_attachment_for_runtime_importers(monkeypatch) -> None:

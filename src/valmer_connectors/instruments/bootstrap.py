@@ -14,14 +14,11 @@ _RUNTIME_ATTACHED = False
 _STATIC_DEFAULTS_SEEDED = False
 
 
-def valmer_runtime_models() -> list[Any]:
-    """The tables Valmer reads and writes with its own MetaTables runtime.
+def valmer_table_models() -> list[Any]:
+    """Valmer's own tables and the canonical daily Index values table.
 
-    Its two own tables, and the canonical daily Index values table
-    (``ms_markets__index_values__t_1d``), which the Valmer migration provider
-    creates in the Markets namespace until ms-markets adopts it. Markets
-    registries are not listed: under the Markets API they are row calls, and
-    the foreign keys of these tables reference them by name.
+    ``ms_markets__index_values__t_1d`` is created by the Valmer migration
+    provider in the Markets namespace until ms-markets adopts it.
     """
 
     from valmer_connectors.data_nodes.canonical_index_values import (
@@ -39,6 +36,27 @@ def valmer_runtime_models() -> list[Any]:
     ]
 
 
+def valmer_pricing_storage_models() -> list[Any]:
+    """The discount-curve and Index-fixing storages Valmer's updaters write."""
+
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+
+    return [DiscountCurvesStorage, IndexFixingsStorage]
+
+
+def valmer_runtime_models() -> list[Any]:
+    """The tables Valmer reads and writes with its own MetaTables runtime.
+
+    Its own tables, the daily Index values table, and the curve and fixing
+    storages its updaters write and its curve builders read. Markets registries
+    are not listed: under the Markets API they are row calls, and the foreign
+    keys of these tables reference them by name.
+    """
+
+    return [*valmer_table_models(), *valmer_pricing_storage_models()]
+
+
 def _valmer_markets_models(
     *,
     extra_markets_models: Sequence[Any] | None = None,
@@ -46,19 +64,25 @@ def _valmer_markets_models(
     """The model selection ``bootstrap_runtime()`` attaches (importers compose it too).
 
     Under the Markets API it is ``valmer_runtime_models()`` plus the extras.
-    Under the runtime backend it also lists the two Index framework tables that
-    Index row operations need there.
+    Under the runtime backend the pricing storages come with the pricing
+    schemas instead, and the two Index framework tables that Index row
+    operations need there are added.
     """
 
     from valmer_connectors.runtime import markets_api_selected
 
-    markets_models = valmer_runtime_models()
-    if not markets_api_selected():
+    if markets_api_selected():
+        markets_models = valmer_runtime_models()
+    else:
         from msm.models import IndexDatasetAvailabilityTable, IndexFormulaInputTable
 
         # ADR-0037 index framework: runtime-backend Index row operations require
         # these two bound tables in addition to IndexTable/IndexFormulaDefinitionTable.
-        markets_models.extend([IndexDatasetAvailabilityTable, IndexFormulaInputTable])
+        markets_models = [
+            *valmer_table_models(),
+            IndexDatasetAvailabilityTable,
+            IndexFormulaInputTable,
+        ]
     if extra_markets_models is not None:
         markets_models.extend(extra_markets_models)
     return markets_models
