@@ -335,8 +335,9 @@ Still outside the Markets API, each for a stated reason:
   it there;
 - the core discount-curve and Index-fixing storages, until the curves and
   fixings move to Valmer's own instances (`docs/time-series-instances.md`;
-  the `time-series-backfill` Job copies their history and reads the core
-  tables to do so);
+  the `time-series-backfill` Job copies their history with ms-markets'
+  `msm.storage_copies`, reading the core tables to do so, and copies the
+  instances' rows back on a rollback);
 - `scripts/patch_valmer_asset_pricing_details.py`, an operator-only repair
   that stays on the runtime backend: it finds stale payloads with JSON queries
   on the core pricing-detail tables, and no Markets route reads timestamped

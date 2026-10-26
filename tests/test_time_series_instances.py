@@ -375,3 +375,16 @@ def test_msm_series_loads_the_valmer_moves() -> None:
 
     assert [move.label for move in moves] == ["discount_curves", "index_fixings"]
 
+
+def test_the_control_plane_launches_the_rollback_with_its_flag() -> None:
+    from valmer_connectors.control_plane.catalog import JOB_LAUNCH_PROFILES_BY_KEY
+    from valmer_connectors.control_plane.service import _job_command_args
+
+    profile = JOB_LAUNCH_PROFILES_BY_KEY["time-series-backfill"]
+
+    assert _job_command_args(profile, {}) == []
+    assert _job_command_args(profile, {"rollback": True}) == ["--rollback"]
+    assert _job_command_args(profile, {"dry_run": True, "rollback": True}) == [
+        "--dry-run",
+        "--rollback",
+    ]

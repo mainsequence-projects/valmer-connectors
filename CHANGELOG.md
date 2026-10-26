@@ -60,9 +60,12 @@ of holding Writer on the `mainsequence.markets` namespace.
   seed binds to the default market-data set. Nothing changes until it is set.
 - The `time-series-backfill` Job (`valmer-connectors time-series backfill`)
   copies, never recomputes, Valmer's rows from the core tables into the
-  instances and fails while a row is missing. `docs/time-series-instances.md`
-  is the runbook: backfill, set the variable, rebind with `registry-seed`,
-  backfill again, verify, revoke.
+  instances with ms-markets' `msm.storage_copies`, and fails while a row is
+  missing; `--rollback` copies the rows the instances gained back. The moves
+  are also `msm series move|rollback
+  valmer_connectors.services.time_series_backfill:valmer_series_moves`.
+  `docs/time-series-instances.md` is the runbook: backfill, set the variable,
+  rebind with `registry-seed`, backfill again, verify, revoke, or roll back.
 - The daily Index values table stays where it is: ms-markets has to adopt
   `ms_markets__index_values__t_1d` first.
 

@@ -82,12 +82,21 @@ no catalog through which it would find a provider instance of them.
 1. **Copy the history.** Launch `time-series-backfill` (Valmer Time-Series
    Backfill) from the control plane, or run
    `valmer-connectors time-series backfill` where the Valmer workload's grants
-   apply. It copies, and never recomputes, every row of Valmer's identities that
-   an instance lacks, through the normal time-index write path, then prints per
-   identity the rows in the core table, in the instance and still missing, and
-   fails if any row is missing. `--dry-run` only reports. The TIIE, SOFR and
-   cross-currency curves come from same-day source files and cannot be rebuilt,
-   so the copy is the only source of their history.
+   apply. It uses ms-markets' shared copy (`msm.storage_copies`): it reads both
+   tables through MetaTables, copies, and never recomputes, every row of
+   Valmer's identities that an instance lacks (with empty update statistics, so
+   a later pass fills gaps), then prints per identity the rows in the source,
+   the target and the instance, the rows still missing and the rows copied, and
+   fails if any row is missing. `--dry-run` (the control plane's "Only count")
+   only reports. The TIIE, SOFR and cross-currency curves come from same-day
+   source files and cannot be rebuilt, so the copy is the only source of their
+   history. The same moves run with ms-markets' own command, which prints a
+   table and copies only with `--execute`:
+
+   ```bash
+   msm series move valmer_connectors.services.time_series_backfill:valmer_series_moves
+   msm series move valmer_connectors.services.time_series_backfill:valmer_series_moves --execute
+   ```
 2. **Switch.** Add the variable to every resource of
    `.mainsequence/workflows/valmer-control-plane-api.yaml` except
    `migrate-valmer`, in the same push:
@@ -119,8 +128,19 @@ no catalog through which it would find a provider instance of them.
 
 ## Rolling Back
 
-Before step 6: remove `VALMER_TIME_SERIES_STORAGE` from the workflow, push,
-and launch `registry-seed`, which binds the core tables again. The rows written
-to the instances in between are not in the core tables; copy them back before
-you rebind (nothing in this repository does that direction), or accept the
-gap.
+Before step 6, while the Valmer Team still holds its roles on the core tables
+(the rollback reads the instances and writes the core tables):
+
+1. Set `VALMER_TIME_SERIES_STORAGE` back to `markets` (or remove it) on every
+   resource of the workflow, and push. The Jobs write the core tables again.
+2. Copy the rows the instances gained back: launch `time-series-backfill` with
+   "Roll back" set, or run `valmer-connectors time-series backfill --rollback`
+   (`msm series rollback
+   valmer_connectors.services.time_series_backfill:valmer_series_moves
+   --execute` does the same). Like the forward copy it writes only the rows the
+   core tables lack, so rows the Jobs wrote after the push are kept, and it
+   fails while a row is missing.
+3. Launch `registry-seed`: it binds the default market-data set to the core
+   tables again.
+
+Valmer's instance tables keep their rows; nothing deletes them.

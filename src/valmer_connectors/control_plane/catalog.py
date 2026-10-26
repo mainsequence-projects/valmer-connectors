@@ -203,6 +203,28 @@ DATA_PRODUCTS: tuple[DataProductDefinition, ...] = (
 )
 
 
+TIME_SERIES_DRY_RUN_PARAMETER = JobParameterDefinition(
+    key="dry_run",
+    input_type="boolean",
+    label="Only count",
+    description="Report the rows each target table lacks without copying them.",
+    command_flag="--dry-run",
+    default=False,
+)
+
+TIME_SERIES_ROLLBACK_PARAMETER = JobParameterDefinition(
+    key="rollback",
+    input_type="boolean",
+    label="Roll back",
+    description=(
+        "Copy the rows Valmer's instances gained back into the core Markets tables. "
+        "Set VALMER_TIME_SERIES_STORAGE back to markets first."
+    ),
+    command_flag="--rollback",
+    default=False,
+)
+
+
 JOB_LAUNCH_PROFILES: tuple[JobLaunchProfile, ...] = (
     JobLaunchProfile(
         key="vector-refresh",
@@ -287,6 +309,7 @@ JOB_LAUNCH_PROFILES: tuple[JobLaunchProfile, ...] = (
     JobLaunchProfile(
         key="time-series-backfill",
         execution_path="scripts/backfill_valmer_time_series.py",
+        parameters=(TIME_SERIES_DRY_RUN_PARAMETER, TIME_SERIES_ROLLBACK_PARAMETER),
     ),
 )
 
@@ -372,7 +395,7 @@ PIPELINE_STAGES: tuple[dict[str, object], ...] = (
         "label": "Storage migration",
         "description": (
             "Copy Valmer's curves and fixings from the Markets tables into Valmer's "
-            "own instances (docs/time-series-instances.md)."
+            "own instances, or back (docs/time-series-instances.md)."
         ),
         "actions": ["time-series-backfill"],
     },
