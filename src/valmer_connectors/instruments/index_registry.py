@@ -34,10 +34,12 @@ def upsert_custom_indexes(payloads: Sequence[Mapping[str, Any]]) -> dict[str, An
 
     from msm.api.indices import Index
 
-    values = [dict(payload) for payload in payloads]
+    # One row per identifier (the last payload wins): a bulk upsert cannot touch a
+    # row twice in one statement.
+    requested = {str(payload["unique_identifier"]): dict(payload) for payload in payloads}
+    values = list(requested.values())
     if not values:
         return {}
-    requested = {str(value["unique_identifier"]): value for value in values}
     existing = Index.get_many_by_unique_identifier(list(requested))
     changed = sorted(
         identifier

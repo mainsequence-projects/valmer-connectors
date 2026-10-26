@@ -221,6 +221,36 @@ def test_custom_indexes_are_upserted_in_two_row_calls(monkeypatch) -> None:
     assert calls == [("get", ["TIIE_28", "TIIE_91"]), ("upsert_many", payloads)]
 
 
+def test_custom_index_upsert_sends_each_identifier_once(monkeypatch) -> None:
+    """A bulk upsert cannot touch one row twice; the last payload wins."""
+
+    from msm.api.indices import Index
+
+    from valmer_connectors.instruments.index_registry import upsert_custom_indexes
+
+    sent: list[list[dict[str, Any]]] = []
+    monkeypatch.setattr(
+        Index, "get_many_by_unique_identifier", classmethod(lambda cls, identifiers: {})
+    )
+    monkeypatch.setattr(
+        Index,
+        "upsert_many",
+        classmethod(
+            lambda cls, values: sent.append(values)
+            or [SimpleNamespace(unique_identifier=value["unique_identifier"]) for value in values]
+        ),
+    )
+
+    upsert_custom_indexes(
+        [
+            {"unique_identifier": "X", "display_name": "first", "calculation_method": "custom"},
+            {"unique_identifier": "X", "display_name": "last", "calculation_method": "custom"},
+        ]
+    )
+
+    assert sent == [[{"unique_identifier": "X", "display_name": "last", "calculation_method": "custom"}]]
+
+
 def test_custom_index_upsert_refuses_a_calculation_method_change(monkeypatch) -> None:
     from msm.api.indices import Index
 
