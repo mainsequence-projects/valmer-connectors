@@ -1005,80 +1005,21 @@ def attach_valmer_curve_pricing_runtime(
     markets_models: Sequence[Any] | None = None,
     **runtime_kwargs: Any,
 ):
-    """Attach markets/pricing runtime objects needed by Valmer curve bootstrap.
+    """Attach Valmer's own tables (``markets_models``) to the markets runtime.
 
-    When the process reaches Markets through the Markets API (ms-markets ADR
-    0047, ``valmer_connectors.runtime.use_markets_api``), only ``markets_models``
-    are attached: Markets registries and pricing tables are row calls on the
-    API, and a Markets table that is only a foreign-key target of a Valmer table
-    is referenced by name. Otherwise the Markets registries and pricing tables
-    are attached as well, for applications that still use the runtime backend.
+    Markets registries and pricing tables are not attached: Valmer reaches them
+    with ``msm.api`` row calls (the Markets API in its own processes, ms-markets
+    ADR 0047), and a Markets table that is only a foreign-key target of a Valmer
+    table is referenced by name.
     """
 
     import msm
-    from msm_pricing.bootstrap import attach_pricing_schemas
 
-    from valmer_connectors.runtime import markets_api_selected
-
-    configure_valmer_discount_curves_cadence()
     if markets_models is None:
         from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 
         markets_models = [ValmerAssetDetailsTable]
-    if markets_api_selected():
-        return msm.start_engine(models=list(markets_models), **runtime_kwargs)
-    models = ["AssetType", "Asset", "IndexType", "Index", *markets_models]
-    msm.start_engine(models=models, **runtime_kwargs)
-    return attach_pricing_schemas(
-        models=valmer_pricing_runtime_models(),
-        **runtime_kwargs,
-    )
-
-
-def valmer_pricing_runtime_models() -> list[type[Any]]:
-    """Pricing MetaTables required by Valmer instrument and curve workflows."""
-
-    from msm.models import AssetTable, IndexTable, IndexTypeTable
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
-    from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
-    from msm_pricing.models.curve_building_details import CurveBuildingDetailsTable
-    from msm_pricing.models.curves import CurveTable
-    from msm_pricing.models.index_convention_details import IndexConventionDetailsTable
-    from msm_pricing.models.market_data_bindings import (
-        PricingMarketDataSetBindingTable,
-        PricingMarketDataSetCurveBindingTable,
-        PricingMarketDataSetTable,
-    )
-    from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
-
-    return [
-        AssetTable,
-        IndexTypeTable,
-        IndexTable,
-        IndexConventionDetailsTable,
-        CurveTable,
-        CurveBuildingDetailsTable,
-        AssetCurrentPricingDetailsTable,
-        PricingMarketDataSetTable,
-        PricingMarketDataSetBindingTable,
-        PricingMarketDataSetCurveBindingTable,
-        DiscountCurvesStorage,
-        IndexFixingsStorage,
-        AssetPricingDetailsStorage,
-    ]
-
-
-def configure_valmer_discount_curves_cadence(
-    cadence: str = VALMER_DISCOUNT_CURVES_CADENCE,
-) -> type[Any]:
-    """Set the imported core discount-curve storage cadence for Valmer daily curves."""
-
-    from msm_pricing.data_nodes import DiscountCurvesNode
-
-    output_table = DiscountCurvesNode._required_output_table()
-    output_table.__cadence__ = cadence
-    return output_table
+    return msm.start_engine(models=list(markets_models), **runtime_kwargs)
 
 
 def create_valmer_curve_pricing_schemas(
@@ -1304,16 +1245,14 @@ def resolve_default_pricing_market_data_set() -> Any:
 
 
 def upsert_valmer_market_data_source_bindings() -> dict[str, Any]:
-    """Bind the default market-data set's curve and fixing concepts to Valmer's storage.
+    """Bind the default market-data set's curve and fixing concepts to Valmer's tables.
 
-    The ``discount_curves`` and ``interest_rate_index_fixings`` bindings name the
-    storage table pricing reads Valmer's curves and fixings from; their
+    The ``discount_curves`` and ``interest_rate_index_fixings`` bindings name
+    the tables pricing reads Valmer's curves and fixings from; their
     ``storage_table_uid`` is how Markets and every pricing consumer find them.
-    They name the storage ``valmer_connectors.storage`` selects: the core Markets
-    tables, or Valmer's own instances with ``VALMER_TIME_SERIES_STORAGE=valmer``.
-    ``bootstrap_runtime()`` attaches that storage under either backend, so its
-    table uid is known; under the Markets API the binding write is an API call
-    (write-policy resource ``pricing-market-data-set-binding``).
+    ``bootstrap_runtime()`` attaches both tables, so their uids are known; under
+    the Markets API the binding write is an API call (write-policy resource
+    ``pricing-market-data-set-binding``).
     """
 
     from msm_pricing.api import PricingMarketDataSetBinding
@@ -1322,12 +1261,15 @@ def upsert_valmer_market_data_source_bindings() -> dict[str, Any]:
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     )
 
-    from valmer_connectors.storage import discount_curves_storage, index_fixings_storage
+    from valmer_connectors.storage import (
+        valmer_discount_curves_instance,
+        valmer_index_fixings_instance,
+    )
 
     market_data_set = resolve_default_pricing_market_data_set()
     storages = {
-        PRICING_CONCEPT_DISCOUNT_CURVES: discount_curves_storage(),
-        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: index_fixings_storage(),
+        PRICING_CONCEPT_DISCOUNT_CURVES: valmer_discount_curves_instance(),
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: valmer_index_fixings_instance(),
     }
     bindings = {
         concept: PricingMarketDataSetBinding.upsert(
@@ -1609,7 +1551,6 @@ __all__ = [
     "bootstrap_valmer_curve_pricing",
     "resolve_default_pricing_market_data_set",
     "bootstrap_valmer_curve_indexes",
-    "configure_valmer_discount_curves_cadence",
     "create_valmer_curve_pricing_schemas",
     "delete_valmer_deprecated_curve_bindings",
     "mexican_reference_index_payloads",

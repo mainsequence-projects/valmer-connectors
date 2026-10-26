@@ -6,9 +6,9 @@ Valmer's own canonical daily Index-value table (ms-markets ADR 0047, decision
 namespace, built with ``configured_index_values_storage(cadence="1d",
 namespace=, storage_app=, base=)``: the columns, foreign keys, grain and indexes
 of the Markets table ``ms_markets__index_values__t_1d``, which revision 0001
-created and this provider keeps registering until every Environment has moved.
-Expand only: nothing writes it until ``VALMER_TIME_SERIES_STORAGE=valmer`` is
-set, after the copy in docs/time-series-instances.md.
+created and this provider keeps registering until a later release. Valmer's
+Index-value producers write it from this release on; its history is copied in
+by docs/time-series-instances.md.
 
 Revision ID: 0003
 Revises: 0002

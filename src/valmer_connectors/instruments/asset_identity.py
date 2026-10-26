@@ -101,9 +101,9 @@ def ensure_valmer_asset_runtime() -> None:
         get_runtime().table(AssetTable)
     except Exception as exc:
         raise RuntimeError(
-            "Valmer asset row operations require the project bootstrap entry point. "
-            "Run valmer_connectors.instruments.bootstrap.bootstrap_runtime() once during "
-            "application initialization before resolving or upserting Valmer assets."
+            "Valmer asset row operations need the Markets API "
+            "(valmer_connectors.runtime.use_markets_api) or a markets runtime that "
+            "attached AssetTable."
         ) from exc
     _RUNTIME_READY = True
 

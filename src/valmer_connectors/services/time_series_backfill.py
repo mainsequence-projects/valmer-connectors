@@ -10,10 +10,11 @@ built from same-day source files that cannot be replayed.
 
 ``backfill_valmer_time_series`` runs the moves (the ``time-series-backfill`` Job
 and ``valmer-connectors time-series backfill``); with ``rollback=True`` it copies
-the rows the instances gained back into the core tables. Which tables Valmer's
-processes use stays ``VALMER_TIME_SERIES_STORAGE``, so the moves carry no
-callbacks. ``valmer_series_moves`` is the ``module:callable`` for
-``msm series move|rollback``.
+the rows Valmer's tables gained back into the core tables. Valmer's producers
+always use Valmer's tables, so the moves carry no callbacks, and this module is
+the only place that touches the Markets tables (``DiscountCurvesTS``,
+``IndexFixingsTS``, ``IndexValuesTS.1d``). ``valmer_series_moves`` is the
+``module:callable`` for ``msm series move|rollback``.
 """
 
 from __future__ import annotations
@@ -176,11 +177,21 @@ def valmer_series_moves(series: Iterable[str] | None = None) -> list[Any]:
     """One ``TableSeriesMove`` per plan; ``msm series move|rollback`` takes this callable.
 
     ``msm series move valmer_connectors.services.time_series_backfill:valmer_series_moves``
-    counts the rows to copy; ``--execute`` copies them.
+    counts the rows to copy; ``--execute`` copies them. It attaches the Markets
+    tables it copies from or into and Valmer's tables, the only process that
+    attaches a Markets time-series table.
     """
 
+    import msm
     from msm.storage_copies import TableSeriesMove
 
+    plans = time_series_copy_plans(series)
+    msm.start_engine(
+        models=[
+            *(plan.source_table for plan in plans),
+            *(plan.instance_table for plan in plans),
+        ]
+    )
     return [
         TableSeriesMove(
             plan.source_table,
@@ -189,7 +200,7 @@ def valmer_series_moves(series: Iterable[str] | None = None) -> list[Any]:
             plan.identities,
             label=plan.series,
         )
-        for plan in time_series_copy_plans(series)
+        for plan in plans
     ]
 
 
@@ -200,7 +211,7 @@ def backfill_valmer_time_series(
     rollback: bool = False,
     logger: Any = LOGGER,
 ) -> dict[str, Any]:
-    """Copy the rows each target lacks (core into instance, or back) and report.
+    """Copy the rows each target lacks (Markets into Valmer's tables, or back) and report.
 
     Per series and identity it reports the rows in the source, in the target, in
     the instance, still missing and copied. ``dry_run`` only counts. Otherwise it

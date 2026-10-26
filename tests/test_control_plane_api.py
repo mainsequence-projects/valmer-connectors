@@ -23,8 +23,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from metatables import MetaTable, MetaTableCompiledSQLOperation
 from msm.models import AssetTable
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
 from mainsequence import code_repository_context as sdk_code_repository_context
@@ -63,7 +61,6 @@ from valmer_connectors.control_plane.service import (
     _qualified_table_name,
     _select_meta_table_rows,
 )
-from valmer_connectors.data_nodes.canonical_index_values import MarketsDailyIndexValuesStorage
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 from valmer_connectors.services.migrations import MIGRATION_WORKFLOW_PATH
@@ -800,9 +797,10 @@ def test_control_plane_uses_registered_namespaced_valmer_table_identifiers() -> 
         == ValmerAssetDetailsTable.__table__.name
     )
     assert VECTOR_TABLE_IDENTIFIER == ValmerVectorPricesStorage.__table__.name
-    assert INDEX_VALUES_TABLE_IDENTIFIER == MarketsDailyIndexValuesStorage.__table__.name
-    assert INDEX_FIXINGS_TABLE_IDENTIFIER == IndexFixingsStorage.__table__.name
-    assert DISCOUNT_CURVE_TABLE_IDENTIFIER == DiscountCurvesStorage.__table__.name
+    # Valmer's own curve, fixing and daily Index-value tables.
+    assert INDEX_VALUES_TABLE_IDENTIFIER == "valmer_connectors__index_values__t_1d"
+    assert INDEX_FIXINGS_TABLE_IDENTIFIER == "valmer_connectors__indexfixingsts__valmer"
+    assert DISCOUNT_CURVE_TABLE_IDENTIFIER == "valmer_connectors__discountcurvests__valmer"
     registered_assets = next(
         product for product in DATA_PRODUCTS if product.key == "valmer-assets"
     )

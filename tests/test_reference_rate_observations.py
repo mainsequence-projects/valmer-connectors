@@ -3,14 +3,13 @@ import unittest
 from unittest.mock import Mock
 
 import pandas as pd
-from msm.data_nodes.indices import index_values_output_table_name
 from msm.models.indices import IndexTable
 from pydantic import ValidationError
 
 from valmer_connectors.data_nodes.canonical_index_values import (
     IndexObservationError,
-    MarketsDailyIndexValuesStorage,
     ReferenceRateObservationConfiguration,
+    ValmerDailyIndexValuesStorage,
     canonical_index_value_row,
     normalize_index_value_rows,
     resolve_reference_rate_update_window,
@@ -20,24 +19,24 @@ from valmer_connectors.data_nodes.canonical_index_values import (
 class ReferenceRateStorageTests(unittest.TestCase):
     def test_storage_contract_is_canonical_daily_and_index_keyed(self):
         self.assertEqual(
-            MarketsDailyIndexValuesStorage.__metatable_identifier__,
-            "IndexValuesTS.1d",
+            ValmerDailyIndexValuesStorage.__metatable_identifier__,
+            "valmer_connectors.IndexValuesTS.1d",
         )
         self.assertEqual(
-            MarketsDailyIndexValuesStorage.__table__.name,
-            index_values_output_table_name(cadence="1d"),
+            ValmerDailyIndexValuesStorage.__table__.name,
+            "valmer_connectors__index_values__t_1d",
         )
         self.assertEqual(
-            MarketsDailyIndexValuesStorage.__index_names__,
+            ValmerDailyIndexValuesStorage.__index_names__,
             ["time_index", "index_identifier"],
         )
-        self.assertEqual(MarketsDailyIndexValuesStorage.__cadence__, "1d")
+        self.assertEqual(ValmerDailyIndexValuesStorage.__cadence__, "1d")
         self.assertEqual(
-            MarketsDailyIndexValuesStorage.__metatable_extra_hash_components__,
+            ValmerDailyIndexValuesStorage.__metatable_extra_hash_components__,
             {"storage_name": "index_values", "cadence": "1d"},
         )
 
-        columns = MarketsDailyIndexValuesStorage.__table__.c
+        columns = ValmerDailyIndexValuesStorage.__table__.c
         self.assertFalse(columns.time_index.nullable)
         self.assertFalse(columns.index_identifier.nullable)
         self.assertFalse(columns.value.nullable)

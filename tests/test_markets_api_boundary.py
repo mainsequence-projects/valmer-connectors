@@ -1,9 +1,9 @@
 """Valmer reaches Markets registries through the Markets API (ms-markets ADR 0047).
 
 Valmer's composition roots (the Job scripts, the CLI and the control-plane API)
-select ms-markets' remote row backend; ``bootstrap_runtime()`` then attaches only
-the tables Valmer writes itself, and every registry read or write is a set-based
-``msm.api`` row call. Library code never selects the backend, so an application
+select ms-markets' remote row backend; ``bootstrap_runtime()`` attaches only
+Valmer's own tables, and every registry read or write is a set-based ``msm.api``
+row call. Library code never selects the backend, so an application
 that imports ``valmer_connectors`` keeps the backend it chose. The row classes are
 replaced by recording fakes here, so these tests check what Valmer asks Markets for.
 """
@@ -139,7 +139,7 @@ def _attach(monkeypatch) -> dict[str, Any]:
     monkeypatch.setattr(
         msm_pricing.bootstrap,
         "attach_pricing_schemas",
-        lambda **kwargs: attached.setdefault("pricing", kwargs["models"]),
+        lambda **kwargs: pytest.fail("no Markets pricing table is attached"),
     )
     monkeypatch.setattr(
         "valmer_connectors.meta_tables.valmer_asset_details.ensure_valmer_asset_detail_runtime",
@@ -149,47 +149,42 @@ def _attach(monkeypatch) -> dict[str, Any]:
     return attached
 
 
+def _valmer_tables() -> list[Any]:
+    from valmer_connectors.data_nodes.canonical_index_values import ValmerDailyIndexValuesStorage
+    from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
+    from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
+    from valmer_connectors.storage import (
+        valmer_discount_curves_instance,
+        valmer_index_fixings_instance,
+    )
+
+    return [
+        ValmerAssetDetailsTable,
+        ValmerVectorPricesStorage,
+        ValmerDailyIndexValuesStorage,
+        valmer_discount_curves_instance(),
+        valmer_index_fixings_instance(),
+    ]
+
+
 def test_bootstrap_attaches_only_valmer_tables_under_the_markets_api(monkeypatch) -> None:
     from msm.api.remote import use_remote_backend
     from msm.models.registration import resolve_markets_meta_table_models
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
-
-    from valmer_connectors.data_nodes.canonical_index_values import MarketsDailyIndexValuesStorage
-    from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
-    from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 
     use_remote_backend(SimpleNamespace(call=lambda *args: pytest.fail("no row call")))
     attached = _attach(monkeypatch)
 
-    assert attached["models"] == [
-        ValmerAssetDetailsTable,
-        ValmerVectorPricesStorage,
-        MarketsDailyIndexValuesStorage,
-        DiscountCurvesStorage,
-        IndexFixingsStorage,
-    ]
-    assert "pricing" not in attached
-    # The Markets registries are not attached: AssetTable is only the foreign-key
-    # target of Valmer's tables. Index, IndexFormulaDefinition and Curve still are,
-    # as targets of the Markets-namespace storages Valmer writes directly.
-    resolved = {model.__name__ for model in resolve_markets_meta_table_models(attached["models"])}
-    assert "AssetTable" not in resolved and "AssetTypeTable" not in resolved
-    assert "AssetCurrentPricingDetailsTable" not in resolved
+    assert attached["models"] == _valmer_tables()
+    # No Markets table is attached: the registries are only foreign-key targets
+    # of Valmer's tables, referenced by name.
+    resolved = resolve_markets_meta_table_models(attached["models"])
+    assert {model.__table__.info["namespace"] for model in resolved} == {"valmer_connectors"}
 
 
-def test_bootstrap_keeps_the_runtime_attachment_for_runtime_importers(monkeypatch) -> None:
-    """An application on the runtime backend still gets registries and pricing tables."""
+def test_bootstrap_attaches_the_same_tables_under_the_runtime_backend(monkeypatch) -> None:
+    """An importer on ms-markets' runtime backend attaches the Markets tables it uses itself."""
 
-    from msm.models import IndexDatasetAvailabilityTable
-
-    from valmer_connectors.instruments.curve_bootstrap import valmer_pricing_runtime_models
-
-    attached = _attach(monkeypatch)
-
-    assert attached["models"][:4] == ["AssetType", "Asset", "IndexType", "Index"]
-    assert IndexDatasetAvailabilityTable in attached["models"]
-    assert attached["pricing"] == valmer_pricing_runtime_models()
+    assert _attach(monkeypatch)["models"] == _valmer_tables()
 
 
 def test_custom_indexes_are_upserted_in_one_row_call(monkeypatch) -> None:
@@ -328,24 +323,26 @@ def test_curve_quote_registration_is_set_based(monkeypatch) -> None:
     assert calls == ["types:3", "indexes:3"]
 
 
-def test_default_bindings_name_the_attached_core_storages_under_the_markets_api(
-    monkeypatch,
-) -> None:
-    """The seed binds the storage bootstrap_runtime() attached; the write is an API call."""
+def test_default_bindings_name_valmers_tables_under_the_markets_api(monkeypatch) -> None:
+    """The seed binds the tables bootstrap_runtime() attached; the write is an API call."""
 
     from msm.api.remote import use_remote_backend
     from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
-    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
-    from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 
     from valmer_connectors.instruments.curve_bootstrap import (
         upsert_valmer_market_data_source_bindings,
     )
+    from valmer_connectors.storage import (
+        valmer_discount_curves_instance,
+        valmer_index_fixings_instance,
+    )
 
     use_remote_backend(SimpleNamespace(call=lambda *args: pytest.fail("faked")))
-    monkeypatch.delenv("VALMER_TIME_SERIES_STORAGE", raising=False)
     curves_uid, fixings_uid = uuid.uuid4(), uuid.uuid4()
-    for storage, uid in ((DiscountCurvesStorage, curves_uid), (IndexFixingsStorage, fixings_uid)):
+    for storage, uid in (
+        (valmer_discount_curves_instance(), curves_uid),
+        (valmer_index_fixings_instance(), fixings_uid),
+    ):
         monkeypatch.setattr(storage, "get_meta_table_uid", classmethod(lambda cls, uid=uid: uid))
         monkeypatch.setattr(
             storage, "get_identifier", classmethod(lambda cls: cls.__table__.info["identifier"])
@@ -392,8 +389,7 @@ MARKETS_TABLE_CLASSES = {
     "PricingMarketDataSetTable",
     "PricingMarketDataSetBindingTable",
     "PricingMarketDataSetCurveBindingTable",
-    # Core time-series storages: read through valmer_connectors.storage, which
-    # selects them or Valmer's own instances.
+    # Core time-series storages: only the one-off move copies them (see below).
     "DiscountCurvesStorage",
     "IndexFixingsStorage",
 }
@@ -486,3 +482,47 @@ def test_no_module_borrows_a_markets_row_runtime_context() -> None:
         and str(path.relative_to(REPOSITORY_ROOT)) not in REMAINING_DIRECT_ACCESS
     ]
     assert offenders == []
+
+
+# The core Markets time-series tables Valmer wrote before it had its own.
+CORE_TIME_SERIES_TABLES = {
+    "DiscountCurvesStorage",
+    "IndexFixingsStorage",
+    "MarketsDailyIndexValuesStorage",
+}
+# Where they may still be named, and why.
+CORE_TIME_SERIES_REFERENCES = {
+    # The one-off move: copy source and rollback target.
+    "src/valmer_connectors/services/time_series_backfill.py",
+    # The storage contracts Valmer's curve and fixing instances copy.
+    "src/valmer_connectors/storage.py",
+    # The Markets daily Index-value class the move reads.
+    "src/valmer_connectors/data_nodes/canonical_index_values.py",
+    # Revision 0001 created ms_markets__index_values__t_1d; a later release drops it.
+    "src/valmer_connectors/migrations/registry.py",
+}
+
+
+def test_core_time_series_tables_appear_only_in_the_one_off_move() -> None:
+    """No producer, reader, bootstrap or seed names a core Markets time-series table."""
+
+    offenders: dict[str, list[str]] = {}
+    for path in _python_modules():
+        relative = str(path.relative_to(REPOSITORY_ROOT))
+        if relative in CORE_TIME_SERIES_REFERENCES:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        names = {
+            node.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id in CORE_TIME_SERIES_TABLES
+        } | {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+            if (alias.asname or alias.name) in CORE_TIME_SERIES_TABLES
+        }
+        if names:
+            offenders[relative] = sorted(names)
+    assert offenders == {}

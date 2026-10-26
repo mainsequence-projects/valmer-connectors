@@ -3,13 +3,13 @@ import unittest
 from unittest.mock import Mock, patch
 
 import pandas as pd
-from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 
 import valmer_connectors.services as services
 from valmer_connectors.instruments.curve_key_nodes import (
     validate_mxn_government_key_nodes,
 )
 from valmer_connectors.services import curve_update
+from valmer_connectors.storage import valmer_discount_curves_instance
 
 
 class ValmerCurveUpdateServiceTests(unittest.TestCase):
@@ -29,9 +29,6 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
 
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime") as bootstrap,
-            patch(
-                "valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"
-            ) as configure_cadence,
             patch("valmer_connectors.services.curve_update.CurveConfig") as curve_config,
             patch("valmer_connectors.services.curve_update.DiscountCurvesNode") as node_class,
         ):
@@ -46,12 +43,11 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
             )
 
         bootstrap.assert_called_once_with()
-        configure_cadence.assert_called_once_with()
         curve_config.assert_called_once_with(curve_unique_identifier="TEST_CURVE")
-        # The default storage is the core Markets table (VALMER_TIME_SERIES_STORAGE unset).
+        # Valmer's curves are written to its own discount-curve table.
         node_class.assert_called_once_with(
             curve_config=curve_config.return_value,
-            output_table=DiscountCurvesStorage,
+            output_table=valmer_discount_curves_instance(),
         )
         node.run.assert_called_once_with()
 
@@ -84,7 +80,6 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
 
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
-            patch("valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"),
             patch("valmer_connectors.services.curve_update.CurveConfig"),
             patch("valmer_connectors.services.curve_update.DiscountCurvesNode") as node_class,
         ):
@@ -118,7 +113,6 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
 
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
-            patch("valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"),
             patch("valmer_connectors.services.curve_update.CurveConfig") as curve_config,
             patch("valmer_connectors.services.curve_update.DiscountCurvesNode") as node_class,
             patch("valmer_connectors.services.curve_update.UpdateStatistics") as update_stats,
@@ -138,7 +132,7 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
 
         node_class.assert_called_once_with(
             curve_config=curve_config.return_value,
-            output_table=DiscountCurvesStorage,
+            output_table=valmer_discount_curves_instance(),
             hash_namespace="pytest-xccy",
         )
         update_stats.return_empty.assert_called_once_with()
@@ -173,9 +167,6 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
             patch(
-                "valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"
-            ),
-            patch(
                 "valmer_connectors.services.curve_update.ValmerTiieDiscountCurveNode"
             ) as node_class,
         ):
@@ -190,9 +181,6 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
             patch(
-                "valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"
-            ),
-            patch(
                 "valmer_connectors.services.curve_update.ValmerUsdSofrDiscountCurveNode"
             ) as node_class,
         ):
@@ -206,9 +194,6 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
     def test_usd_mxn_xccy_update_uses_dependency_backed_node(self):
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
-            patch(
-                "valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"
-            ),
             patch(
                 "valmer_connectors.services.curve_update.ValmerUsdMxnCollateralDiscountCurveNode"
             ) as node_class,
@@ -229,9 +214,6 @@ class ValmerCurveUpdateServiceTests(unittest.TestCase):
     def test_usd_mxn_xccy_update_forwards_rebuild_controls(self):
         with (
             patch("valmer_connectors.services.curve_update.bootstrap_runtime"),
-            patch(
-                "valmer_connectors.services.curve_update.configure_valmer_discount_curves_cadence"
-            ),
             patch(
                 "valmer_connectors.services.curve_update.ValmerUsdMxnCollateralDiscountCurveNode"
             ) as node_class,

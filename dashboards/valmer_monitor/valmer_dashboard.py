@@ -19,11 +19,11 @@ from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
 )
 from valmer_connectors.meta_tables.valmer_asset_details import resolve_valmer_asset_details
-from valmer_connectors.storage import discount_curves_storage, storage_table_identifier
+from valmer_connectors.storage import storage_table_identifier, valmer_discount_curves_instance
 
 VECTOR_TABLE_IDENTIFIER = "vector_de_precios_valmer"
-# The core Markets table or Valmer's instance (VALMER_TIME_SERIES_STORAGE).
-DISCOUNT_CURVE_TABLE_IDENTIFIER = storage_table_identifier(discount_curves_storage())
+# Valmer's discount-curve table.
+DISCOUNT_CURVE_TABLE_IDENTIFIER = storage_table_identifier(valmer_discount_curves_instance())
 
 NUMERIC_VECTOR_COLUMNS = (
     "open",

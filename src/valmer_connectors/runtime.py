@@ -13,8 +13,9 @@ runtime that ``bootstrap_runtime()`` attaches.
 Only the composition roots call it: the Job scripts under ``scripts/``, the
 ``valmer-connectors`` CLI and the control-plane API. Library code never selects
 a backend, because applications import ``valmer_connectors`` and choose their
-own at their own composition root; ``bootstrap_runtime()`` follows whichever
-backend the importing process selected.
+own at their own composition root. ``bootstrap_runtime()`` attaches only
+Valmer's own tables under either backend; an importing process that keeps
+ms-markets' runtime backend attaches the Markets tables it uses itself.
 """
 
 from __future__ import annotations
@@ -42,8 +43,8 @@ def use_markets_api() -> None:
 def markets_api_selected() -> bool:
     """Whether this process reaches Markets registries through the Markets API.
 
-    True after ``use_markets_api()`` or with ``MSM_API_BACKEND=remote``; then
-    ``bootstrap_runtime()`` attaches only the tables Valmer writes itself.
+    True after ``use_markets_api()`` or with ``MSM_API_BACKEND=remote``; Valmer's
+    asset helpers then skip their check for an attached ``AssetTable``.
     """
 
     from msm.api.remote import active_remote_backend

@@ -9,6 +9,7 @@ import structlog
 from metatables import UpdateStatistics
 from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
 
+from valmer_connectors.data_nodes.canonical_index_values import ValmerDailyIndexValuesStorage
 from valmer_connectors.data_nodes.curve_building import (
     ValmerQuoteBackedCurveConfig,
     ValmerTiieDiscountCurveNode,
@@ -22,7 +23,6 @@ from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-    configure_valmer_discount_curves_cadence,
 )
 from valmer_connectors.instruments.curve_key_nodes import (
     validate_mxn_government_key_nodes,
@@ -35,7 +35,7 @@ from valmer_connectors.instruments.mexican_government_bond_curve import (
     build_mxn_government_curve_frame,
     select_mxn_government_bootstrap_instruments,
 )
-from valmer_connectors.storage import daily_index_values_storage, discount_curves_storage
+from valmer_connectors.storage import valmer_discount_curves_instance
 
 CurveBuilder = Callable[..., pd.DataFrame]
 KeyNodesValidator = Callable[..., Any]
@@ -92,11 +92,9 @@ def _run_valmer_discount_curve_update(
     """Run a Valmer discount curve builder through the canonical pricing node."""
 
     bootstrap_runtime()
-    configure_valmer_discount_curves_cadence()
     resolved_node_class = node_class or DiscountCurvesNode
-    # The selected discount-curve storage: the core table or Valmer's instance
-    # (VALMER_TIME_SERIES_STORAGE); the output table is not part of update_hash.
-    node_kwargs: dict[str, Any] = {"output_table": discount_curves_storage()}
+    # Valmer's discount-curve table; the output table is not part of update_hash.
+    node_kwargs: dict[str, Any] = {"output_table": valmer_discount_curves_instance()}
     if hash_namespace:
         node_kwargs["hash_namespace"] = hash_namespace
     node = resolved_node_class(
@@ -165,14 +163,13 @@ def run_tiie_irs_mxn_curve_update(
     """Publish the Valmer TIIE overnight OIS curve from IRS_MXN_CURVE."""
 
     bootstrap_runtime()
-    configure_valmer_discount_curves_cadence()
     ValmerTiieDiscountCurveNode(
         curve_config=ValmerQuoteBackedCurveConfig(
             curve_unique_identifier=curve_identifier,
-            quote_storage_table=daily_index_values_storage(),
+            quote_storage_table=ValmerDailyIndexValuesStorage,
             source_families=("tiie_ois",),
         ),
-        output_table=discount_curves_storage(),
+        output_table=valmer_discount_curves_instance(),
     ).run()
 
 
@@ -183,14 +180,13 @@ def run_usd_sofr_curve_update(
     """Publish the Valmer USD SOFR overnight OIS curve from IRS_USD_CURVE."""
 
     bootstrap_runtime()
-    configure_valmer_discount_curves_cadence()
     ValmerUsdSofrDiscountCurveNode(
         curve_config=ValmerQuoteBackedCurveConfig(
             curve_unique_identifier=curve_identifier,
-            quote_storage_table=daily_index_values_storage(),
+            quote_storage_table=ValmerDailyIndexValuesStorage,
             source_families=("sofr_future", "sofr_ois"),
         ),
-        output_table=discount_curves_storage(),
+        output_table=valmer_discount_curves_instance(),
     ).run()
 
 
@@ -203,12 +199,11 @@ def run_usd_mxn_xccy_curve_update(
     """Publish the Valmer USD/MXN F-TIIE/SOFR cross-currency curve."""
 
     bootstrap_runtime()
-    configure_valmer_discount_curves_cadence()
-    curve_storage = discount_curves_storage()
+    curve_storage = valmer_discount_curves_instance()
     node = ValmerUsdMxnCollateralDiscountCurveNode(
         curve_config=ValmerXccyCurveConfig(
             curve_unique_identifier=curve_identifier,
-            quote_storage_table=daily_index_values_storage(),
+            quote_storage_table=ValmerDailyIndexValuesStorage,
             # The XCCY curve reads its upstream curves where they are written.
             curve_storage_table=curve_storage,
             source_families=("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),

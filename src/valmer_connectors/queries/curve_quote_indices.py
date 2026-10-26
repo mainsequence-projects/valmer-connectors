@@ -168,9 +168,9 @@ def load_discount_curve_key_nodes(
     """Read and decode exact-date upstream curve key nodes for XCCY construction."""
 
     if output_table is None:
-        from valmer_connectors.storage import discount_curves_storage
+        from valmer_connectors.storage import valmer_discount_curves_instance
 
-        output_table = discount_curves_storage()
+        output_table = valmer_discount_curves_instance()
     target = _utc_midnight(time_index)
     identifiers = tuple(str(value) for value in curve_identifiers)
     table = output_table.__table__
@@ -219,10 +219,11 @@ def _read_quote_rows(
     timeout: int | float | tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     if output_table is None:
-        from valmer_connectors.storage import daily_index_values_storage
+        from valmer_connectors.data_nodes.canonical_index_values import (
+            ValmerDailyIndexValuesStorage,
+        )
 
-        # The Markets table or Valmer's own (VALMER_TIME_SERIES_STORAGE).
-        output_table = daily_index_values_storage()
+        output_table = ValmerDailyIndexValuesStorage
     table = output_table.__table__
     filters = [table.c.index_identifier.like("VALMER_CURVE_QUOTE.%")]
     if time_index is not None:

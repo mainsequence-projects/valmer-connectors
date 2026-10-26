@@ -6,13 +6,13 @@ from typing import Literal
 from msm.models import AssetTable
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
+from valmer_connectors.data_nodes.canonical_index_values import ValmerDailyIndexValuesStorage
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 from valmer_connectors.services.migrations import MIGRATION_JOB_EXECUTION_PATH
 from valmer_connectors.storage import (
-    daily_index_values_storage,
-    discount_curves_storage,
-    index_fixings_storage,
+    valmer_discount_curves_instance,
+    valmer_index_fixings_instance,
 )
 
 
@@ -91,11 +91,10 @@ VECTOR_PARAMETERS = (
 )
 
 
-# The storages the producers write: core Markets tables or Valmer's instances
-# (VALMER_TIME_SERIES_STORAGE, read when the catalog is imported).
-DISCOUNT_CURVE_TABLE_IDENTIFIER = discount_curves_storage().__table__.name
-INDEX_FIXINGS_TABLE_IDENTIFIER = index_fixings_storage().__table__.name
-INDEX_VALUES_TABLE_IDENTIFIER = daily_index_values_storage().__table__.name
+# Valmer's own curve, fixing and daily Index-value tables.
+DISCOUNT_CURVE_TABLE_IDENTIFIER = valmer_discount_curves_instance().__table__.name
+INDEX_FIXINGS_TABLE_IDENTIFIER = valmer_index_fixings_instance().__table__.name
+INDEX_VALUES_TABLE_IDENTIFIER = ValmerDailyIndexValuesStorage.__table__.name
 CANONICAL_ASSET_TABLE_IDENTIFIER = AssetTable.__table__.name
 CURRENT_PRICING_DETAILS_TABLE_IDENTIFIER = (
     AssetCurrentPricingDetailsTable.__table__.name
@@ -220,8 +219,8 @@ TIME_SERIES_ROLLBACK_PARAMETER = JobParameterDefinition(
     input_type="boolean",
     label="Roll back",
     description=(
-        "Copy the rows Valmer's tables gained back into the core Markets tables. "
-        "Set VALMER_TIME_SERIES_STORAGE back to markets first."
+        "Copy the rows Valmer's tables gained back into the core Markets tables "
+        "(docs/time-series-instances.md, Rolling Back)."
     ),
     command_flag="--rollback",
     default=False,

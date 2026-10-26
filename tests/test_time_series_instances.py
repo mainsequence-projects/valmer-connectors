@@ -1,9 +1,9 @@
-"""Valmer's curves and fixings move to instances in its own namespace (ms-markets ADR 0047).
+"""Valmer writes its curves, fixings and daily Index values to its own tables (ADR 0047).
 
-``VALMER_TIME_SERIES_STORAGE`` selects the core Markets tables (default) or Valmer's
-instances; producers, readers, the registry seed and the attachment follow it, and the
-backfill copies the core rows the instances lack. Updaters are faked here, because
-constructing one needs a MetaTables catalog.
+Producers, readers, the registry seed and the attachment name Valmer's tables in
+the ``valmer_connectors`` namespace; only the one-off backfill touches the core
+Markets tables, copying the rows Valmer's tables lack (or back on rollback).
+Updaters are faked here, because constructing one needs a MetaTables catalog.
 """
 
 from __future__ import annotations
@@ -20,43 +20,38 @@ from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 from valmer_connectors import storage
 from valmer_connectors.services import time_series_backfill
 from valmer_connectors.storage import (
-    VALMER_TIME_SERIES_STORAGE_ENV,
-    discount_curves_storage,
-    index_fixings_storage,
-    resolve_time_series_storage,
     valmer_discount_curves_instance,
     valmer_index_fixings_instance,
 )
 
 
-@pytest.fixture
-def valmer_storage(monkeypatch):
-    monkeypatch.setenv(VALMER_TIME_SERIES_STORAGE_ENV, "valmer")
+def test_valmer_instances_live_in_its_namespace() -> None:
+    curves, fixings = storage.valmer_time_series_instances()
+
+    assert curves is valmer_discount_curves_instance()
+    assert fixings is valmer_index_fixings_instance()
+    assert curves.__table__.name == "valmer_connectors__discountcurvests__valmer"
+    assert fixings.__table__.name == "valmer_connectors__indexfixingsts__valmer"
+    assert {curves.__table__.info["namespace"], fixings.__table__.info["namespace"]} == {
+        "valmer_connectors"
+    }
 
 
-def test_the_core_markets_tables_stay_the_default(monkeypatch) -> None:
-    monkeypatch.delenv(VALMER_TIME_SERIES_STORAGE_ENV, raising=False)
+def test_the_storage_module_has_no_selector() -> None:
+    """No environment switch and no selector: Valmer's tables are named directly."""
 
-    assert resolve_time_series_storage() == "markets"
-    assert discount_curves_storage() is DiscountCurvesStorage
-    assert index_fixings_storage() is IndexFixingsStorage
-
-
-def test_valmer_storage_selects_the_instances(valmer_storage) -> None:
-    assert discount_curves_storage() is valmer_discount_curves_instance()
-    assert index_fixings_storage() is valmer_index_fixings_instance()
-    assert discount_curves_storage().__table__.info["namespace"] == "valmer_connectors"
-
-
-def test_an_unknown_storage_is_refused(monkeypatch) -> None:
-    monkeypatch.setenv(VALMER_TIME_SERIES_STORAGE_ENV, "elsewhere")
-
-    with pytest.raises(ValueError, match=VALMER_TIME_SERIES_STORAGE_ENV):
-        resolve_time_series_storage()
+    for name in (
+        "VALMER_TIME_SERIES_STORAGE_ENV",
+        "resolve_time_series_storage",
+        "discount_curves_storage",
+        "index_fixings_storage",
+        "daily_index_values_storage",
+    ):
+        assert not hasattr(storage, name), name
 
 
-def test_valmer_storage_attaches_no_markets_table(valmer_storage, monkeypatch) -> None:
-    """With Valmer's own tables the runtime attaches nothing in mainsequence.markets."""
+def test_bootstrap_attaches_only_valmer_tables() -> None:
+    """Under the Markets API the runtime attaches nothing in mainsequence.markets."""
 
     from msm.api.remote import use_remote_backend
     from msm.models.registration import resolve_markets_meta_table_models
@@ -71,6 +66,7 @@ def test_valmer_storage_attaches_no_markets_table(valmer_storage, monkeypatch) -
     models = _valmer_markets_models()
 
     assert valmer_discount_curves_instance() in models and ValmerDailyIndexValuesStorage in models
+    assert valmer_index_fixings_instance() in models
     assert DiscountCurvesStorage not in models and IndexFixingsStorage not in models
     assert MarketsDailyIndexValuesStorage not in models
     resolved = resolve_markets_meta_table_models(models)
@@ -100,10 +96,9 @@ def test_valmer_owns_its_daily_index_value_table() -> None:
     assert MarketsDailyIndexValuesStorage.__table__.info["namespace"] == "mainsequence.markets"
 
 
-def test_daily_index_values_follow_the_switch(monkeypatch) -> None:
+def test_daily_index_values_are_written_to_valmers_table() -> None:
     from valmer_connectors.data_nodes.canonical_index_values import (
         DailyIndexValuesNode,
-        MarketsDailyIndexValuesStorage,
         ValmerDailyIndexValuesStorage,
     )
     from valmer_connectors.data_nodes.curve_building import (
@@ -112,14 +107,8 @@ def test_daily_index_values_follow_the_switch(monkeypatch) -> None:
         xccy_curve_config,
     )
 
-    monkeypatch.delenv(VALMER_TIME_SERIES_STORAGE_ENV, raising=False)
-    assert storage.daily_index_values_storage() is MarketsDailyIndexValuesStorage
-    assert DailyIndexValuesNode._required_output_table() is MarketsDailyIndexValuesStorage
-    assert tiie_curve_config().quote_storage_table is MarketsDailyIndexValuesStorage
-
-    monkeypatch.setenv(VALMER_TIME_SERIES_STORAGE_ENV, "valmer")
-    assert storage.daily_index_values_storage() is ValmerDailyIndexValuesStorage
-    # Every quote, FRED and Banxico policy producer writes the selected table.
+    # Every quote, FRED and Banxico policy producer writes Valmer's table, and the
+    # curve builders read their quotes from it.
     assert DailyIndexValuesNode._required_output_table() is ValmerDailyIndexValuesStorage
     for config in (tiie_curve_config(), sofr_curve_config(), xccy_curve_config()):
         assert config.quote_storage_table is ValmerDailyIndexValuesStorage
@@ -133,7 +122,7 @@ def test_the_old_daily_index_values_name_is_gone() -> None:
     assert not hasattr(data_nodes, "DailyIndexValuesStorage")
 
 
-def test_banxico_fixings_write_the_selected_storage(valmer_storage, monkeypatch) -> None:
+def test_banxico_fixings_write_valmers_table(monkeypatch) -> None:
     from valmer_connectors.banxico import fixings
 
     built: dict[str, Any] = {}
@@ -158,9 +147,7 @@ def test_banxico_fixings_write_the_selected_storage(valmer_storage, monkeypatch)
     assert built["ran"] is True
 
 
-def test_the_xccy_curve_reads_and_binds_upstream_curves_in_the_selected_storage(
-    valmer_storage, monkeypatch
-) -> None:
+def test_the_xccy_curve_reads_and_binds_upstream_curves_in_valmers_table(monkeypatch) -> None:
     from valmer_connectors.data_nodes import curve_building
     from valmer_connectors.services import curve_update
 
@@ -174,7 +161,6 @@ def test_the_xccy_curve_reads_and_binds_upstream_curves_in_the_selected_storage(
             return None
 
     monkeypatch.setattr(curve_update, "bootstrap_runtime", lambda: None)
-    monkeypatch.setattr(curve_update, "configure_valmer_discount_curves_cadence", lambda: None)
     monkeypatch.setattr(curve_update, "ValmerUsdMxnCollateralDiscountCurveNode", FakeXccyNode)
 
     curve_update.run_usd_mxn_xccy_curve_update()
@@ -187,7 +173,7 @@ def test_the_xccy_curve_reads_and_binds_upstream_curves_in_the_selected_storage(
     )
 
 
-def test_the_registry_seed_binds_valmer_instances(valmer_storage, monkeypatch) -> None:
+def test_the_registry_seed_binds_valmer_instances(monkeypatch) -> None:
     from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
 
     from valmer_connectors.instruments.curve_bootstrap import (
@@ -290,6 +276,17 @@ QUOTE = "VALMER_CURVE_QUOTE.MXN.TIIE_OIS.1M.MID"
 
 
 @pytest.fixture(autouse=True)
+def attached(monkeypatch) -> list[list[Any]]:
+    """The models each ``msm.start_engine`` call attached, without a MetaTables catalog."""
+
+    import msm
+
+    calls: list[list[Any]] = []
+    monkeypatch.setattr(msm, "start_engine", lambda *, models, **_kwargs: calls.append(models))
+    return calls
+
+
+@pytest.fixture(autouse=True)
 def published_index_values(monkeypatch):
     """The daily Index values Valmer publishes, without reading the MetaTables catalog."""
 
@@ -300,7 +297,7 @@ def published_index_values(monkeypatch):
     )
 
 
-def test_valmer_series_moves_name_valmer_tables_and_identities() -> None:
+def test_valmer_series_moves_name_valmer_tables_and_identities(attached) -> None:
     from msm.storage_copies import TableSeriesMove
 
     from valmer_connectors.data_nodes.canonical_index_values import (
@@ -337,13 +334,24 @@ def test_valmer_series_moves_name_valmer_tables_and_identities() -> None:
         "index_identifier",
     )
     assert set(fixings.keys) >= {"TIIE_28", "CETE_28"} and len(fixings.keys) == 7
+    # The backfill is the only process that attaches the core Markets tables.
+    assert attached == [
+        [
+            DiscountCurvesStorage,
+            IndexFixingsStorage,
+            MarketsDailyIndexValuesStorage,
+            valmer_discount_curves_instance(),
+            valmer_index_fixings_instance(),
+            ValmerDailyIndexValuesStorage,
+        ]
+    ]
     assert time_series_backfill.valmer_series_moves(["index_fixings"])[0].label == "index_fixings"
     with pytest.raises(ValueError, match="Unknown Valmer time series"):
         time_series_backfill.valmer_series_moves(["vector"])
 
 
 def test_the_backfill_copies_history_then_fills_the_gaps(tables) -> None:
-    """A second pass after the switch copies only what the core table got in between."""
+    """A second pass copies only what the core table got before the producers moved."""
 
     core = tables.table(IndexFixingsStorage)
     instance = tables.table(valmer_index_fixings_instance())
@@ -361,7 +369,7 @@ def test_the_backfill_copies_history_then_fills_the_gaps(tables) -> None:
     }
     assert report["complete"] is True and report["series"]["index_fixings"]["status"] == "moved"
 
-    # The switch: the producers write d5 to the instance; the core table got d4 first.
+    # The release: the producers write d5 to Valmer's table; the core table got d4 first.
     instance["TIIE_28"].add("d5")
     core["TIIE_28"].add("d4")
     report = time_series_backfill.backfill_valmer_time_series(series=["index_fixings"])

@@ -7,11 +7,10 @@ from typing import Any
 import pandas as pd
 from metatables import PlatformTimeIndexMetaTable
 from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from pydantic import Field
 
 from valmer_connectors.data_nodes.canonical_index_values import (
-    MarketsDailyIndexValuesStorage,
+    ValmerDailyIndexValuesStorage,
 )
 from valmer_connectors.data_nodes.curve_quote_indices import (
     MXN_QUOTE_FAMILIES,
@@ -40,13 +39,14 @@ from valmer_connectors.queries.curve_quote_indices import (
     load_discount_curve_key_nodes,
     load_valmer_curve_quote_snapshots,
 )
+from valmer_connectors.storage import valmer_discount_curves_instance
 
 
 class ValmerQuoteBackedCurveConfig(CurveConfig):
     """Curve updater identity including its selected canonical quote storage."""
 
     quote_storage_table: type[PlatformTimeIndexMetaTable] = Field(
-        default=MarketsDailyIndexValuesStorage,
+        default=ValmerDailyIndexValuesStorage,
         description="Registered canonical Index-values storage selected as quote input.",
     )
     source_families: tuple[str, ...] = Field(
@@ -60,7 +60,7 @@ class ValmerXccyCurveConfig(ValmerQuoteBackedCurveConfig):
     """XCCY updater identity including exact upstream curve selections."""
 
     curve_storage_table: type[PlatformTimeIndexMetaTable] = Field(
-        default=DiscountCurvesStorage,
+        default_factory=valmer_discount_curves_instance,
         description="Registered curve storage selected for exact-date upstream curves.",
     )
     tiie_curve_identifier: str = Field(
@@ -189,34 +189,28 @@ class ValmerUsdMxnCollateralDiscountCurveNode(DiscountCurvesNode):
 
 
 def tiie_curve_config() -> ValmerQuoteBackedCurveConfig:
-    from valmer_connectors.storage import daily_index_values_storage
-
     return ValmerQuoteBackedCurveConfig(
         curve_unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        quote_storage_table=daily_index_values_storage(),
+        quote_storage_table=ValmerDailyIndexValuesStorage,
         source_families=("tiie_ois",),
     )
 
 
 def sofr_curve_config() -> ValmerQuoteBackedCurveConfig:
-    from valmer_connectors.storage import daily_index_values_storage
-
     return ValmerQuoteBackedCurveConfig(
         curve_unique_identifier=VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        quote_storage_table=daily_index_values_storage(),
+        quote_storage_table=ValmerDailyIndexValuesStorage,
         source_families=("sofr_future", "sofr_ois"),
     )
 
 
 def xccy_curve_config() -> ValmerXccyCurveConfig:
-    from valmer_connectors.storage import daily_index_values_storage, discount_curves_storage
-
     return ValmerXccyCurveConfig(
         curve_unique_identifier=(
             VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER
         ),
-        quote_storage_table=daily_index_values_storage(),
-        curve_storage_table=discount_curves_storage(),
+        quote_storage_table=ValmerDailyIndexValuesStorage,
+        curve_storage_table=valmer_discount_curves_instance(),
         source_families=("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),
     )
 

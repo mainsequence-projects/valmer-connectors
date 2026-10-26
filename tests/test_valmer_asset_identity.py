@@ -126,7 +126,7 @@ class ValmerAssetIdentityTests(unittest.TestCase):
     def test_asset_schema_guard_requires_project_bootstrap(self):
         with patch("valmer_connectors.instruments.asset_identity._RUNTIME_READY", False):
             with patch("msm.bootstrap.get_runtime", side_effect=RuntimeError("missing")):
-                with self.assertRaisesRegex(RuntimeError, "bootstrap_runtime"):
+                with self.assertRaisesRegex(RuntimeError, "use_markets_api"):
                     ensure_valmer_asset_runtime()
 
     def test_asset_ref_resolver_uses_one_set_based_row_call_per_batch(self):

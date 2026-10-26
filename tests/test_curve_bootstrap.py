@@ -2,11 +2,10 @@ import unittest
 from unittest.mock import Mock, patch
 
 from msm.constants import INDEX_TYPE_INTEREST_RATE
-from msm.models import IndexDatasetAvailabilityTable, IndexFormulaInputTable
 from msm_pricing.instruments.json_codec import calendar_from_json
 
 from valmer_connectors.data_nodes.canonical_index_values import (
-    MarketsDailyIndexValuesStorage,
+    ValmerDailyIndexValuesStorage,
 )
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.bootstrap import seed_static_defaults
@@ -42,14 +41,16 @@ from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_USD_SOFR_OVERNIGHT_CURVE_DEFINITION,
     VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
     attach_valmer_curve_pricing_runtime,
-    configure_valmer_discount_curves_cadence,
     create_valmer_curve_pricing_schemas,
     delete_valmer_deprecated_curve_bindings,
     mexican_reference_index_payloads,
     usd_reference_index_payloads,
-    valmer_pricing_runtime_models,
 )
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
+from valmer_connectors.storage import (
+    valmer_discount_curves_instance,
+    valmer_index_fixings_instance,
+)
 
 
 class ValmerCurveBootstrapTests(unittest.TestCase):
@@ -685,52 +686,24 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
         )
 
     def test_curve_runtime_attach_includes_valmer_details_by_default(self):
-        from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-        from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
-        from msm_pricing.models.curve_building_details import CurveBuildingDetailsTable
-        from msm_pricing.models.market_data_bindings import (
-            PricingMarketDataSetBindingTable,
-            PricingMarketDataSetCurveBindingTable,
-            PricingMarketDataSetTable,
-        )
-
         with (
-            patch("msm.start_engine") as start_engine,
-            patch("msm_pricing.bootstrap.attach_pricing_schemas", return_value="pricing-runtime")
-            as pricing_bootstrap,
+            patch("msm.start_engine", return_value="valmer-runtime") as start_engine,
+            patch(
+                "msm_pricing.bootstrap.attach_pricing_schemas",
+                side_effect=AssertionError("no pricing tables are attached"),
+            ),
         ):
             result = attach_valmer_curve_pricing_runtime(timeout=15)
 
-        models = start_engine.call_args.kwargs["models"]
-        self.assertIn(ValmerAssetDetailsTable, models)
-        pricing_bootstrap.assert_called_once_with(
-            models=valmer_pricing_runtime_models(),
-            timeout=15,
+        # Only Valmer's tables: Markets registries and pricing tables are row calls.
+        start_engine.assert_called_once_with(models=[ValmerAssetDetailsTable], timeout=15)
+        self.assertEqual(result, "valmer-runtime")
+
+    def test_valmer_discount_curves_are_daily(self):
+        self.assertEqual(VALMER_DISCOUNT_CURVES_CADENCE, "1d")
+        self.assertEqual(
+            valmer_discount_curves_instance().__cadence__, VALMER_DISCOUNT_CURVES_CADENCE
         )
-        pricing_models = pricing_bootstrap.call_args.kwargs["models"]
-        self.assertIn(CurveBuildingDetailsTable, pricing_models)
-        self.assertIn(PricingMarketDataSetTable, pricing_models)
-        self.assertIn(PricingMarketDataSetBindingTable, pricing_models)
-        self.assertIn(PricingMarketDataSetCurveBindingTable, pricing_models)
-        self.assertIn(DiscountCurvesStorage, pricing_models)
-        self.assertIn(IndexFixingsStorage, pricing_models)
-        self.assertEqual(result, "pricing-runtime")
-
-    def test_curve_runtime_sets_discount_curve_storage_cadence(self):
-        from msm_pricing.data_nodes import DiscountCurvesNode
-
-        output_table = DiscountCurvesNode._required_output_table()
-        original_cadence = getattr(output_table, "__cadence__", None)
-        try:
-            output_table.__cadence__ = None
-
-            configured_storage = configure_valmer_discount_curves_cadence()
-
-            self.assertIs(configured_storage, output_table)
-            self.assertEqual(output_table.__cadence__, VALMER_DISCOUNT_CURVES_CADENCE)
-            self.assertEqual(output_table.__cadence__, "1d")
-        finally:
-            output_table.__cadence__ = original_cadence
 
     def test_old_curve_schema_helper_forwards_to_runtime_attach(self):
         with patch(
@@ -759,9 +732,9 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             markets_models=[
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
-                MarketsDailyIndexValuesStorage,
-                IndexDatasetAvailabilityTable,
-                IndexFormulaInputTable,
+                ValmerDailyIndexValuesStorage,
+                valmer_discount_curves_instance(),
+                valmer_index_fixings_instance(),
             ],
             timeout=15,
             attach_runtime=True,

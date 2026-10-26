@@ -6,9 +6,9 @@ Valmer's instances of the Markets discount-curve and Index-fixing storages
 ``valmer_connectors__indexfixingsts__valmer``
 (``valmer_connectors.IndexFixingsTS.valmer``), in the ``valmer_connectors``
 namespace. They copy the core storages' columns, unique time index and foreign
-keys (``msm.storage_instances.configured_time_index_instance``). Expand only:
-nothing writes them until ``VALMER_TIME_SERIES_STORAGE=valmer`` is set, after
-the backfill in docs/time-series-instances.md.
+keys (``msm.storage_instances.configured_time_index_instance``). Valmer's curve
+and fixing producers write them from this release on; their history is copied
+in by docs/time-series-instances.md.
 
 Revision ID: 0002
 Revises: 0001

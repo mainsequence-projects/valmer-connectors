@@ -30,9 +30,9 @@ ValmerDailyIndexValuesStorage = configured_index_values_storage(
     base=MarketsBase,
 )
 # The Markets table ms_markets__index_values__t_1d (IndexValuesTS.1d) that Valmer
-# wrote until its own table existed. Revision 0001 still creates it; it is only
-# the source of the move into ValmerDailyIndexValuesStorage and the target of
-# its rollback (docs/time-series-instances.md).
+# wrote before its own table existed. Revision 0001 still creates it; only the
+# one-off move uses it, as copy source and rollback target
+# (valmer_connectors.services.time_series_backfill, docs/time-series-instances.md).
 MarketsDailyIndexValuesStorage = configured_index_values_storage(cadence="1d")
 
 
@@ -258,15 +258,7 @@ class DailyIndexValuesNode(IndexValuesDataNode):
 
     @classmethod
     def _required_output_table(cls):
-        """The daily Index-value table ``VALMER_TIME_SERIES_STORAGE`` selects.
-
-        The Markets table by default, Valmer's own with ``valmer``; the output
-        table is not part of an updater's ``update_hash``.
-        """
-
-        from valmer_connectors.storage import daily_index_values_storage
-
-        return daily_index_values_storage()
+        return ValmerDailyIndexValuesStorage
 
 
 class ReferenceRateIndexValuesNode(DailyIndexValuesNode):

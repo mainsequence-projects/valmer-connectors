@@ -452,8 +452,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--rollback",
         action="store_true",
         help=(
-            "Copy the rows the instances gained back into the core tables. Set "
-            "VALMER_TIME_SERIES_STORAGE back to markets first (docs/time-series-instances.md)."
+            "Copy the rows Valmer's tables gained back into the core Markets tables "
+            "(docs/time-series-instances.md, Rolling Back)."
         ),
     )
     time_series_backfill_parser.set_defaults(func=_time_series_backfill_command)
