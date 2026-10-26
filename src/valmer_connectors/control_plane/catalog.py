@@ -220,7 +220,7 @@ TIME_SERIES_ROLLBACK_PARAMETER = JobParameterDefinition(
     input_type="boolean",
     label="Roll back",
     description=(
-        "Copy the rows Valmer's instances gained back into the core Markets tables. "
+        "Copy the rows Valmer's tables gained back into the core Markets tables. "
         "Set VALMER_TIME_SERIES_STORAGE back to markets first."
     ),
     command_flag="--rollback",
@@ -397,8 +397,8 @@ PIPELINE_STAGES: tuple[dict[str, object], ...] = (
         "id": "storage-migration",
         "label": "Storage migration",
         "description": (
-            "Copy Valmer's curves and fixings from the Markets tables into Valmer's "
-            "own instances, or back (docs/time-series-instances.md)."
+            "Copy Valmer's curves, fixings and daily Index values from the Markets "
+            "tables into Valmer's own tables, or back (docs/time-series-instances.md)."
         ),
         "actions": ["time-series-backfill"],
     },

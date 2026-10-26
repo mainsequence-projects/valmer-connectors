@@ -447,15 +447,15 @@ resources:
         - repository: MainSequenceMarkets
           level: view
 
-  # Copies Valmer's curves and fixings from the core Markets tables into
-  # Valmer's own instances, or back with --rollback
+  # Copies Valmer's curves, fixings and daily Index values from the core
+  # Markets tables into Valmer's own tables, or back with --rollback
   # (docs/time-series-instances.md). It reads and writes tables only, so it
   # does not call the Markets API.
   - key: time-series-backfill
     kind: job
     spec:
       name: Valmer Time-Series Backfill
-      description: Copy Valmer's discount curves and Banxico fixings from the Markets tables into Valmer's own instances, or back.
+      description: Copy Valmer's discount curves, Banxico fixings and daily Index values from the Markets tables into Valmer's own tables, or back.
       execution_path: scripts/backfill_valmer_time_series.py
       cpu_request: "1"
       memory_request: "4"

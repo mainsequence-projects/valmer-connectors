@@ -292,10 +292,42 @@ def tables(monkeypatch) -> FakeTables:
     return fake
 
 
+QUOTE = "VALMER_CURVE_QUOTE.MXN.TIIE_OIS.1M.MID"
+
+
+@pytest.fixture(autouse=True)
+def published_index_values(monkeypatch):
+    """The daily Index values Valmer publishes, without reading the MetaTables catalog."""
+
+    monkeypatch.setattr(
+        time_series_backfill,
+        "daily_index_value_identifiers",
+        lambda: ("BANXICO_POLICY_TARGET", QUOTE, "US_TREASURY_CMT_10Y"),
+    )
+
+
 def test_valmer_series_moves_name_valmer_tables_and_identities() -> None:
     from msm.storage_copies import TableSeriesMove
 
-    curves, fixings = time_series_backfill.valmer_series_moves()
+    from valmer_connectors.data_nodes.canonical_index_values import (
+        MarketsDailyIndexValuesStorage,
+        ValmerDailyIndexValuesStorage,
+    )
+
+    curves, fixings, index_values = time_series_backfill.valmer_series_moves()
+
+    assert (
+        index_values.core,
+        index_values.instance,
+        index_values.key_column,
+        index_values.label,
+    ) == (
+        MarketsDailyIndexValuesStorage,
+        ValmerDailyIndexValuesStorage,
+        "index_identifier",
+        "index_values",
+    )
+    assert tuple(index_values.keys) == ("BANXICO_POLICY_TARGET", QUOTE, "US_TREASURY_CMT_10Y")
 
     assert all(isinstance(move, TableSeriesMove) for move in (curves, fixings))
     assert (curves.core, curves.instance, curves.key_column, curves.label) == (
@@ -437,7 +469,7 @@ def test_msm_series_loads_the_valmer_moves() -> None:
 
     moves = load_objects("valmer_connectors.services.time_series_backfill:valmer_series_moves")
 
-    assert [move.label for move in moves] == ["discount_curves", "index_fixings"]
+    assert [move.label for move in moves] == ["discount_curves", "index_fixings", "index_values"]
 
 
 def test_the_control_plane_launches_the_rollback_with_its_flag() -> None:
@@ -452,3 +484,68 @@ def test_the_control_plane_launches_the_rollback_with_its_flag() -> None:
         "--dry-run",
         "--rollback",
     ]
+
+
+def test_the_index_values_move_and_rollback(tables) -> None:
+    from valmer_connectors.data_nodes.canonical_index_values import (
+        MarketsDailyIndexValuesStorage,
+        ValmerDailyIndexValuesStorage,
+    )
+
+    markets = tables.table(MarketsDailyIndexValuesStorage)
+    valmer = tables.table(ValmerDailyIndexValuesStorage)
+    markets[QUOTE] = {"d1", "d2"}
+    markets["US_TREASURY_CMT_10Y"] = {"d1"}
+    # Another producer's Index in the Markets table is not Valmer's to move.
+    markets["SOMEONE_ELSES_INDEX"] = {"d1"}
+
+    report = time_series_backfill.backfill_valmer_time_series(series=["index_values"])
+
+    assert report["complete"] is True
+    assert set(report["series"]["index_values"]["identities"]) == {
+        "BANXICO_POLICY_TARGET",
+        QUOTE,
+        "US_TREASURY_CMT_10Y",
+    }
+    assert valmer[QUOTE] == {"d1", "d2"} and "SOMEONE_ELSES_INDEX" not in valmer
+
+    valmer[QUOTE].add("d3")
+    report = time_series_backfill.backfill_valmer_time_series(
+        series=["index_values"], rollback=True
+    )
+
+    assert report["series"]["index_values"]["target_table"] == "ms_markets__index_values__t_1d"
+    assert markets[QUOTE] == {"d1", "d2", "d3"}
+
+
+def test_daily_index_value_identifiers_take_only_valmer_quotes_from_the_statistics(
+    monkeypatch,
+) -> None:
+    monkeypatch.undo()  # drop the autouse fake of this function
+    from valmer_connectors.data_nodes.canonical_index_values import (
+        MarketsDailyIndexValuesStorage,
+        ValmerDailyIndexValuesStorage,
+    )
+
+    statistics = {
+        MarketsDailyIndexValuesStorage: {QUOTE: "t", "SOMEONE_ELSES_INDEX": "t"},
+        ValmerDailyIndexValuesStorage: None,  # not registered yet
+    }
+
+    def registered(storage):
+        progress = statistics[storage]
+        if progress is None:
+            raise LookupError("not registered")
+        return SimpleNamespace(
+            get_data_updates=lambda: SimpleNamespace(index_progress=progress)
+        )
+
+    monkeypatch.setattr("msm.storage_copies.registered_time_index_meta_table", registered)
+
+    identifiers = time_series_backfill.daily_index_value_identifiers()
+
+    assert QUOTE in identifiers and "SOMEONE_ELSES_INDEX" not in identifiers
+    assert {"BANXICO_POLICY_TARGET", "US_TREASURY_CMT_10Y", "FED_FUNDS_TARGET_UPPER"} <= set(
+        identifiers
+    )
+    assert list(identifiers) == sorted(identifiers)
