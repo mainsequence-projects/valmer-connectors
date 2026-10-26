@@ -10,11 +10,11 @@ from typing import Any, ClassVar
 
 import pandas as pd
 from msm.base import MarketsBase
-from msm.data_nodes.indices import (
-    IndexDataNodeConfiguration,
-    IndexValuesDataNode,
+from msm.time_index.indices import (
+    IndexUpdaterConfiguration,
+    IndexValuesUpdater,
+    configured_index_values_storage,
 )
-from msm.time_index.indices import configured_index_values_storage
 from pydantic import Field, field_validator, model_validator
 
 from valmer_connectors.markets import VALMER_MARKETS_NAMESPACE, VALMER_MARKETS_STORAGE_APP
@@ -40,7 +40,7 @@ class IndexObservationError(RuntimeError):
     """Raised when an external Index observation violates the canonical contract."""
 
 
-class ReferenceRateObservationConfiguration(IndexDataNodeConfiguration):
+class ReferenceRateObservationConfiguration(IndexUpdaterConfiguration):
     """Hashed updater scope for one source-specific reference-rate producer."""
 
     initial_history_years: ClassVar[int] = 5
@@ -253,7 +253,7 @@ def empty_index_values_frame() -> pd.DataFrame:
     )
 
 
-class DailyIndexValuesNode(IndexValuesDataNode):
+class DailyIndexValuesNode(IndexValuesUpdater):
     """Base producer for canonical daily Index observations."""
 
     @classmethod

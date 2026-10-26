@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 
 import pandas as pd
 import requests
-from msm.data_nodes.indices import IndexDataNodeConfiguration
+from msm.time_index.indices import IndexUpdaterConfiguration
 from pydantic import Field, field_validator
 
 from valmer_connectors.data_nodes.canonical_index_values import (
@@ -63,7 +63,7 @@ class ValmerCurveQuoteError(RuntimeError):
     """Raised when a Valmer quote snapshot cannot be published completely."""
 
 
-class ValmerCurveQuoteIndexConfiguration(IndexDataNodeConfiguration):
+class ValmerCurveQuoteIndexConfiguration(IndexUpdaterConfiguration):
     """Hashed scope for one immutable Valmer quote-file producer."""
 
     source_file: str = Field(

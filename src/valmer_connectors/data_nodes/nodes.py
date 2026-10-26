@@ -14,8 +14,8 @@ from metatables import MetaTable
 from msm.api.assets import Asset as MarketsAsset
 from msm.api.assets import AssetSnapshots
 from msm.constants import ASSET_TYPE_BOND
-from msm.data_nodes import AssetIndexedDataNode, AssetIndexedDataNodeConfiguration
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm.time_index import AssetIndexedUpdater, AssetIndexedUpdaterConfiguration
 from msm_pricing.api import add_many_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -997,7 +997,7 @@ class _ProgressLogger:
             )
 
 
-class ImportValmerConfig(AssetIndexedDataNodeConfiguration):
+class ImportValmerConfig(AssetIndexedUpdaterConfiguration):
     bucket_name: str = Field(
         ...,
         description="Valmer artifact bucket used by this updater.",
@@ -1025,7 +1025,7 @@ class ImportValmerConfig(AssetIndexedDataNodeConfiguration):
         return self
 
 
-class ImportValmer(AssetIndexedDataNode):
+class ImportValmer(AssetIndexedUpdater):
     def __init__(self, config: ImportValmerConfig, **kwargs):
         """
         Initialize the ImportValmer time-index table updater.

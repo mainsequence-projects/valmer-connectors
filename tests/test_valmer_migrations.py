@@ -8,11 +8,11 @@ from alembic.operations import Operations
 from alembic.script import ScriptDirectory
 from metatables.migrations import alembic_config_for_provider, namespace_version_location
 from msm.base import markets_table_name
-from msm.data_nodes.indices import index_values_output_table_name
 from msm.models.assets import AssetTable
 from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import markets_auto_register_namespace
+from msm.time_index.indices import index_values_output_table_name
 from msm_pricing.models.curves import CurveTable
 from sqlalchemy import create_engine
 
