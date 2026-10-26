@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pandas as pd
-from sqlalchemy import select
 
 from valmer_connectors.settings import (
     resolve_valmer_asset_upsert_batch_size,
@@ -79,10 +78,20 @@ def normalize_valmer_unique_identifiers(unique_identifiers: Sequence[object]) ->
 
 
 def ensure_valmer_asset_runtime() -> None:
-    """Verify that the markets runtime is attached for Asset row operations."""
+    """Verify that Asset row operations can run in this process.
+
+    Under the Markets API (ms-markets ADR 0047) Asset rows are API calls and
+    need no attached table. Under the runtime backend the markets runtime must
+    have attached ``AssetTable``.
+    """
 
     global _RUNTIME_READY
     if _RUNTIME_READY:
+        return
+
+    from valmer_connectors.runtime import markets_api_selected
+
+    if markets_api_selected():
         return
 
     from msm.bootstrap import get_runtime
@@ -130,7 +139,11 @@ def resolve_valmer_asset_refs(
     ensure_schemas: bool = True,
     logger=None,
 ) -> dict[str, ValmerAssetRef]:
-    """Resolve thin Valmer asset references without materializing full rows."""
+    """Resolve thin Valmer asset references without materializing full rows.
+
+    One ``Asset.filter(unique_identifier__in=...)`` row call per batch: a Markets
+    API call under the remote backend, compiled SQL under the runtime backend.
+    """
 
     identifiers = normalize_valmer_unique_identifiers(unique_identifiers)
     if not identifiers:
@@ -138,11 +151,6 @@ def resolve_valmer_asset_refs(
     if ensure_schemas:
         ensure_valmer_asset_runtime()
 
-    from msm.api.base import operation_result_rows
-    from msm.repositories.base import compile_markets_statement, execute_markets_operation
-
-    Asset = _asset_model()
-    context = Asset._active_context()
     refs: dict[str, ValmerAssetRef] = {}
     resolved_batch_size = resolve_valmer_meta_operation_batch_size(batch_size)
     batches = batched_values(identifiers, resolved_batch_size)
@@ -153,30 +161,11 @@ def resolve_valmer_asset_refs(
         )
     progress = _ProgressMilestones(logger, "Resolving Valmer asset refs", len(identifiers))
     for batch in batches:
-        statement = (
-            select(
-                Asset.__table__.unique_identifier.label("unique_identifier"),
-                Asset.__table__.uid.label("uid"),
-                Asset.__table__.asset_type.label("asset_type"),
-            )
-            .where(Asset.__table__.unique_identifier.in_(batch))
-            .limit(len(batch))
-        )
-        operation = compile_markets_statement(
-            statement,
-            context=context,
-            operation="select",
-        )
-        result = execute_markets_operation(operation, context=context)
-        for row in operation_result_rows(result):
-            unique_identifier = row.get("unique_identifier")
-            uid = row.get("uid")
-            if not unique_identifier or uid in (None, ""):
-                continue
-            refs[str(unique_identifier)] = ValmerAssetRef(
-                unique_identifier=str(unique_identifier),
-                uid=_uuid_value(uid),
-                asset_type=row.get("asset_type"),
+        for asset in _assets_by_unique_identifier(batch):
+            refs[str(asset.unique_identifier)] = ValmerAssetRef(
+                unique_identifier=str(asset.unique_identifier),
+                uid=_uuid_value(asset.uid),
+                asset_type=asset.asset_type,
             )
         progress.advance(len(batch))
     if logger is not None:
@@ -202,11 +191,6 @@ def resolve_valmer_asset_uids(
     if ensure_schemas:
         ensure_valmer_asset_runtime()
 
-    from msm.api.base import operation_result_rows
-    from msm.repositories.base import compile_markets_statement, execute_markets_operation
-
-    Asset = _asset_model()
-    context = Asset._active_context()
     uid_map: dict[str, uuid.UUID] = {}
     resolved_batch_size = resolve_valmer_meta_operation_batch_size(batch_size)
     batches = batched_values(identifiers, resolved_batch_size)
@@ -217,25 +201,8 @@ def resolve_valmer_asset_uids(
         )
     progress = _ProgressMilestones(logger, "Resolving Valmer asset UIDs", len(identifiers))
     for batch in batches:
-        statement = (
-            select(
-                Asset.__table__.unique_identifier.label("unique_identifier"),
-                Asset.__table__.uid.label("uid"),
-            )
-            .where(Asset.__table__.unique_identifier.in_(batch))
-            .limit(len(batch))
-        )
-        operation = compile_markets_statement(
-            statement,
-            context=context,
-            operation="select",
-        )
-        result = execute_markets_operation(operation, context=context)
-        for row in operation_result_rows(result):
-            unique_identifier = row.get("unique_identifier")
-            uid = row.get("uid")
-            if unique_identifier and uid not in (None, ""):
-                uid_map[str(unique_identifier)] = _uuid_value(uid)
+        for asset in _assets_by_unique_identifier(batch):
+            uid_map[str(asset.unique_identifier)] = _uuid_value(asset.uid)
         progress.advance(len(batch))
     if logger is not None:
         logger.info(
@@ -252,7 +219,11 @@ def _upsert_asset_table_rows(
     ensure_schemas: bool = True,
     logger=None,
 ) -> dict[str, Asset]:
-    """Idempotently create or update AssetTable rows with explicit asset types."""
+    """Idempotently create or update AssetTable rows with explicit asset types.
+
+    One ``Asset.upsert_many`` row call per batch, which runs on the Markets API
+    under the remote backend (write-policy resource ``asset``).
+    """
 
     asset_types = _normalize_asset_type_map(asset_type_by_identifier)
     if not asset_types:
@@ -260,11 +231,7 @@ def _upsert_asset_table_rows(
     if ensure_schemas:
         ensure_valmer_asset_runtime()
 
-    from msm.api.base import operation_result_rows
-    from msm.repositories.crud import bulk_upsert_model
-
     Asset = _asset_model()
-    context = Asset._active_context()
     assets: dict[str, Asset] = {}
     resolved_batch_size = resolve_valmer_asset_upsert_batch_size(batch_size)
     identifiers = list(asset_types)
@@ -276,20 +243,16 @@ def _upsert_asset_table_rows(
         )
     progress = _ProgressMilestones(logger, "Upserting AssetTable rows", len(identifiers))
     for batch_index, batch in enumerate(batches, start=1):
-        result = bulk_upsert_model(
-            context,
-            model=Asset.__table__,
-            values=[
+        rows = Asset.upsert_many(
+            [
                 {
                     "unique_identifier": unique_identifier,
                     "asset_type": asset_types[unique_identifier],
                 }
                 for unique_identifier in batch
-            ],
-            conflict_columns=Asset.__upsert_keys__,
+            ]
         )
-        for row in operation_result_rows(result):
-            asset = Asset.model_validate(row)
+        for asset in rows:
             assets[asset.unique_identifier] = asset
         progress.advance(len(batch))
         if logger is not None:
@@ -387,6 +350,17 @@ def _asset_model():
     from msm.api.assets import Asset
 
     return Asset
+
+
+def _assets_by_unique_identifier(identifiers: Sequence[object]) -> list[Asset]:
+    """The Markets assets among ``identifiers``, in one set-based row call."""
+
+    if not identifiers:
+        return []
+    Asset = _asset_model()
+    return list(
+        Asset.filter(unique_identifier__in=list(identifiers), limit=len(identifiers))
+    )
 
 
 __all__ = [

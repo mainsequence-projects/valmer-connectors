@@ -7,8 +7,6 @@ from types import SimpleNamespace
 import pandas as pd
 import streamlit as st
 from metatables import TimeIndexTableRef
-from msm.api.base import operation_result_rows
-from msm.repositories.crud import search_model
 from msm.settings import ASSET_IDENTIFIER_DIMENSION, markets_data_node_identifier
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from msm_pricing.data_interface.data_interface import dimension_range_for_identity
@@ -384,20 +382,12 @@ def _query_current_pricing_details(
     if not asset_uids:
         return {}
 
-    result = search_model(
-        AssetCurrentPricingDetails._active_context(),
-        model=AssetCurrentPricingDetails.__table__,
-        in_filters={"asset_uid": asset_uids},
-        limit=len(asset_uids),
-    )
+    # One set-based read, through the Markets API under the remote backend.
+    current = AssetCurrentPricingDetails.get_many_by_asset_uid(asset_uids)
 
     pricing_details: dict[str, AssetCurrentPricingDetails] = {}
-    for row in operation_result_rows(result):
-        try:
-            detail = AssetCurrentPricingDetails.model_validate(row)
-        except Exception:
-            continue
-        valmer_uid = asset_uid_to_valmer_uid.get(str(detail.asset_uid))
+    for asset_uid, detail in current.items():
+        valmer_uid = asset_uid_to_valmer_uid.get(str(asset_uid))
         if valmer_uid is not None:
             pricing_details[valmer_uid] = detail
     return pricing_details

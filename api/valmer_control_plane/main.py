@@ -1,16 +1,13 @@
-import msm
 from fastapi import FastAPI
-from msm.models import AssetTable
-from msm_pricing.bootstrap import attach_pricing_schemas
-from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
 from valmer_connectors.control_plane.api import create_app
+from valmer_connectors.runtime import use_markets_api
 
-msm.start_engine(models=[AssetTable])
-attach_pricing_schemas(
-    models=[AssetTable, AssetCurrentPricingDetailsTable],
-    seed_default_market_data_bindings=False,
-)
+# The control plane reads Markets registries (current pricing details) through
+# the Markets API (ms-markets ADR 0047) and Valmer's own tables through
+# MetaTables by identifier, so it attaches no markets runtime and holds no
+# grant on mainsequence.markets registries.
+use_markets_api()
 app = FastAPI(
     title="Valmer Control Plane API",
     version="1.0.0",

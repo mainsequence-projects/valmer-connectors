@@ -11,7 +11,6 @@ import pandas as pd
 from metatables.updaters.runner import UpdateRunner
 from msm.base import markets_table_name
 from msm.constants import ASSET_TYPE_BOND
-from msm.data_nodes.assets import AssetSnapshot as CoreAssetSnapshot
 from msm.models.assets import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION, markets_auto_register_namespace
 from sqlalchemy import Float
@@ -648,7 +647,11 @@ class ValmerVectorStorageTest(unittest.TestCase):
             ],
         )
 
-    def test_publish_valmer_asset_snapshots_uses_asset_snapshot_node(self):
+    def test_publish_valmer_asset_snapshots_publishes_through_markets(self):
+        """Snapshots go through AssetSnapshots.publish, a Markets API call under remote."""
+
+        from msm.api.assets import AssetSnapshots
+
         latest = pd.DataFrame(
             [
                 {
@@ -663,112 +666,71 @@ class ValmerVectorStorageTest(unittest.TestCase):
             unique_identifier="M_BONOS_241205",
             asset_type=ASSET_TYPE_BOND,
         )
-        snapshot_node = Mock()
-        snapshot_node.table_update = None
-        snapshot_node.get_df_between_dates.return_value = pd.DataFrame()
-        snapshot_node.set_snapshots.return_value = snapshot_node
-        snapshot_node.run.return_value = (False, pd.DataFrame([{"name": "BONOS 241205 FULL NAME"}]))
 
-        with patch("valmer_connectors.data_nodes.nodes.AssetSnapshot") as asset_snapshot_class:
-            asset_snapshot_class.return_value = snapshot_node
-            asset_snapshot_class.build_frame.side_effect = CoreAssetSnapshot.build_frame
-
+        with patch.object(AssetSnapshots, "publish", return_value=1) as publish:
             published = _publish_valmer_asset_snapshots(
                 latest,
                 {"M_BONOS_241205": asset},
                 logger=Mock(),
             )
 
-        snapshot_node.set_snapshots.assert_called_once_with(
+        publish.assert_called_once_with(
             [
                 {
                     "time_index": pd.Timestamp("2024-01-02T23:59:59Z"),
                     ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205",
                     "name": "BONOS 241205 FULL NAME",
                 }
-            ],
-            verify_existing=False,
+            ]
         )
-        snapshot_node.run.assert_called_once_with()
-        snapshot_node.get_df_between_dates.assert_not_called()
         self.assertEqual(published, 1)
 
-    def test_publish_valmer_asset_snapshots_uses_supported_idempotent_mode(self):
+    def test_publish_valmer_asset_snapshots_skips_rows_without_names(self):
+        from msm.api.assets import AssetSnapshots
+
         latest = pd.DataFrame(
             [
                 {
                     "unique_identifier": "M_BONOS_241205",
                     "fecha": pd.Timestamp("2024-01-02T00:00:00Z"),
-                    "nombrecompleto": "BONOS 241205 FULL NAME",
+                    "nombrecompleto": None,
                 }
             ]
         )
-        asset = SimpleNamespace(
-            uid=uuid.uuid4(),
-            unique_identifier="M_BONOS_241205",
-            asset_type=ASSET_TYPE_BOND,
-        )
-        snapshot_node = Mock()
-        snapshot_node.table_update = None
-        snapshot_node.set_snapshots.return_value = snapshot_node
-        snapshot_node.run.return_value = (False, pd.DataFrame([{"name": "BONOS 241205 FULL NAME"}]))
 
-        with patch("valmer_connectors.data_nodes.nodes.AssetSnapshot") as asset_snapshot_class:
-            asset_snapshot_class.return_value = snapshot_node
-
+        with patch.object(AssetSnapshots, "publish") as publish:
             published = _publish_valmer_asset_snapshots(
                 latest,
-                {"M_BONOS_241205": asset},
+                {"M_BONOS_241205": SimpleNamespace(uid=uuid.uuid4())},
                 logger=Mock(),
             )
 
-        snapshot_node.get_df_between_dates.assert_not_called()
-        snapshot_node.set_snapshots.assert_called_once_with(
-            [
-                {
-                    "time_index": pd.Timestamp("2024-01-02T23:59:59Z"),
-                    ASSET_IDENTIFIER_DIMENSION: "M_BONOS_241205",
-                    "name": "BONOS 241205 FULL NAME",
-                }
-            ],
-            verify_existing=False,
-        )
-        snapshot_node.run.assert_called_once_with()
-        self.assertEqual(published, 1)
+        publish.assert_not_called()
+        self.assertEqual(published, 0)
 
-    def test_current_pricing_face_value_resolver_uses_projection_query(self):
+    def test_current_pricing_face_value_resolver_reads_details_in_batches(self):
+        from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
+
         asset_uid = uuid.uuid4()
         logger = Mock()
 
-        with patch(
-            "valmer_connectors.data_nodes.nodes.AssetCurrentPricingDetails._active_context",
-            return_value=object(),
-        ):
-            with patch(
-                "msm.repositories.crud.search_model",
-                side_effect=AssertionError("full-row search_model should not be used"),
-            ):
-                with patch(
-                    "valmer_connectors.data_nodes.nodes.compile_markets_statement",
-                    return_value=object(),
-                ):
-                    with patch(
-                        "valmer_connectors.data_nodes.nodes.execute_markets_operation",
-                        return_value={
-                            "rows": [
-                                {
-                                    "asset_uid": str(asset_uid),
-                                    "instrument_dump": {"face_value": 100.0},
-                                }
-                            ]
-                        },
-                    ):
-                        face_values = ImportValmer._get_current_pricing_face_values_by_uid(
-                            {"M_BONOS_241205": SimpleNamespace(uid=asset_uid)},
-                            batch_size=1000,
-                            logger=logger,
-                        )
+        with patch.object(
+            AssetCurrentPricingDetails,
+            "get_many_by_asset_uid",
+            return_value={
+                asset_uid: SimpleNamespace(
+                    asset_uid=asset_uid,
+                    instrument_dump={"face_value": 100.0},
+                )
+            },
+        ) as get_many:
+            face_values = ImportValmer._get_current_pricing_face_values_by_uid(
+                {"M_BONOS_241205": SimpleNamespace(uid=asset_uid)},
+                batch_size=1000,
+                logger=logger,
+            )
 
+        get_many.assert_called_once_with([asset_uid], batch_size=1)
         self.assertEqual(face_values, {"M_BONOS_241205": 100.0})
 
     def test_pricing_adapter_failure_detail_includes_schedule_inputs(self):

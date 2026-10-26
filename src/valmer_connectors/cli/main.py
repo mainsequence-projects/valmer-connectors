@@ -728,8 +728,14 @@ def _add_reference_rate_window_arguments(parser: argparse.ArgumentParser) -> Non
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from valmer_connectors.runtime import use_markets_api
+
     parser = build_parser()
     args = parser.parse_args(argv)
+    # The CLI is a composition root: Markets registries go through the Markets
+    # API (ms-markets ADR 0047), found on the first row call, and only the
+    # Valmer tables are attached. Commands that never touch Markets never call it.
+    use_markets_api()
     return args.func(args)
 
 

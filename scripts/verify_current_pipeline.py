@@ -31,6 +31,7 @@ from valmer_connectors.instruments.curve_key_nodes import (
     validate_usd_mxn_xccy_key_nodes,
     validate_usd_sofr_key_nodes,
 )
+from valmer_connectors.runtime import use_markets_api
 from valmer_connectors.services.curve_update import (
     load_mxn_government_curve_source_from_vector_storage,
 )
@@ -320,4 +321,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    use_markets_api()
     main()

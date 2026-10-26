@@ -562,27 +562,31 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
         }
         sofr_discount = Mock(
             uid="sofr-discount-binding-uid",
+            binding_key="discount:index:sofr-index-uid:mid",
             curve_uid="sofr-curve-uid",
             source="valmer",
         )
         mxn_discount = Mock(
             uid="mxn-discount-binding-uid",
+            binding_key="discount:currency:MXN:mid",
             curve_uid="mxn-usd-curve-uid",
             source="valmer",
         )
 
-        def get_binding(*, market_data_set_uid, binding_key, status="ACTIVE"):
+        def filter_bindings(*, market_data_set_uid, binding_keys, status="ACTIVE"):
+            # One set-based read for every deprecated binding key.
             self.assertEqual(market_data_set_uid, "market-data-set-uid")
             self.assertEqual(status, "ACTIVE")
-            return {
-                "discount:index:sofr-index-uid:mid": sofr_discount,
-                "discount:currency:MXN:mid": mxn_discount,
-            }.get(binding_key)
+            self.assertEqual(
+                set(binding_keys),
+                {"discount:index:sofr-index-uid:mid", "discount:currency:MXN:mid"},
+            )
+            return [sofr_discount, mxn_discount]
 
         with patch(
             "msm_pricing.api.PricingMarketDataSetCurveBinding"
         ) as curve_binding_api:
-            curve_binding_api.get_by_set_and_binding_key.side_effect = get_binding
+            curve_binding_api.filter_by_binding_keys.side_effect = filter_bindings
             curve_binding_api.delete.side_effect = lambda uid: {"deleted": uid}
 
             deleted = delete_valmer_deprecated_curve_bindings(
@@ -625,25 +629,24 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
         }
         user_owned_discount = Mock(
             uid="sofr-discount-binding-uid",
+            binding_key="discount:index:sofr-index-uid:mid",
             curve_uid="sofr-curve-uid",
             source="user",
         )
         different_curve_discount = Mock(
             uid="mxn-discount-binding-uid",
+            binding_key="discount:currency:MXN:mid",
             curve_uid="other-curve-uid",
             source="valmer",
         )
 
-        def get_binding(*, market_data_set_uid, binding_key, status="ACTIVE"):
-            return {
-                "discount:index:sofr-index-uid:mid": user_owned_discount,
-                "discount:currency:MXN:mid": different_curve_discount,
-            }.get(binding_key)
-
         with patch(
             "msm_pricing.api.PricingMarketDataSetCurveBinding"
         ) as curve_binding_api:
-            curve_binding_api.get_by_set_and_binding_key.side_effect = get_binding
+            curve_binding_api.filter_by_binding_keys.return_value = [
+                user_owned_discount,
+                different_curve_discount,
+            ]
 
             deleted = delete_valmer_deprecated_curve_bindings(
                 indexes=indexes,

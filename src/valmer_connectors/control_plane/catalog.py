@@ -122,7 +122,10 @@ DATA_PRODUCTS: tuple[DataProductDefinition, ...] = (
     DataProductDefinition(
         key="pricing-details",
         name="Current pricing details",
-        description="Current rows in the persisted Asset pricing-details relation.",
+        description=(
+            "Registered Valmer assets with current pricing details, read through the "
+            "Markets API."
+        ),
         table_identifier=CURRENT_PRICING_DETAILS_TABLE_IDENTIFIER,
         category="registry",
         stale_after_hours=0,

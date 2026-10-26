@@ -121,17 +121,21 @@ class ReferenceRateUpdateWindow:
 def upsert_reference_rate_indexes(
     definitions: Sequence[ReferenceRateIndexDefinition],
 ) -> dict[str, Any]:
-    """Ensure the interest-rate type and canonical Index rows exist."""
+    """Ensure the interest-rate type and canonical Index rows exist.
 
-    from msm.api.indices import Index, IndexType
+    Two set-based row calls whatever the number of definitions (Markets API
+    calls under the remote backend, ms-markets ADR 0047).
+    """
+
     from msm.constants import INDEX_TYPE_INTEREST_RATE_DEFINITION
 
-    IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())
-    upserted: dict[str, Any] = {}
-    for definition in definitions:
-        index = Index.upsert(definition.to_index_payload())
-        upserted[index.unique_identifier] = index
-    return upserted
+    from valmer_connectors.instruments.index_registry import (
+        upsert_custom_indexes,
+        upsert_index_types,
+    )
+
+    upsert_index_types([INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload()])
+    return upsert_custom_indexes([definition.to_index_payload() for definition in definitions])
 
 
 def resolve_reference_rate_update_window(

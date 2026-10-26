@@ -67,7 +67,11 @@ def configure_page(title: str, *, layout: str = "wide") -> None:
 @st.cache_resource(show_spinner="Initializing Valmer runtime")
 def bootstrap_runtime_once() -> object:
     from valmer_connectors.instruments.bootstrap import bootstrap_runtime
+    from valmer_connectors.runtime import use_markets_api
 
+    # Markets registries through the Markets API (ms-markets ADR 0047); only the
+    # Valmer tables are attached.
+    use_markets_api()
     return bootstrap_runtime(seed_static_rows=False)
 
 

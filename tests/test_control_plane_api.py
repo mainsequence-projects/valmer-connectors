@@ -8,6 +8,7 @@ import pathlib
 import sys
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 
@@ -1260,50 +1261,52 @@ def test_registered_valmer_asset_count_uses_valmer_asset_details_relation(
     assert "valmer_connectors__valmerassetdetails" in str(captured["sql"])
 
 
-def test_pricing_target_query_requests_the_complete_persisted_relation(
+def test_pricing_targets_read_current_pricing_details_through_markets(
     monkeypatch,
 ) -> None:
-    runtime = SimpleNamespace(
-        context=SimpleNamespace(
-            data_source_uid=None,
-            namespace=None,
-        )
-    )
-    captured: dict[str, object] = {}
+    """Valmer's own detail table names the assets; Markets says which have details."""
 
+    from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
+
+    table = SimpleNamespace(
+        uid="details-table",
+        identifier=VALMER_ASSET_DETAILS_TABLE_IDENTIFIER,
+        physical_schema="public",
+        physical_table_name="valmer_connectors__valmerassetdetails",
+    )
+    priced, unpriced = str(uuid.uuid4()), str(uuid.uuid4())
+    captured: dict[str, object] = {"batches": []}
     monkeypatch.setattr(
         control_plane_service,
-        "resolve_pricing_runtime",
-        lambda **kwargs: runtime,
+        "_optional_registered_meta_table",
+        lambda identifier: table if identifier == VALMER_ASSET_DETAILS_TABLE_IDENTIFIER else None,
     )
 
-    def compile_statement(statement, *, context, operation):
-        captured["limits"] = context.limits
-        captured["operation"] = operation
-        return {"compiled": True}
+    def select_rows(selected_table, sql, *, max_rows):
+        captured.update(sql=sql, max_rows=max_rows)
+        return [
+            {"asset_uid": priced, "asset_identifier": "M_BONOS_1"},
+            {"asset_uid": unpriced, "asset_identifier": "M_BONOS_2"},
+        ]
 
+    def get_many_by_asset_uid(cls, asset_uids, *, batch_size=1000):
+        captured["batches"].append(list(asset_uids))
+        return {uuid.UUID(priced): SimpleNamespace(asset_uid=uuid.UUID(priced))}
+
+    monkeypatch.setattr(control_plane_service, "_select_meta_table_rows", select_rows)
     monkeypatch.setattr(
-        control_plane_service,
-        "compile_markets_statement",
-        compile_statement,
-    )
-    monkeypatch.setattr(
-        control_plane_service,
-        "execute_markets_operation",
-        lambda operation, *, context: {
-            "rows": [{"unique_identifier": "persisted-target"}],
-            "truncated": False,
-        },
+        AssetCurrentPricingDetails,
+        "get_many_by_asset_uid",
+        classmethod(get_many_by_asset_uid),
     )
 
-    identifiers = PlatformControlPlaneGateway()._pricing_target_identifiers()
+    gateway = PlatformControlPlaneGateway()
 
-    assert identifiers == {"persisted-target"}
-    assert captured["operation"] == "select"
-    assert captured["limits"] == {
-        "max_rows": 100_000,
-        "statement_timeout_ms": 60_000,
-    }
+    assert gateway._pricing_target_identifiers() == {"M_BONOS_1"}
+    assert gateway._current_pricing_details_count() == 1
+    assert captured["batches"] == [sorted([priced, unpriced])]
+    assert captured["max_rows"] == 100_000
+    assert "valmer_connectors__valmerassetdetails" in str(captured["sql"])
 
 
 def test_job_discovery_is_authorized_per_human(api_client) -> None:

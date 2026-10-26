@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from valmer_connectors.runtime import use_markets_api
 from valmer_connectors.services.runtime_validation import validate_runtime
 
 
@@ -10,4 +11,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    use_markets_api()
     main()

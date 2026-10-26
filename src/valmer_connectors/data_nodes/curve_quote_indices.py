@@ -165,26 +165,38 @@ def normalize_valmer_usd_quote_snapshot(
 
 
 def upsert_valmer_curve_quote_indexes(frame: pd.DataFrame) -> dict[str, Any]:
-    """Register semantic Index types and every Index identity in a quote frame."""
+    """Register semantic Index types and every Index identity in a quote frame.
 
-    from msm.api.indices import Index, IndexType
+    Three set-based row calls whatever the frame size (Markets API calls under
+    the remote backend, ms-markets ADR 0047).
+    """
+
     from msm.constants import (
         INDEX_TYPE_INTEREST_RATE,
         INDEX_TYPE_INTEREST_RATE_DEFINITION,
     )
 
-    IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())
-    IndexType.upsert(
-        index_type="foreign_exchange",
-        display_name="Foreign Exchange",
-        description="Source-published FX spot and forward-point observables.",
+    from valmer_connectors.instruments.index_registry import (
+        upsert_custom_indexes,
+        upsert_index_types,
     )
-    IndexType.upsert(
-        index_type="interest_rate_future",
-        display_name="Interest Rate Future",
-        description="Source-published interest-rate futures contract quotes.",
+
+    upsert_index_types(
+        [
+            INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload(),
+            {
+                "index_type": "foreign_exchange",
+                "display_name": "Foreign Exchange",
+                "description": "Source-published FX spot and forward-point observables.",
+            },
+            {
+                "index_type": "interest_rate_future",
+                "display_name": "Interest Rate Future",
+                "description": "Source-published interest-rate futures contract quotes.",
+            },
+        ]
     )
-    upserted = {}
+    payloads = []
     for row in frame.reset_index().itertuples(index=False):
         metadata = dict(row.metadata_json)
         family = metadata["source_family"]
@@ -194,33 +206,34 @@ def upsert_valmer_curve_quote_indexes(frame: pd.DataFrame) -> dict[str, Any]:
             index_type = "interest_rate_future"
         else:
             index_type = "foreign_exchange"
-        index = Index.upsert(
-            unique_identifier=row.index_identifier,
-            index_type=index_type,
-            display_name=_quote_display_name(row.index_identifier, family=family),
-            # ADR-0037 index framework: source-published quotes are custom
-            # observations; value_format is display-only. `provider` was removed
-            # from IndexUpsert and now rides in metadata_json.
-            calculation_method="custom",
-            value_format=(
-                "percent" if family in INTEREST_RATE_FAMILIES else "decimal"
-            ),
-            description=(
-                f"Valmer {row.quote_side if hasattr(row, 'quote_side') else 'mid'} "
-                f"{family.replace('_', ' ')} quote used by curve construction."
-            ),
-            metadata_json={
-                "provider": VALMER_PROVIDER,
-                "source_file": metadata["source_file"],
-                "source_instrument_identifier": metadata[
-                    "source_instrument_identifier"
-                ],
-                "source_family": family,
-                "quote_side": metadata["quote_side"],
-            },
+        payloads.append(
+            {
+                "unique_identifier": row.index_identifier,
+                "index_type": index_type,
+                "display_name": _quote_display_name(row.index_identifier, family=family),
+                # ADR-0037 index framework: source-published quotes are custom
+                # observations; value_format is display-only. `provider` was removed
+                # from IndexUpsert and now rides in metadata_json.
+                "calculation_method": "custom",
+                "value_format": (
+                    "percent" if family in INTEREST_RATE_FAMILIES else "decimal"
+                ),
+                "description": (
+                    f"Valmer {row.quote_side if hasattr(row, 'quote_side') else 'mid'} "
+                    f"{family.replace('_', ' ')} quote used by curve construction."
+                ),
+                "metadata_json": {
+                    "provider": VALMER_PROVIDER,
+                    "source_file": metadata["source_file"],
+                    "source_instrument_identifier": metadata[
+                        "source_instrument_identifier"
+                    ],
+                    "source_family": family,
+                    "quote_side": metadata["quote_side"],
+                },
+            }
         )
-        upserted[index.unique_identifier] = index
-    return upserted
+    return upsert_custom_indexes(payloads)
 
 
 class _ValmerCurveQuoteIndexValuesNode(DailyIndexValuesNode):

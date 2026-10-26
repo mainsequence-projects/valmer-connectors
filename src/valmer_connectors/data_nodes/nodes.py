@@ -12,16 +12,13 @@ from typing import Any, List, Literal, Union
 import pandas as pd
 from metatables import MetaTable
 from msm.api.assets import Asset as MarketsAsset
-from msm.api.base import operation_result_rows
+from msm.api.assets import AssetSnapshots
 from msm.constants import ASSET_TYPE_BOND
 from msm.data_nodes import AssetIndexedDataNode, AssetIndexedDataNodeConfiguration
-from msm.data_nodes.assets import AssetSnapshot
-from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_pricing.api import add_many_pricing_details
 from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import select
 from tqdm import tqdm
 
 from mainsequence.client.models_foundry import Artifact
@@ -389,19 +386,10 @@ def _publish_valmer_asset_snapshots(
         f"Publishing {len(snapshot_rows)} Valmer asset snapshot rows with "
         "name mapped from NOMBRE COMPLETO."
     )
-    node = AssetSnapshot()
-
-    result = node.set_snapshots(snapshot_rows, verify_existing=False).run()
-    if isinstance(result, tuple) and len(result) == 2:
-        error_on_last_update, frame = result
-    else:
-        error_on_last_update, frame = False, result
-    if error_on_last_update:
-        message = f"Valmer asset snapshot update failed for {len(snapshot_rows)} rows."
-        if isinstance(error_on_last_update, BaseException):
-            raise RuntimeError(message) from error_on_last_update
-        raise RuntimeError(f"{message} {error_on_last_update}")
-    row_count = len(frame) if isinstance(frame, pd.DataFrame) else len(snapshot_rows)
+    # Asset snapshots are a Markets table that applications publish into
+    # (ms-markets ADR 0047): one AssetSnapshots.publish call, which runs on the
+    # Markets API under the remote backend (write-policy resource asset-snapshots).
+    row_count = int(AssetSnapshots.publish(snapshot_rows))
     logger.info(f"Published {row_count} Valmer asset snapshot rows.")
     return row_count
 
@@ -1794,7 +1782,6 @@ class ImportValmer(AssetIndexedDataNode):
 
         asset_uid_to_valmer_uid = {str(asset.uid): uid for uid, asset in existing_assets.items()}
         asset_uids = [asset.uid for asset in existing_assets.values()]
-        context = AssetCurrentPricingDetails._active_context()
         batches = [
             asset_uids[start : start + batch_size]
             for start in range(0, len(asset_uids), batch_size)
@@ -1813,28 +1800,17 @@ class ImportValmer(AssetIndexedDataNode):
         face_values: dict[str, object] = {}
         rows_found = 0
         for batch in batches:
-            statement = (
-                select(
-                    AssetCurrentPricingDetails.__table__.asset_uid.label("asset_uid"),
-                    AssetCurrentPricingDetails.__table__.instrument_dump.label(
-                        "instrument_dump"
-                    ),
-                )
-                .where(AssetCurrentPricingDetails.__table__.asset_uid.in_(batch))
-                .limit(len(batch))
+            # One set-based read per batch, through the Markets API under the
+            # remote backend (ms-markets ADR 0047).
+            current = AssetCurrentPricingDetails.get_many_by_asset_uid(
+                batch,
+                batch_size=len(batch),
             )
-            operation = compile_markets_statement(
-                statement,
-                context=context,
-                operation="select",
-            )
-            result = execute_markets_operation(operation, context=context)
-            for row in operation_result_rows(result):
-                asset_uid = row.get("asset_uid")
+            for asset_uid, detail in current.items():
                 valmer_uid = asset_uid_to_valmer_uid.get(str(asset_uid))
                 if valmer_uid is not None:
                     face_values[valmer_uid] = _pricing_detail_face_value(
-                        row.get("instrument_dump")
+                        detail.instrument_dump
                     )
                     rows_found += 1
             progress.advance(len(batch))

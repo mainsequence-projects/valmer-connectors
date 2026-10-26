@@ -11,16 +11,7 @@ from typing import Any
 
 import pandas as pd
 from metatables import MetaTable, TimeIndexMetaTable, TimeIndexTableRef
-from msm.api.base import operation_result_rows
-from msm.models import AssetTable
-from msm.repositories.base import (
-    MarketsRepositoryContext,
-    compile_markets_statement,
-    execute_markets_operation,
-)
-from msm_pricing.bootstrap import resolve_pricing_runtime
-from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
-from sqlalchemy import func, select
+from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
 
 from mainsequence.client.models_helpers import Job, JobRun
 from mainsequence.client.models_user import OrganizationEnvironment
@@ -66,6 +57,8 @@ FAILURE_JOB_STATUSES = frozenset({"FAILED", "ABORTED"})
 DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 250
 MAX_ASSET_DETAIL_ROWS = 100_000
+# Asset uids per AssetCurrentPricingDetails.get_many_by_asset_uid call.
+CURRENT_PRICING_DETAILS_BATCH_SIZE = 500
 SAFE_SQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Prefixes the SDK's own CodeRepositoryBranch and Environment context errors.
 OVERVIEW_ENVIRONMENT_OPERATION = "The Valmer control-plane overview"
@@ -418,72 +411,63 @@ class PlatformControlPlaneGateway:
 
         return self._cache.get_or_load("registered-assets", load)
 
-    def _current_pricing_details_count(self) -> int:
-        def load() -> int:
-            runtime = resolve_pricing_runtime(
-                models=[AssetCurrentPricingDetailsTable],
-                row_model_name="AssetCurrentPricingDetails",
-            )
-            statement = (
-                select(func.count().label("pricing_detail_count"))
-                .select_from(AssetCurrentPricingDetailsTable)
-            )
-            operation = compile_markets_statement(
-                statement,
-                context=runtime.context,
-                operation="select",
-            )
-            rows = operation_result_rows(
-                execute_markets_operation(operation, context=runtime.context)
-            )
-            if len(rows) != 1:
-                raise RuntimeError(
-                    "Current pricing-details count query returned an unexpected row shape."
-                )
-            return int(rows[0]["pricing_detail_count"])
+    def _valmer_asset_identifiers_by_uid(self) -> dict[str, str]:
+        """Valmer asset identifiers keyed by Markets asset uid, from Valmer's own table."""
 
-        return self._cache.get_or_load("current-pricing-details", load)
+        def load() -> dict[str, str]:
+            table = _optional_registered_meta_table(
+                VALMER_ASSET_DETAILS_TABLE_IDENTIFIER
+            )
+            if table is None:
+                raise ControlPlaneError(
+                    "The registered Valmer asset-details MetaTable is unavailable."
+                )
+            rows = _select_meta_table_rows(
+                table,
+                (
+                    "SELECT asset_uid, valmer_unique_identifier AS asset_identifier "
+                    f"FROM {_qualified_table_name(table)}"
+                ),
+                max_rows=MAX_ASSET_DETAIL_ROWS,
+            )
+            return {
+                str(row["asset_uid"]): str(row["asset_identifier"])
+                for row in rows
+                if row.get("asset_uid") not in (None, "")
+                and row.get("asset_identifier") not in (None, "")
+            }
+
+        return self._cache.get_or_load("valmer-asset-uids", load)
+
+    def _current_pricing_details_count(self) -> int:
+        """Registered Valmer assets that have current pricing details."""
+
+        return len(self._pricing_target_identifiers())
 
     def _pricing_target_identifiers(self) -> set[str]:
+        """Valmer identifiers of the registered assets with current pricing details.
+
+        The current pricing details are a Markets registry, read through the
+        Markets API (ms-markets ADR 0047) for the asset uids of Valmer's own
+        detail table, in batches; the control plane holds no Markets table grant.
+        """
+
         def load() -> set[str]:
-            runtime = resolve_pricing_runtime(
-                models=[AssetTable, AssetCurrentPricingDetailsTable],
-                row_model_name="AssetCurrentPricingDetails",
-            )
-            query_context = MarketsRepositoryContext(
-                limits={
-                    "max_rows": MAX_ASSET_DETAIL_ROWS,
-                    "statement_timeout_ms": 60_000,
-                },
-                data_source_uid=runtime.context.data_source_uid,
-                timeout=90,
-                namespace=runtime.context.namespace,
-            )
-            statement = (
-                select(AssetTable.unique_identifier)
-                .select_from(AssetCurrentPricingDetailsTable)
-                .join(
-                    AssetTable,
-                    AssetTable.uid == AssetCurrentPricingDetailsTable.asset_uid,
+            identifiers_by_uid = self._valmer_asset_identifiers_by_uid()
+            asset_uids = sorted(identifiers_by_uid)
+            identifiers: set[str] = set()
+            for start in range(0, len(asset_uids), CURRENT_PRICING_DETAILS_BATCH_SIZE):
+                batch = asset_uids[start : start + CURRENT_PRICING_DETAILS_BATCH_SIZE]
+                current = AssetCurrentPricingDetails.get_many_by_asset_uid(
+                    batch,
+                    batch_size=len(batch),
                 )
-            )
-            operation = compile_markets_statement(
-                statement,
-                context=query_context,
-                operation="select",
-            )
-            result = execute_markets_operation(operation, context=query_context)
-            if result.get("truncated"):
-                raise ControlPlaneError(
-                    "Current pricing-details identifier query exceeded "
-                    f"{MAX_ASSET_DETAIL_ROWS} rows."
+                identifiers.update(
+                    identifiers_by_uid[str(asset_uid)]
+                    for asset_uid in current
+                    if str(asset_uid) in identifiers_by_uid
                 )
-            rows = operation_result_rows(result)
-            return {
-                str(row["unique_identifier"])
-                for row in rows
-                if row.get("unique_identifier") not in (None, "")
-            }
+            return identifiers
 
         return self._cache.get_or_load("pricing-target-identifiers", load)
 

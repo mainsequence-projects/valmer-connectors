@@ -12,6 +12,7 @@ from valmer_connectors.banxico.settings import (
     TIIE_182_INDEX_IDENTIFIER,
     TIIE_OVERNIGHT_INDEX_IDENTIFIER,
 )
+from valmer_connectors.runtime import use_markets_api
 
 TIIE_INDEX_IDENTIFIERS = (
     TIIE_OVERNIGHT_INDEX_IDENTIFIER,
@@ -32,4 +33,5 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
+    use_markets_api()
     main()

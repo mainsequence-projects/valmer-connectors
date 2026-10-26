@@ -1005,19 +1005,29 @@ def attach_valmer_curve_pricing_runtime(
     markets_models: Sequence[Any] | None = None,
     **runtime_kwargs: Any,
 ):
-    """Attach markets/pricing runtime objects needed by Valmer curve bootstrap."""
+    """Attach markets/pricing runtime objects needed by Valmer curve bootstrap.
+
+    When the process reaches Markets through the Markets API (ms-markets ADR
+    0047, ``valmer_connectors.runtime.use_markets_api``), only ``markets_models``
+    are attached: Markets registries and pricing tables are row calls on the
+    API, and a Markets table that is only a foreign-key target of a Valmer table
+    is referenced by name. Otherwise the Markets registries and pricing tables
+    are attached as well, for applications that still use the runtime backend.
+    """
 
     import msm
     from msm_pricing.bootstrap import attach_pricing_schemas
 
+    from valmer_connectors.runtime import markets_api_selected
+
     configure_valmer_discount_curves_cadence()
-    models = ["AssetType", "Asset", "IndexType", "Index"]
     if markets_models is None:
         from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 
         markets_models = [ValmerAssetDetailsTable]
-    if markets_models is not None:
-        models.extend(markets_models)
+    if markets_api_selected():
+        return msm.start_engine(models=list(markets_models), **runtime_kwargs)
+    models = ["AssetType", "Asset", "IndexType", "Index", *markets_models]
     msm.start_engine(models=models, **runtime_kwargs)
     return attach_pricing_schemas(
         models=valmer_pricing_runtime_models(),
@@ -1100,7 +1110,7 @@ def upsert_mexican_reference_indexes(
 ) -> dict[str, Any]:
     """Upsert the core Index rows required by Mexican curve and fixing code."""
 
-    from msm.api.indices import Index
+    from valmer_connectors.instruments.index_registry import upsert_custom_indexes
 
     if create_schemas is not None:
         attach_runtime = create_schemas
@@ -1108,11 +1118,7 @@ def upsert_mexican_reference_indexes(
         attach_valmer_curve_pricing_runtime(**runtime_kwargs)
 
     upsert_interest_rate_index_type()
-    upserted = {}
-    for payload in mexican_reference_index_payloads(definitions):
-        index = Index.upsert(payload)
-        upserted[index.unique_identifier] = index
-    return upserted
+    return upsert_custom_indexes(mexican_reference_index_payloads(definitions))
 
 
 def upsert_usd_reference_indexes(
@@ -1124,7 +1130,7 @@ def upsert_usd_reference_indexes(
 ) -> dict[str, Any]:
     """Upsert the core Index rows required by USD SOFR curve and fixing code."""
 
-    from msm.api.indices import Index
+    from valmer_connectors.instruments.index_registry import upsert_custom_indexes
 
     if create_schemas is not None:
         attach_runtime = create_schemas
@@ -1132,11 +1138,7 @@ def upsert_usd_reference_indexes(
         attach_valmer_curve_pricing_runtime(**runtime_kwargs)
 
     upsert_interest_rate_index_type()
-    upserted = {}
-    for payload in usd_reference_index_payloads(definitions):
-        index = Index.upsert(payload)
-        upserted[index.unique_identifier] = index
-    return upserted
+    return upsert_custom_indexes(usd_reference_index_payloads(definitions))
 
 
 def upsert_mexican_index_convention_details(
@@ -1278,17 +1280,20 @@ def upsert_valmer_curve_building_details(
     return upserted
 
 
-def upsert_valmer_market_data_source_bindings() -> dict[str, Any]:
-    from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
-    from msm_pricing.settings import (
-        PRICING_CONCEPT_DISCOUNT_CURVES,
-        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-        PRICING_MARKET_DATA_SET_DEFAULT,
-    )
+def resolve_default_pricing_market_data_set() -> Any:
+    """Return the organisation-wide default pricing market-data set.
 
-    market_data_set = PricingMarketDataSet.upsert(
+    Markets owns that set; Valmer creates it only when it does not exist yet and
+    otherwise leaves its description alone.
+    """
+
+    from msm_pricing.api import PricingMarketDataSet
+    from msm_pricing.settings import PRICING_MARKET_DATA_SET_DEFAULT
+
+    existing = PricingMarketDataSet.get_by_key(PRICING_MARKET_DATA_SET_DEFAULT)
+    if existing is not None:
+        return existing
+    return PricingMarketDataSet.upsert(
         {
             "set_key": PRICING_MARKET_DATA_SET_DEFAULT,
             "display_name": "Default pricing market data",
@@ -1296,28 +1301,73 @@ def upsert_valmer_market_data_source_bindings() -> dict[str, Any]:
             "metadata_json": {"source": VALMER_SOURCE},
         }
     )
-    discount_binding = PricingMarketDataSetBinding.upsert(
-        {
-            "market_data_set_uid": market_data_set.uid,
-            "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-            "data_node_uid": DiscountCurvesStorage.get_meta_table_uid(),
-            "storage_table_identifier": DiscountCurvesStorage.get_identifier(),
-            "source": VALMER_SOURCE,
-        }
+
+
+def upsert_valmer_market_data_source_bindings() -> dict[str, Any]:
+    """Resolve the default market-data set and its curve and fixing source bindings.
+
+    The ``discount_curves`` and ``interest_rate_index_fixings`` bindings name the
+    storage table pricing reads Valmer's curves and fixings from. Under the
+    runtime backend the core storage tables are attached and Valmer binds them,
+    as before. Under the Markets API (ms-markets ADR 0047) Valmer does not attach
+    Markets tables and cannot resolve their table uids, so it reads the existing
+    bindings and raises when one is missing.
+    """
+
+    from msm_pricing.api import PricingMarketDataSetBinding
+    from msm_pricing.settings import (
+        PRICING_CONCEPT_DISCOUNT_CURVES,
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     )
-    fixing_binding = PricingMarketDataSetBinding.upsert(
-        {
-            "market_data_set_uid": market_data_set.uid,
-            "concept_key": PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-            "data_node_uid": IndexFixingsStorage.get_meta_table_uid(),
-            "storage_table_identifier": IndexFixingsStorage.get_identifier(),
-            "source": VALMER_SOURCE,
-        }
+
+    from valmer_connectors.runtime import markets_api_selected
+
+    concepts = (
+        PRICING_CONCEPT_DISCOUNT_CURVES,
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     )
+    market_data_set = resolve_default_pricing_market_data_set()
+    if markets_api_selected():
+        bindings = {
+            str(binding.concept_key): binding
+            for binding in PricingMarketDataSetBinding.filter_for_set_and_concepts(
+                market_data_set_uid=market_data_set.uid,
+                concept_keys=list(concepts),
+            )
+        }
+        missing = [concept for concept in concepts if concept not in bindings]
+        if missing:
+            raise RuntimeError(
+                "The default pricing market-data set has no "
+                f"{', '.join(missing)} binding. Valmer reads it through the Markets "
+                "API and cannot bind a Markets storage table it does not attach; "
+                "seed the default bindings with ms-markets "
+                "(msm_pricing.bootstrap.seed_default_pricing_market_data_bindings)."
+            )
+    else:
+        from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+        from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+
+        storages = {
+            PRICING_CONCEPT_DISCOUNT_CURVES: DiscountCurvesStorage,
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: IndexFixingsStorage,
+        }
+        bindings = {
+            concept: PricingMarketDataSetBinding.upsert(
+                {
+                    "market_data_set_uid": market_data_set.uid,
+                    "concept_key": concept,
+                    "storage_table_uid": storage.get_meta_table_uid(),
+                    "storage_table_identifier": storage.get_identifier(),
+                    "source": VALMER_SOURCE,
+                }
+            )
+            for concept, storage in storages.items()
+        }
     return {
         "market_data_set": market_data_set,
-        "discount_curves": discount_binding,
-        "interest_rate_index_fixings": fixing_binding,
+        "discount_curves": bindings[PRICING_CONCEPT_DISCOUNT_CURVES],
+        "interest_rate_index_fixings": bindings[PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS],
     }
 
 
@@ -1395,52 +1445,64 @@ def delete_valmer_deprecated_curve_bindings(
         VALMER_DEPRECATED_CURVE_BINDING_DEFINITIONS
     ),
 ) -> dict[tuple[str, str, str, str], Any]:
-    """Remove Valmer-owned curve bindings from superseded seed policy."""
+    """Remove Valmer-owned curve bindings from superseded seed policy.
+
+    The candidate bindings are read in one ``filter_by_binding_keys`` call;
+    only a binding that still points at the Valmer curve with ``source=valmer``
+    is deleted.
+    """
 
     from msm_pricing.api import PricingMarketDataSetCurveBinding
 
-    deleted = {}
+    candidates: dict[str, tuple[tuple[str, str, str, str], str]] = {}
     for definition in index_definitions:
         index = indexes[definition.index_unique_identifier]
         curve = curves[definition.curve_unique_identifier]
-        binding = PricingMarketDataSetCurveBinding.get_by_set_and_binding_key(
-            market_data_set_uid=market_data_set.uid,
-            binding_key=definition.binding_key(index_uid=index.uid),
+        candidates[definition.binding_key(index_uid=index.uid)] = (
+            (
+                definition.role_key,
+                "index",
+                definition.index_unique_identifier,
+                definition.quote_side,
+            ),
+            str(curve.uid),
         )
-        if (
-            binding is not None
-            and str(binding.curve_uid) == str(curve.uid)
-            and binding.source == definition.source
-        ):
-            deleted[
-                (
-                    definition.role_key,
-                    "index",
-                    definition.index_unique_identifier,
-                    definition.quote_side,
-                )
-            ] = PricingMarketDataSetCurveBinding.delete(binding.uid)
-
     for definition in generic_definitions:
         curve = curves[definition.curve_unique_identifier]
-        binding = PricingMarketDataSetCurveBinding.get_by_set_and_binding_key(
-            market_data_set_uid=market_data_set.uid,
-            binding_key=definition.binding_key,
+        candidates[definition.binding_key] = (
+            (
+                definition.role_key,
+                definition.selector_type,
+                definition.selector_key,
+                definition.quote_side,
+            ),
+            str(curve.uid),
         )
-        if (
-            binding is not None
-            and str(binding.curve_uid) == str(curve.uid)
-            and binding.source == definition.source
-        ):
-            deleted[
-                (
-                    definition.role_key,
-                    definition.selector_type,
-                    definition.selector_key,
-                    definition.quote_side,
-                )
-            ] = PricingMarketDataSetCurveBinding.delete(binding.uid)
+    if not candidates:
+        return {}
 
+    deprecated_sources = {
+        definition.binding_key(index_uid=indexes[definition.index_unique_identifier].uid):
+        definition.source
+        for definition in index_definitions
+    }
+    deprecated_sources.update(
+        {definition.binding_key: definition.source for definition in generic_definitions}
+    )
+    deleted = {}
+    for binding in PricingMarketDataSetCurveBinding.filter_by_binding_keys(
+        market_data_set_uid=market_data_set.uid,
+        binding_keys=list(candidates),
+    ):
+        candidate = candidates.get(str(binding.binding_key))
+        if candidate is None:
+            continue
+        key, curve_uid = candidate
+        if (
+            str(binding.curve_uid) == curve_uid
+            and binding.source == deprecated_sources[str(binding.binding_key)]
+        ):
+            deleted[key] = PricingMarketDataSetCurveBinding.delete(binding.uid)
     return deleted
 
 
@@ -1568,6 +1630,7 @@ __all__ = [
     "UsdIndexConventionDefinition",
     "attach_valmer_curve_pricing_runtime",
     "bootstrap_valmer_curve_pricing",
+    "resolve_default_pricing_market_data_set",
     "bootstrap_valmer_curve_indexes",
     "configure_valmer_discount_curves_cadence",
     "create_valmer_curve_pricing_schemas",

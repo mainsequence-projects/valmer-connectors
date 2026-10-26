@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
+from valmer_connectors.runtime import use_markets_api
 from valmer_connectors.services.vector_update import run_vector_update
 
 
@@ -33,4 +34,5 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
+    use_markets_api()
     main()

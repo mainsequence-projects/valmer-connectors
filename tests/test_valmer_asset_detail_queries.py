@@ -1,5 +1,6 @@
 import unittest
 import uuid
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from valmer_connectors.queries.asset_details import (
@@ -121,8 +122,53 @@ class ValmerAssetDetailQueriesTest(unittest.TestCase):
         self.assertEqual(set(kwargs), {"context", "operation"})
         self.assertEqual(kwargs["operation"], "select")
 
+    def test_detail_rows_read_markets_assets_with_batch_row_calls(self):
+        """The own detail table is queried alone; Markets assets come from Asset.filter."""
+
+        row = self._detail_row(
+            asset_table_identifier="M_BONOS_241205",
+            valmer_unique_identifier="M_BONOS_241205_VALMER",
+        )
+
+        with self._patched_governed_select([row]) as compile_statement:
+            read_valmer_asset_detail_alias_frame(["M_BONOS_241205"])
+
+        statement = compile_statement.call_args.args[0]
+        tables = {table.name for table in statement.get_final_froms()}
+        self.assertEqual(tables, {"valmer_connectors__valmerassetdetails"})
+        self.assertEqual(
+            [sorted(call) for call in self.asset_filter_calls],
+            [["limit", "unique_identifier__in"]],
+        )
+
     def _patched_governed_select(self, rows):
         context = object()
+        self.asset_filter_calls = []
+        assets = [
+            SimpleNamespace(uid=row["asset_uid"], unique_identifier=row["asset_table_identifier"])
+            for row in rows
+        ]
+        detail_rows = [
+            {
+                "detail_asset_uid": row["asset_uid"],
+                **{
+                    key: value
+                    for key, value in row.items()
+                    if key not in {"asset_uid", "asset_table_identifier"}
+                },
+            }
+            for row in rows
+        ]
+
+        def asset_filter(**kwargs):
+            self.asset_filter_calls.append(kwargs)
+            if "uid__in" in kwargs:
+                return [asset for asset in assets if asset.uid in kwargs["uid__in"]]
+            return [
+                asset
+                for asset in assets
+                if asset.unique_identifier in kwargs["unique_identifier__in"]
+            ]
 
         class _PatchStack:
             def __enter__(stack_self):
@@ -136,19 +182,22 @@ class ValmerAssetDetailQueriesTest(unittest.TestCase):
                 )
                 stack_self.execute = patch(
                     "msm.repositories.base.execute_markets_operation",
-                    return_value={"rows": rows},
+                    return_value={"rows": detail_rows},
                 )
                 stack_self.operation_rows = patch(
                     "msm.api.base.operation_result_rows",
-                    side_effect=lambda result: result["rows"],
+                    side_effect=lambda result: [dict(row) for row in result["rows"]],
                 )
+                stack_self.assets = patch("msm.api.assets.Asset.filter", side_effect=asset_filter)
                 stack_self.runtime.__enter__()
                 compile_statement = stack_self.compile.__enter__()
                 stack_self.execute.__enter__()
                 stack_self.operation_rows.__enter__()
+                stack_self.assets.__enter__()
                 return compile_statement
 
             def __exit__(stack_self, exc_type, exc, tb):
+                stack_self.assets.__exit__(exc_type, exc, tb)
                 stack_self.operation_rows.__exit__(exc_type, exc, tb)
                 stack_self.execute.__exit__(exc_type, exc, tb)
                 stack_self.compile.__exit__(exc_type, exc, tb)

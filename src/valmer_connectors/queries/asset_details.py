@@ -4,7 +4,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 import pandas as pd
-from msm.models.assets import AssetTable
 from sqlalchemy import or_, select
 
 from valmer_connectors.meta_tables.valmer_asset_details import (
@@ -14,6 +13,23 @@ from valmer_connectors.meta_tables.valmer_asset_details import (
 from valmer_connectors.queries._normalization import (
     clean_valmer_identifiers,
     string_or_none,
+)
+
+# Projection of the Valmer detail columns, in the public frame's column order
+# after asset_uid and asset_table_identifier.
+_DETAIL_PROJECTION: tuple[tuple[str, str], ...] = (
+    ("asset_identifier", "valmer_unique_identifier"),
+    ("valmer_unique_identifier", "valmer_unique_identifier"),
+    ("valmer_security_type", "security_type"),
+    ("valmer_issuer", "issuer"),
+    ("valmer_series", "series"),
+    ("valmer_full_name", "full_name"),
+    ("valmer_issue_date", "issue_date"),
+    ("valmer_maturity_date", "maturity_date"),
+    ("maturity_date", "maturity_date"),
+    ("valmer_face_value", "face_value"),
+    ("valmer_coupon_frequency", "coupon_frequency"),
+    ("valmer_coupon_rate", "coupon_rate"),
 )
 
 
@@ -64,36 +80,38 @@ def _read_valmer_asset_detail_rows(
     *,
     timeout: int | float | tuple[float, float] | None,
 ) -> list[dict[str, Any]]:
+    """Valmer detail rows whose Valmer or Markets asset identifier is requested.
+
+    The Valmer detail table is read with compiled SQL on Valmer's own runtime;
+    the Markets assets are read with ``Asset.filter`` row calls (Markets API
+    calls under the remote backend, ms-markets ADR 0047) and merged in Python,
+    instead of joining ``AssetTable``.
+    """
+
+    from msm.api.assets import Asset
     from msm.api.base import operation_result_rows
     from msm.repositories.base import compile_markets_statement, execute_markets_operation
 
     context = ensure_valmer_asset_detail_runtime(timeout=timeout)
+    # Assets named by their Markets identifier, which may differ from the Valmer one.
+    assets = {
+        str(asset.uid): asset
+        for asset in Asset.filter(unique_identifier__in=list(identifiers), limit=len(identifiers))
+    }
+    details = ValmerAssetDetailsTable
+    condition = details.valmer_unique_identifier.in_(list(identifiers))
+    if assets:
+        condition = or_(condition, details.asset_uid.in_([asset.uid for asset in assets.values()]))
     statement = (
         select(
-            AssetTable.uid.label("asset_uid"),
-            AssetTable.unique_identifier.label("asset_table_identifier"),
-            ValmerAssetDetailsTable.valmer_unique_identifier.label("asset_identifier"),
-            ValmerAssetDetailsTable.valmer_unique_identifier.label("valmer_unique_identifier"),
-            ValmerAssetDetailsTable.security_type.label("valmer_security_type"),
-            ValmerAssetDetailsTable.issuer.label("valmer_issuer"),
-            ValmerAssetDetailsTable.series.label("valmer_series"),
-            ValmerAssetDetailsTable.full_name.label("valmer_full_name"),
-            ValmerAssetDetailsTable.issue_date.label("valmer_issue_date"),
-            ValmerAssetDetailsTable.maturity_date.label("valmer_maturity_date"),
-            ValmerAssetDetailsTable.maturity_date.label("maturity_date"),
-            ValmerAssetDetailsTable.face_value.label("valmer_face_value"),
-            ValmerAssetDetailsTable.coupon_frequency.label("valmer_coupon_frequency"),
-            ValmerAssetDetailsTable.coupon_rate.label("valmer_coupon_rate"),
+            details.asset_uid.label("detail_asset_uid"),
+            *(
+                getattr(details, column).label(label)
+                for label, column in _DETAIL_PROJECTION
+            ),
         )
-        .select_from(ValmerAssetDetailsTable)
-        .outerjoin(AssetTable, ValmerAssetDetailsTable.asset_uid == AssetTable.uid)
-        .where(
-            or_(
-                ValmerAssetDetailsTable.valmer_unique_identifier.in_(identifiers),
-                AssetTable.unique_identifier.in_(identifiers),
-            )
-        )
-        .order_by(ValmerAssetDetailsTable.valmer_unique_identifier)
+        .where(condition)
+        .order_by(details.valmer_unique_identifier)
         .limit(len(identifiers))
     )
     operation = compile_markets_statement(
@@ -102,7 +120,28 @@ def _read_valmer_asset_detail_rows(
         operation="select",
     )
     result = execute_markets_operation(operation, context=context)
-    return [dict(row) for row in operation_result_rows(result)]
+    detail_rows = [dict(row) for row in operation_result_rows(result)]
+
+    # The Markets identifier of every other detail row, in one batch read.
+    missing = sorted(
+        {str(row["detail_asset_uid"]) for row in detail_rows if row.get("detail_asset_uid")}
+        - set(assets)
+    )
+    if missing:
+        assets.update(
+            {str(asset.uid): asset for asset in Asset.filter(uid__in=missing, limit=len(missing))}
+        )
+    rows: list[dict[str, Any]] = []
+    for row in detail_rows:
+        asset = assets.get(str(row.pop("detail_asset_uid", None)))
+        rows.append(
+            {
+                "asset_uid": None if asset is None else asset.uid,
+                "asset_table_identifier": None if asset is None else asset.unique_identifier,
+                **row,
+            }
+        )
+    return rows
 
 
 def expand_valmer_asset_detail_alias_frame(

@@ -129,65 +129,49 @@ class ValmerAssetIdentityTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "bootstrap_runtime"):
                     ensure_valmer_asset_runtime()
 
-    def test_asset_ref_resolver_uses_projection_query(self):
+    def test_asset_ref_resolver_uses_one_set_based_row_call_per_batch(self):
         asset_uid = uuid.uuid4()
+        asset = Asset(uid=asset_uid, unique_identifier="M_BONOS_241205", asset_type=ASSET_TYPE_BOND)
 
         with patch("valmer_connectors.instruments.asset_identity.ensure_valmer_asset_runtime"):
-            with patch.object(Asset, "_active_context", return_value=object()):
+            with patch.object(Asset, "filter", return_value=[asset]) as asset_filter:
                 with patch(
-                    "msm.repositories.crud.search_model",
-                    side_effect=AssertionError("full-row search_model should not be used"),
+                    "msm.repositories.base.compile_markets_statement",
+                    side_effect=AssertionError("Markets tables are read with row calls"),
                 ):
-                    with patch(
-                        "msm.repositories.base.compile_markets_statement",
-                        return_value=object(),
-                    ):
-                        with patch(
-                            "msm.repositories.base.execute_markets_operation",
-                            return_value={
-                                "rows": [
-                                    {
-                                        "unique_identifier": "M_BONOS_241205",
-                                        "uid": str(asset_uid),
-                                        "asset_type": ASSET_TYPE_BOND,
-                                    }
-                                ]
-                            },
-                        ):
-                            refs = resolve_valmer_asset_refs(["M_BONOS_241205"])
+                    refs = resolve_valmer_asset_refs(["M_BONOS_241205", "MISSING_1"])
 
+        asset_filter.assert_called_once_with(
+            unique_identifier__in=["M_BONOS_241205", "MISSING_1"],
+            limit=2,
+        )
         self.assertEqual(
-            refs["M_BONOS_241205"],
-            ValmerAssetRef(
-                unique_identifier="M_BONOS_241205",
-                uid=asset_uid,
-                asset_type=ASSET_TYPE_BOND,
-            ),
+            refs,
+            {
+                "M_BONOS_241205": ValmerAssetRef(
+                    unique_identifier="M_BONOS_241205",
+                    uid=asset_uid,
+                    asset_type=ASSET_TYPE_BOND,
+                )
+            },
         )
 
     def test_asset_uid_resolver_returns_only_uid_map(self):
         asset_uid = uuid.uuid4()
+        asset = Asset(uid=asset_uid, unique_identifier="M_BONOS_241205", asset_type=ASSET_TYPE_BOND)
 
         with patch("valmer_connectors.instruments.asset_identity.ensure_valmer_asset_runtime"):
-            with patch.object(Asset, "_active_context", return_value=object()):
-                with patch(
-                    "msm.repositories.base.compile_markets_statement",
-                    return_value=object(),
-                ):
-                    with patch(
-                        "msm.repositories.base.execute_markets_operation",
-                        return_value={
-                            "rows": [
-                                {
-                                    "unique_identifier": "M_BONOS_241205",
-                                    "uid": str(asset_uid),
-                                }
-                            ]
-                        },
-                    ):
-                        uid_map = resolve_valmer_asset_uids(["M_BONOS_241205"])
+            with patch.object(Asset, "filter", return_value=[asset]) as asset_filter:
+                uid_map = resolve_valmer_asset_uids(["M_BONOS_241205"], batch_size=1)
 
+        asset_filter.assert_called_once_with(unique_identifier__in=["M_BONOS_241205"], limit=1)
         self.assertEqual(uid_map, {"M_BONOS_241205": asset_uid})
+
+    def test_asset_runtime_guard_needs_no_runtime_under_the_markets_api(self):
+        with patch("valmer_connectors.instruments.asset_identity._RUNTIME_READY", False):
+            with patch("valmer_connectors.runtime.markets_api_selected", return_value=True):
+                with patch("msm.bootstrap.get_runtime", side_effect=RuntimeError("missing")):
+                    ensure_valmer_asset_runtime()
 
     def test_typed_asset_resolver_reuses_projection_refs(self):
         asset_uid = uuid.uuid4()

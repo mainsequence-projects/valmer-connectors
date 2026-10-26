@@ -4,6 +4,7 @@ import argparse
 from collections.abc import Sequence
 
 from valmer_connectors.banxico.policy_rates import run_banxico_policy_rates_update
+from valmer_connectors.runtime import use_markets_api
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -14,4 +15,5 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
+    use_markets_api()
     main()
