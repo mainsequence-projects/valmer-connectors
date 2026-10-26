@@ -73,14 +73,29 @@ of holding Writer on the `mainsequence.markets` namespace.
   the default market-data set's `discount_curves` and
   `interest_rate_index_fixings` concepts to Valmer's tables. There is no
   environment switch. The core tables appear only in the one-off move.
-- **Update hashes rotate once** for the TIIE, SOFR and USD/MXN cross-currency
-  curve updaters: `ValmerQuoteBackedCurveConfig.quote_storage_table` now
-  defaults to `ValmerDailyIndexValuesStorage` and
-  `ValmerXccyCurveConfig.curve_storage_table` to Valmer's discount-curve table,
-  and a storage class in an updater configuration is hashed by its registered
-  table uid. Their data continues from the rows the backfill copies into
-  Valmer's tables. The other updaters keep their hashes (an output table is
-  not part of `update_hash`).
+- **Update hashes rotate once** for five updaters, and their data continues
+  from the rows the backfill copies into Valmer's tables:
+  - the TIIE, SOFR and USD/MXN cross-currency curve updaters:
+    `ValmerQuoteBackedCurveConfig.quote_storage_table` now defaults to
+    `ValmerDailyIndexValuesStorage` and
+    `ValmerXccyCurveConfig.curve_storage_table` to Valmer's discount-curve
+    table, and a storage class in an updater configuration is hashed by its
+    registered table uid;
+  - the Banxico fixings (`BanxicoFixingsNode`) and MXN government curve
+    (`ValmerMxnGovernmentBondDiscountCurvesNode`) updaters: their
+    configurations embed ms-markets' `IndexFixingConfiguration` and
+    `CurveConfig`, which ms-markets 3.0 moved to `msm_pricing.time_index`
+    (ADR 0048), and a configuration object is hashed with its class's module
+    and name. `msm rename-preflight rotation` reports their pre-3.0 hashes.
+
+  The other updaters keep their hashes: an output table is not part of
+  `update_hash`, and Valmer's own updater and configuration classes keep their
+  names and modules.
+- Valmer imports only ms-markets 3.0 names (`msm.time_index`,
+  `msm_pricing.time_index` and the `*Updater` classes), never the deprecated
+  `data_nodes` aliases that ms-markets 4.0 removes; a boundary test runs
+  `msm rename-preflight scan` over the code. The renamed imports resolve to
+  the same classes, so they change no update hash.
 - The `time-series-backfill` Job (`valmer-connectors time-series backfill`)
   copies, never recomputes, Valmer's rows from the three Markets tables into
   Valmer's with ms-markets' `msm.storage_copies`: it only counts without

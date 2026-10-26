@@ -41,13 +41,21 @@ table for it.
 
 An output table is not part of an updater's `update_hash`, so most producers
 keep their hashes: each gets its own update record for Valmer's table and
-continues from that table's last observation, which the copy provides. The
-exceptions are configurations that name a table they read: the TIIE, SOFR and
-cross-currency curves name the Index-value table they read quotes from
-(`quote_storage_table`), and the cross-currency curve the curve table it reads
-its upstream curves from (`curve_storage_table`). A storage class in a
-configuration is hashed by its registered table uid, so these three hashes
-rotate once with this release; their data continues from the copied rows.
+continues from that table's last observation, which the copy provides. Five
+hashes rotate once with this release, and their data continues from the
+copied rows too:
+
+- configurations that name a table they read: the TIIE, SOFR and
+  cross-currency curves name the Index-value table they read quotes from
+  (`quote_storage_table`), and the cross-currency curve the curve table it
+  reads its upstream curves from (`curve_storage_table`). A storage class in a
+  configuration is hashed by its registered table uid;
+- configurations that embed an ms-markets configuration class that
+  ms-markets 3.0 moved to `msm_pricing.time_index` (ADR 0048): the Banxico
+  fixings (`IndexFixingConfiguration`) and the MXN government curve
+  (`CurveConfig`). A configuration object is hashed with its class's module
+  and name; `msm rename-preflight rotation` reports their pre-3.0 hashes.
+
 Each Index-value producer reconciles the Index dataset catalog after a run as
 before; the catalog discovers the table it wrote.
 
@@ -138,8 +146,8 @@ it would find a provider instance of them.
    example `Curve.get_discount_curve_nodes` through the Markets API).
 7. **Resume.** Enable the schedule of `standard-pipeline-refresh` again. Its
    first stage rebinds as `registry-seed` did, and its producers continue from
-   the copied rows (the TIIE, SOFR and cross-currency curves under their new
-   update hashes). After that run, check that the Markets Index catalog lists
+   the copied rows (the TIIE, SOFR, cross-currency and MXN government curves
+   and the Banxico fixings under their new update hashes). After that run, check that the Markets Index catalog lists
    `valmer_connectors.IndexValuesTS.1d` as a dataset of Valmer's Indexes with
    values (`Index.list_datasets` or `GET /api/v1/index/{uid}/datasets/`).
 8. **Clean up (a later release).** After a soak period, a release removes
