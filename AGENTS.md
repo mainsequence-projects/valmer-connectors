@@ -32,11 +32,12 @@ never one call per row. Never import a Markets table class to build a statement,
 row class's `_active_context()`, and never select a backend in library code: applications import
 `valmer_connectors` and choose their own. `bootstrap_runtime()` only attaches tables; the static
 registry rows are written by the `registry-seed` Job (`valmer-connectors registries seed`).
-Discount curves, Index fixings and daily Index values go to the storage `valmer_connectors.storage`
-selects (`VALMER_TIME_SERIES_STORAGE`: Markets tables by default, Valmer's own tables after the
-backfill in `docs/time-series-instances.md`); never hard-code `DiscountCurvesStorage`,
-`IndexFixingsStorage`, `MarketsDailyIndexValuesStorage` or `ValmerDailyIndexValuesStorage` in a
-producer or reader, and do not use the deprecated `DailyIndexValuesStorage` alias.
+Discount curves, Index fixings and daily Index values live only in Valmer's own tables:
+`valmer_discount_curves_instance()` and `valmer_index_fixings_instance()` (`valmer_connectors.storage`)
+and `ValmerDailyIndexValuesStorage`. Every producer, reader, bootstrap and seed names those; the core
+`DiscountCurvesStorage`, `IndexFixingsStorage` and `MarketsDailyIndexValuesStorage` appear only in the
+one-off move (`services/time_series_backfill.py`, `docs/time-series-instances.md`). Add no environment
+switch, deprecated alias or other backward-compatibility layer for them.
 
 The control-plane API learns its caller only from the SDK request identity that `create_app` in
 `src/valmer_connectors/control_plane/api.py` installs once per application; route code gets the

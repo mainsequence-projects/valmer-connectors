@@ -26,61 +26,76 @@ of holding Writer on the `mainsequence.markets` namespace.
   attaches no markets runtime; its "Current pricing details" product now counts
   registered Valmer assets with current pricing details.
 - The default pricing market-data set is created only when missing. Its
-  `discount_curves` and `interest_rate_index_fixings` bindings name the storage
-  Valmer writes, as before, now through the Markets API.
-- Every workload except `migrate-valmer` and `pipeline-verification` declares
-  view on the `MainSequenceMarkets` branch. The Valmer Team drops Writer on
-  `mainsequence.markets` for table roles on the three Markets-namespace
-  storages Valmer still writes, and the Markets `MARKETS_REGISTRY_WRITERS`
-  constant must list the Valmer workloads (see "Teams And Namespaces" and
-  "Markets API Access" in `docs/deployment.md`).
+  `discount_curves` and `interest_rate_index_fixings` bindings name Valmer's
+  own curve and fixing tables (below), written through the Markets API.
+- Every workload except `migrate-valmer`, `pipeline-verification` and
+  `time-series-backfill` declares view on the `MainSequenceMarkets` branch.
+  The Valmer Team drops Writer on `mainsequence.markets`; it keeps table roles
+  only on the three Markets time-series tables the one-off move copies (and
+  `migrate-valmer` on `ms_markets__index_values__t_1d`, which its provider
+  still registers) until a later release. The Markets
+  `MARKETS_REGISTRY_WRITERS` constant must list the Valmer workloads (see
+  "Teams And Namespaces" and "Markets API Access" in `docs/deployment.md`).
 
-### Seeding (breaking for importers)
+### Seeding and attachment (breaking for importers)
 
-- `bootstrap_runtime()` defaults to `seed_static_rows=False`: it only attaches
-  tables, under whichever backend the importing process selected (under the
-  runtime backend it attaches the Markets registries and pricing tables as
-  before). An importer that relied on the old default seeding must pass
-  `seed_static_rows=True` or rely on the `registry-seed` Job.
+- `bootstrap_runtime()` defaults to `seed_static_rows=False` and attaches only
+  Valmer's own tables, under either backend: it no longer attaches the Markets
+  registries and pricing tables for an importer on ms-markets' runtime
+  backend, which attaches the ones it uses itself. An importer that relied on
+  the old default seeding must pass `seed_static_rows=True` or rely on the
+  `registry-seed` Job.
+- **Removed:** `valmer_pricing_runtime_models()` and
+  `configure_valmer_discount_curves_cadence()` (`instruments.curve_bootstrap`);
+  `attach_valmer_curve_pricing_runtime()` attaches only the models it is given.
 - The static registry rows are written by the new `registry-seed` Job
   (`scripts/seed_valmer_registries.py`, `valmer-connectors registries seed`),
   the first stage of the standard pipeline and launchable from the control
   plane. `runtime validate` keeps seeding explicitly.
 
-### Curves and fixings in Valmer's namespace (expand only)
+### Curves, fixings and daily Index values in Valmer's namespace
 
 - Revision `0002` creates Valmer's instances of the Markets discount-curve and
   Index-fixing storages, `valmer_connectors__discountcurvests__valmer` and
   `valmer_connectors__indexfixingsts__valmer`, in `valmer_connectors`
   (`msm.storage_instances.configured_time_index_instance`; the migration
   provider references `ms_markets__curve` for the new foreign key).
-- `VALMER_TIME_SERIES_STORAGE` (`markets` by default, `valmer`) selects the
-  storage the curve and Banxico fixing producers write, the cross-currency
-  builder, verification, control plane and dashboards read, and the registry
-  seed binds to the default market-data set. Nothing changes until it is set.
-- The `time-series-backfill` Job (`valmer-connectors time-series backfill`)
-  copies, never recomputes, Valmer's rows from the core tables into the
-  instances with ms-markets' `msm.storage_copies`, and fails while a row is
-  missing; `--rollback` copies the rows the instances gained back. The moves
-  are also `msm series move|rollback
-  valmer_connectors.services.time_series_backfill:valmer_series_moves`.
-  `docs/time-series-instances.md` is the runbook: backfill, set the variable,
-  rebind with `registry-seed`, backfill again, verify, revoke, or roll back.
 - Valmer owns its daily Index values (ADR 0047, decision 4): revision `0003`
   creates `valmer_connectors__index_values__t_1d`
-  (`valmer_connectors.IndexValuesTS.1d`), `ValmerDailyIndexValuesStorage`;
-  the Markets table `ms_markets__index_values__t_1d` is
-  `MarketsDailyIndexValuesStorage` and stays registered by revision `0001`
-  until a later release. The quote, FRED and Banxico policy producers, the
-  curve builders, queries, control plane and verification follow
-  `VALMER_TIME_SERIES_STORAGE` (`valmer_connectors.storage.daily_index_values_storage()`),
-  and the backfill moves the Index values with the curves and fixings.
-- **Deprecated:** `valmer_connectors.data_nodes.canonical_index_values.DailyIndexValuesStorage`
-  (also through `valmer_connectors.data_nodes`) is now an alias of
-  `ValmerDailyIndexValuesStorage`, Valmer's own table, not the Markets one,
-  and warns with `DeprecationWarning`; it is removed in 1.0. Import
-  `ValmerDailyIndexValuesStorage`, `MarketsDailyIndexValuesStorage`, or the
-  selector.
+  (`valmer_connectors.IndexValuesTS.1d`), `ValmerDailyIndexValuesStorage`.
+  The Markets table `ms_markets__index_values__t_1d` stays registered by
+  revision `0001` until a later release.
+- From this release on Valmer writes and reads only these tables: the curve,
+  Banxico fixing, curve-quote, FRED and Banxico policy producers, the curve
+  builders, queries, verification, control plane and dashboard name
+  `valmer_discount_curves_instance()`, `valmer_index_fixings_instance()` and
+  `ValmerDailyIndexValuesStorage` directly, and `registry-seed` always binds
+  the default market-data set's `discount_curves` and
+  `interest_rate_index_fixings` concepts to Valmer's tables. There is no
+  environment switch. The core tables appear only in the one-off move.
+- **Update hashes rotate once** for the TIIE, SOFR and USD/MXN cross-currency
+  curve updaters: `ValmerQuoteBackedCurveConfig.quote_storage_table` now
+  defaults to `ValmerDailyIndexValuesStorage` and
+  `ValmerXccyCurveConfig.curve_storage_table` to Valmer's discount-curve table,
+  and a storage class in an updater configuration is hashed by its registered
+  table uid. Their data continues from the rows the backfill copies into
+  Valmer's tables. The other updaters keep their hashes (an output table is
+  not part of `update_hash`).
+- The `time-series-backfill` Job (`valmer-connectors time-series backfill`)
+  copies, never recomputes, Valmer's rows from the three Markets tables into
+  Valmer's with ms-markets' `msm.storage_copies`: it only counts without
+  `--execute`, and fails while a row is missing; `--rollback` copies the rows
+  Valmer's tables gained back. It is the only process that attaches the
+  Markets tables. The moves are also `msm series move|rollback
+  valmer_connectors.services.time_series_backfill:valmer_series_moves`.
+  `docs/time-series-instances.md` is the runbook: hold the schedules, push
+  (the migration applies `0002` and `0003`), grant readers `data_viewer`,
+  backfill with `--execute`, rebind with `registry-seed`, verify, resume; or
+  roll back.
+- **Removed:** `valmer_connectors.data_nodes.canonical_index_values.DailyIndexValuesStorage`
+  and its `valmer_connectors.data_nodes` re-export, which named the Markets
+  table. Valmer's daily Index values are `ValmerDailyIndexValuesStorage`;
+  `MarketsDailyIndexValuesStorage` names the Markets table for the move only.
 
 ### Tests
 

@@ -16,28 +16,24 @@ seeds nothing unless asked (`seed_static_rows=True`). It does not create
 schemas at runtime. It is also the composition point for downstream libraries
 that need additional shared `ms-markets` runtime models.
 
-It follows the backend the process selected. Valmer's own processes select the
-Markets API (ms-markets ADR 0047, `valmer_connectors.runtime.use_markets_api()`
-in the Job scripts, the CLI and the control-plane API); an importing
-application keeps whatever backend it chose:
+It attaches only Valmer's own tables, whichever backend the process selected.
+Valmer's own processes select the Markets API (ms-markets ADR 0047,
+`valmer_connectors.runtime.use_markets_api()` in the Job scripts, the CLI and
+the control-plane API); an importing application keeps whatever backend it
+chose, and one that keeps ms-markets' runtime backend attaches the Markets
+registries and pricing tables it uses itself:
 
 ```text
 bootstrap_runtime()
     |
-    +-- Markets API selected (Valmer's Jobs, CLI, API)
-    |       msm.start_engine(models=[ValmerAssetDetailsTable,
-    |                                ValmerVectorPricesStorage,
-    |                                IndexValuesTS.1d, DiscountCurvesTS,
-    |                                IndexFixingsTS, *extra_markets_models])
-    |       registries (Asset, Index, Curve, bindings ...) are API row calls
-    |
-    +-- runtime backend (applications that still hold Markets grants)
-            msm.start_engine(models=[AssetType, Asset, IndexType, Index,
-                                     ValmerAssetDetailsTable,
-                                     ValmerVectorPricesStorage, IndexValuesTS.1d,
-                                     IndexDatasetAvailability, IndexFormulaInput,
-                                     *extra_markets_models])
-            msm_pricing.bootstrap.attach_pricing_schemas(models=[...])
+    v
+msm.start_engine(models=[ValmerAssetDetailsTable,
+                         ValmerVectorPricesStorage,
+                         ValmerDailyIndexValuesStorage,
+                         valmer_discount_curves_instance(),
+                         valmer_index_fixings_instance(),
+                         *extra_markets_models])
+registries (Asset, Index, Curve, bindings ...) are msm.api row calls
 ```
 
 The static pricing reference rows (the interest-rate IndexType, the Mexican
@@ -78,16 +74,12 @@ Pricing model selectors need precise handling:
 
 ## Static Pricing Rows
 
-`src/valmer_connectors/instruments/curve_bootstrap.py` attaches the explicit
-pricing runtime models needed by this project, then seeds the Mexican
+`src/valmer_connectors/instruments/curve_bootstrap.py` seeds the Mexican
 reference-index, convention, and Valmer curve rows required by core
-`ms-markets` / `msm_pricing`.
-
-The project uses `attach_pricing_schemas(models=[...])`, not the legacy
-`create_pricing_schemas(...)` entry point. Valmer owns the pricing
-market-data-set rows and curve-selection bindings it needs, so source storage
-bindings and curve bindings are explicit bootstrap work instead of side effects
-of schema attachment.
+`ms-markets` / `msm_pricing` with `msm.api` and `msm_pricing.api` row calls; it
+attaches no pricing schemas. Valmer owns the pricing market-data-set rows and
+curve-selection bindings it needs, so source storage bindings and curve
+bindings are explicit seed work.
 
 Reference indexes:
 
@@ -218,8 +210,11 @@ Relationship:
 +-----------------------------+
 ```
 
-Valmer seeds the default market-data set and binds it to the canonical
-`DiscountCurvesStorage` and `IndexFixingsStorage` tables. Curve selection is
+Valmer seeds the default market-data set and binds it to its own curve and
+fixing tables, `valmer_connectors__discountcurvests__valmer` and
+`valmer_connectors__indexfixingsts__valmer`, instances of the canonical
+`DiscountCurvesTS` and `IndexFixingsTS` contracts
+(`docs/time-series-instances.md`). Curve selection is
 quote-side explicit. Runtime calls must request `mid`; there is no implicit
 fallback from an omitted quote side.
 
@@ -275,8 +270,9 @@ the current `msm_pricing` calendar JSON codec.
 TIIE and CETE fixing observations come from Banco de Mexico SIE, not Valmer.
 Banxico source-specific client, metadata validation, parsing, and fixing
 builder logic lives under `src/valmer_connectors/banxico/`. Valmer curve and valuation workflows
-consume the resulting `IndexFixingsStorage` observations through the normal
-pricing market-data binding.
+consume the resulting observations in Valmer's Index-fixing table
+(`valmer_index_fixings_instance()`) through the normal pricing market-data
+binding.
 
 Run the Banxico fixing update with:
 
@@ -381,7 +377,8 @@ instrument.
 ## Quote-Backed Curve Publication
 
 Valmer source downloads belong only to the quote producers. The active curve
-builders read exact-date observations from `IndexValuesTS.1d`:
+builders read exact-date observations from Valmer's daily Index-value table
+(`valmer_connectors.IndexValuesTS.1d`, `ValmerDailyIndexValuesStorage`):
 
 ```text
 ValmerIrsMxnIndexValuesNode -> ValmerTiieDiscountCurveNode
@@ -414,7 +411,8 @@ quote/unit, source date, conventions, and raw source identity before core
 
 Run the quote producers before curves when invoking the launchers manually;
 the named curve TimeIndexTableUpdaters declare the same ordering through `dependencies()`.
-The output remains canonical `DiscountCurvesStorage`, and the implied curve
+The output is Valmer's discount-curve table, an instance of the canonical
+`DiscountCurvesTS` contract, and the implied curve
 points are distinct from the persisted input observations and key-node audit
 provenance.
 
@@ -435,9 +433,6 @@ valmer-connectors curves update-mxn-government
     |
     v
 bootstrap_runtime()
-    |
-    v
-configure_valmer_discount_curves_cadence()
     |
     v
 ValmerMxnGovernmentBondDiscountCurvesNode

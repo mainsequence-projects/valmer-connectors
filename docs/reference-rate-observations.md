@@ -1,7 +1,7 @@
 # Canonical Daily Index Observations
 
 FRED, Banxico, and Valmer curve quotes are published as daily `Index` values in
-`IndexValuesTS.1d`. Treasury yields and policy targets are analytical market
+Valmer's own `valmer_connectors.IndexValuesTS.1d`. Treasury yields and policy targets are analytical market
 observations, while Valmer par rates, basis spreads, futures prices, FX spot,
 and forward points are curve inputs. None of them is stored as an Asset price or
 pricing fixing.
@@ -10,8 +10,8 @@ pricing fixing.
 
 | Property | Value |
 | --- | --- |
-| MetaTable | `IndexValuesTS.1d` (Markets), `valmer_connectors.IndexValuesTS.1d` (Valmer) |
-| Physical table | `ms_markets__index_values__t_1d` by default; `valmer_connectors__index_values__t_1d` with `VALMER_TIME_SERIES_STORAGE=valmer` (`docs/time-series-instances.md`) |
+| MetaTable | `valmer_connectors.IndexValuesTS.1d` (`ValmerDailyIndexValuesStorage`) |
+| Physical table | `valmer_connectors__index_values__t_1d`; the Markets table `ms_markets__index_values__t_1d` is only the source of the one-off move (`docs/time-series-instances.md`) |
 | Grain | `(time_index, index_identifier)` |
 | Value | `value` |
 | Provenance | `definition_uid`, `observation_status`, `source_as_of`, `metadata_json` |
@@ -95,13 +95,15 @@ rerunning the FRED and Banxico producers from their source APIs.
 
 ## Repair
 
-Delete only the affected Index tail from the storage the producers write before
-rerunning its producer:
+Delete only the affected Index tail from Valmer's daily Index-value table
+before rerunning its producer:
 
 ```python
-from valmer_connectors.storage import daily_index_values_storage
+from valmer_connectors.data_nodes.canonical_index_values import (
+    ValmerDailyIndexValuesStorage,
+)
 
-daily_index_values_storage().get_time_index_meta_table().delete_after_date(
+ValmerDailyIndexValuesStorage.get_time_index_meta_table().delete_after_date(
     "<INCLUSIVE_UTC_CUTOFF>",
     dimension_filters={"index_identifier": ["<INDEX_IDENTIFIER>"]},
 )

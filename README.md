@@ -175,22 +175,26 @@ Users also need entries in the Markets `MARKETS_REGISTRY_WRITERS` constant.
 ### Importing `valmer_connectors`
 
 Applications that import this package keep the backend they choose:
-`bootstrap_runtime()` never selects one. Under ms-markets' runtime backend it
-attaches the Markets registries and pricing tables as before; after
-`use_remote_backend(LazyRemoteBackend())` (or `MSM_API_BACKEND=remote`) it
-attaches only the Valmer tables, and `resolve_valmer_asset_refs`,
-`read_valmer_asset_detail_alias_frame` and the other read helpers reach Markets
-assets with row calls. Since 0.2.0 `bootstrap_runtime()` defaults to
-`seed_static_rows=False`: an application that relied on it seeding the static
-registry rows must pass `seed_static_rows=True`, or rely on Valmer's
-`registry-seed` Job having run in that Environment.
+`bootstrap_runtime()` never selects one, and under either backend it attaches
+only Valmer's own tables (asset details, vector, daily Index values, discount
+curves and Index fixings, all in `valmer_connectors`). After
+`use_remote_backend(LazyRemoteBackend())` (or `MSM_API_BACKEND=remote`)
+`resolve_valmer_asset_refs`, `read_valmer_asset_detail_alias_frame` and the
+other read helpers reach Markets assets with row calls. An application that
+keeps ms-markets' runtime backend attaches the Markets registries and pricing
+tables it uses itself: since 0.2.0 Valmer no longer attaches them for it. Since
+0.2.0 `bootstrap_runtime()` also defaults to `seed_static_rows=False`: an
+application that relied on it seeding the static registry rows must pass
+`seed_static_rows=True`, or rely on Valmer's `registry-seed` Job having run in
+that Environment.
 
-`DailyIndexValuesStorage` is deprecated since 0.2.0 and now names Valmer's own
-table `valmer_connectors__index_values__t_1d`, not the Markets table
-`ms_markets__index_values__t_1d`. Import `MarketsDailyIndexValuesStorage` or
-`ValmerDailyIndexValuesStorage`, or call
-`valmer_connectors.storage.daily_index_values_storage()` for the table that
-`VALMER_TIME_SERIES_STORAGE` selects (see `docs/time-series-instances.md`).
+Valmer's curves, fixings and daily Index values are in its own tables:
+`valmer_discount_curves_instance()` and `valmer_index_fixings_instance()` in
+`valmer_connectors.storage`, and `ValmerDailyIndexValuesStorage`
+(`valmer_connectors__index_values__t_1d`). Reading them takes `data_viewer` on
+those tables. `DailyIndexValuesStorage`, `valmer_pricing_runtime_models()` and
+`configure_valmer_discount_curves_cadence()` are removed in 0.2.0 (see the
+CHANGELOG).
 
 The Job applies only the Valmer provider. The ms-markets tables that the Valmer
 tables reference are owned and migrated by the ms-markets deployment, so they
