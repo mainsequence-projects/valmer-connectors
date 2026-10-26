@@ -36,24 +36,6 @@ ValmerDailyIndexValuesStorage = configured_index_values_storage(
 MarketsDailyIndexValuesStorage = configured_index_values_storage(cadence="1d")
 
 
-def __getattr__(name: str) -> Any:
-    if name == "DailyIndexValuesStorage":
-        import warnings
-
-        warnings.warn(
-            "valmer_connectors.data_nodes.canonical_index_values.DailyIndexValuesStorage "
-            "is deprecated and now names ValmerDailyIndexValuesStorage "
-            "(valmer_connectors__index_values__t_1d); use ValmerDailyIndexValuesStorage, "
-            "MarketsDailyIndexValuesStorage, or valmer_connectors.storage."
-            "daily_index_values_storage() for the table VALMER_TIME_SERIES_STORAGE selects. "
-            "It is removed in valmer-connectors 1.0.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return ValmerDailyIndexValuesStorage
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 class IndexObservationError(RuntimeError):
     """Raised when an external Index observation violates the canonical contract."""
 

@@ -125,18 +125,12 @@ def test_daily_index_values_follow_the_switch(monkeypatch) -> None:
         assert config.quote_storage_table is ValmerDailyIndexValuesStorage
 
 
-def test_the_old_daily_index_values_name_is_a_deprecated_alias() -> None:
+def test_the_old_daily_index_values_name_is_gone() -> None:
     import valmer_connectors.data_nodes as data_nodes
     from valmer_connectors.data_nodes import canonical_index_values
 
-    with pytest.warns(DeprecationWarning, match="ValmerDailyIndexValuesStorage"):
-        alias = canonical_index_values.DailyIndexValuesStorage
-    with pytest.warns(DeprecationWarning):
-        package_alias = data_nodes.DailyIndexValuesStorage
-
-    assert alias is package_alias is canonical_index_values.ValmerDailyIndexValuesStorage
-    with pytest.raises(AttributeError):
-        canonical_index_values.NoSuchStorage  # noqa: B018
+    assert not hasattr(canonical_index_values, "DailyIndexValuesStorage")
+    assert not hasattr(data_nodes, "DailyIndexValuesStorage")
 
 
 def test_banxico_fixings_write_the_selected_storage(valmer_storage, monkeypatch) -> None:
