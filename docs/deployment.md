@@ -231,19 +231,21 @@ provider registers its tables in two namespaces:
 
 | Namespace | Tables registered by `valmer_connectors.migrations:migration` |
 | --- | --- |
-| `valmer_connectors` | `valmer_connectors__alembic_version`; `valmer_connectors__valmerassetdetails` (`valmer_connectors.ValmerAssetDetails`); `valmer_connectors__vector_de_precios_valmer` (`valmer_connectors.vector_de_precios_valmer`); since revision `0002`, Valmer's curve and fixing instances `valmer_connectors__discountcurvests__valmer` and `valmer_connectors__indexfixingsts__valmer` |
-| `mainsequence.markets` | `ms_markets__index_values__t_1d` (`IndexValuesTS.1d`), the canonical daily Index values |
+| `valmer_connectors` | `valmer_connectors__alembic_version`; `valmer_connectors__valmerassetdetails` (`valmer_connectors.ValmerAssetDetails`); `valmer_connectors__vector_de_precios_valmer` (`valmer_connectors.vector_de_precios_valmer`); since revision `0002`, Valmer's curve and fixing instances `valmer_connectors__discountcurvests__valmer` and `valmer_connectors__indexfixingsts__valmer`; since revision `0003`, Valmer's daily Index values `valmer_connectors__index_values__t_1d` (`valmer_connectors.IndexValuesTS.1d`) |
+| `mainsequence.markets` | `ms_markets__index_values__t_1d` (`IndexValuesTS.1d`), the daily Index values Valmer wrote before its own table; kept until every Environment has moved (step 7 of `docs/time-series-instances.md`) |
 
 Markets registries (assets, Index and Index type rows, conventions, curves,
 market-data bindings, current pricing details) and the Markets tables Valmer
 publishes into (asset snapshots, timestamped pricing details) are no longer
 written with MetaTables grants: the Jobs reach them through the Markets API
 (see [Markets API Access](#markets-api-access)). What Valmer still writes
-directly in `mainsequence.markets` is three time-index storages: the daily
-Index values table its provider creates there, and the core discount-curve
-(`ms_markets__discountcurvests`) and Index-fixing (`ms_markets__indexfixingsts`)
-storages, until the curves and fixings move to Valmer's own instances (see
-`docs/time-series-instances.md`). As the MetaTables guide
+directly in `mainsequence.markets` is three time-index storages, until they
+move to Valmer's own tables with `VALMER_TIME_SERIES_STORAGE=valmer` (see
+`docs/time-series-instances.md`): the daily Index-value table
+`ms_markets__index_values__t_1d`, which its provider also creates there, and the
+core discount-curve (`ms_markets__discountcurvests`) and Index-fixing
+(`ms_markets__indexfixingsts`) storages. After the switch a Valmer process
+attaches nothing in `mainsequence.markets`. As the MetaTables guide
 (`deploy-application-migrations.md` in the `metatables-migrations` skill)
 describes, one Team per Environment owns the Valmer tables, for example
 `valmer-connectors-production`. With the MetaTables role names (`owner`,
@@ -259,12 +261,17 @@ describes, one Team per Environment owns the Valmer tables, for example
 Once the default market-data set's bindings point at Valmer's instances
 (`docs/time-series-instances.md`), the Markets workload and every application
 that prices through that set need `data_viewer` on the two instance tables, and
-the Valmer Team no longer needs its roles on the two core storages.
+the Valmer Team no longer needs its roles on the two core storages. Once the
+Index values move, the Markets workload (its Index dataset catalog) and every
+application that reads Valmer's Index values need `data_viewer` on
+`valmer_connectors__index_values__t_1d`.
 
 The migration provider registers `ms_markets__index_values__t_1d` in
 `mainsequence.markets`, and migration admission checks every table of the
 provider, so `migrate-valmer` keeps the table `editor` role on it
-(`tables.migrate`) until ms-markets adopts the table. Only an Environment where
+(`tables.migrate`) until a later Valmer release drops the table from its
+provider, after every Environment has moved its Index values (step 7 of
+`docs/time-series-instances.md`). Only an Environment where
 revision `0001` has never run needs more: creating the table there takes
 `tables.create`, that is `editor` on the `mainsequence.markets` namespace, for
 that first migration. These grants follow the MetaTables permission matrix
@@ -329,15 +336,13 @@ and Valmer's own tables through MetaTables, so it attaches no markets runtime.
 
 Still outside the Markets API, each for a stated reason:
 
-- the daily Index values table `ms_markets__index_values__t_1d`, which the
-  Valmer migration provider creates in the Markets namespace. ms-markets must
-  adopt it in its own migrations before Valmer can stop creating and writing
-  it there;
-- the core discount-curve and Index-fixing storages, until the curves and
-  fixings move to Valmer's own instances (`docs/time-series-instances.md`;
-  the `time-series-backfill` Job copies their history with ms-markets'
-  `msm.storage_copies`, reading the core tables to do so, and copies the
-  instances' rows back on a rollback);
+- the Markets daily Index-value, discount-curve and Index-fixing tables,
+  until the three series move to Valmer's own tables
+  (`docs/time-series-instances.md`; the `time-series-backfill` Job copies
+  their history with ms-markets' `msm.storage_copies`, reading the Markets
+  tables to do so, and copies Valmer's rows back on a rollback). The migration
+  provider keeps registering `ms_markets__index_values__t_1d` until a later
+  release;
 - `scripts/patch_valmer_asset_pricing_details.py`, an operator-only repair
   that stays on the runtime backend: it finds stale payloads with JSON queries
   on the core pricing-detail tables, and no Markets route reads timestamped

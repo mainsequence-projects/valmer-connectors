@@ -10,8 +10,8 @@ pricing fixing.
 
 | Property | Value |
 | --- | --- |
-| MetaTable | `IndexValuesTS.1d` |
-| Physical table | `ms_markets__index_values__t_1d` |
+| MetaTable | `IndexValuesTS.1d` (Markets), `valmer_connectors.IndexValuesTS.1d` (Valmer) |
+| Physical table | `ms_markets__index_values__t_1d` by default; `valmer_connectors__index_values__t_1d` with `VALMER_TIME_SERIES_STORAGE=valmer` (`docs/time-series-instances.md`) |
 | Grain | `(time_index, index_identifier)` |
 | Value | `value` |
 | Provenance | `definition_uid`, `observation_status`, `source_as_of`, `metadata_json` |
@@ -95,11 +95,13 @@ rerunning the FRED and Banxico producers from their source APIs.
 
 ## Repair
 
-Delete only the affected Index tail from the canonical storage before rerunning
-its producer:
+Delete only the affected Index tail from the storage the producers write before
+rerunning its producer:
 
 ```python
-DailyIndexValuesStorage.get_time_index_meta_table().delete_after_date(
+from valmer_connectors.storage import daily_index_values_storage
+
+daily_index_values_storage().get_time_index_meta_table().delete_after_date(
     "<INCLUSIVE_UTC_CUTOFF>",
     dimension_filters={"index_identifier": ["<INDEX_IDENTIFIER>"]},
 )

@@ -66,8 +66,21 @@ of holding Writer on the `mainsequence.markets` namespace.
   valmer_connectors.services.time_series_backfill:valmer_series_moves`.
   `docs/time-series-instances.md` is the runbook: backfill, set the variable,
   rebind with `registry-seed`, backfill again, verify, revoke, or roll back.
-- The daily Index values table stays where it is: ms-markets has to adopt
-  `ms_markets__index_values__t_1d` first.
+- Valmer owns its daily Index values (ADR 0047, decision 4): revision `0003`
+  creates `valmer_connectors__index_values__t_1d`
+  (`valmer_connectors.IndexValuesTS.1d`), `ValmerDailyIndexValuesStorage`;
+  the Markets table `ms_markets__index_values__t_1d` is
+  `MarketsDailyIndexValuesStorage` and stays registered by revision `0001`
+  until a later release. The quote, FRED and Banxico policy producers, the
+  curve builders, queries, control plane and verification follow
+  `VALMER_TIME_SERIES_STORAGE` (`valmer_connectors.storage.daily_index_values_storage()`),
+  and the backfill moves the Index values with the curves and fixings.
+- **Deprecated:** `valmer_connectors.data_nodes.canonical_index_values.DailyIndexValuesStorage`
+  (also through `valmer_connectors.data_nodes`) is now an alias of
+  `ValmerDailyIndexValuesStorage`, Valmer's own table, not the Markets one,
+  and warns with `DeprecationWarning`; it is removed in 1.0. Import
+  `ValmerDailyIndexValuesStorage`, `MarketsDailyIndexValuesStorage`, or the
+  selector.
 
 ### Tests
 

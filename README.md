@@ -185,6 +185,13 @@ assets with row calls. Since 0.2.0 `bootstrap_runtime()` defaults to
 registry rows must pass `seed_static_rows=True`, or rely on Valmer's
 `registry-seed` Job having run in that Environment.
 
+`DailyIndexValuesStorage` is deprecated since 0.2.0 and now names Valmer's own
+table `valmer_connectors__index_values__t_1d`, not the Markets table
+`ms_markets__index_values__t_1d`. Import `MarketsDailyIndexValuesStorage` or
+`ValmerDailyIndexValuesStorage`, or call
+`valmer_connectors.storage.daily_index_values_storage()` for the table that
+`VALMER_TIME_SERIES_STORAGE` selects (see `docs/time-series-instances.md`).
+
 The Job applies only the Valmer provider. The ms-markets tables that the Valmer
 tables reference are owned and migrated by the ms-markets deployment, so they
 must already exist in the same DataSource. The asset-details key to
