@@ -8,17 +8,20 @@ Banco de Mexico policy target). ms-markets ADR 0047 has each provider keep such
 series in its own namespace, migrated by the provider: curves and fixings as
 instances of the Markets storage contract, found by Markets through the default
 pricing market-data set's bindings; Index values in the provider's own
-Index-value table, found by Markets' Index dataset catalog (decision 4). This
-page is the runbook for moving Valmer's three series there. Run nothing here
-before reading it to the end.
+Index-value table, found by Markets' Index dataset catalog (decision 4).
+
+From 0.2.0 on Valmer writes and reads only its own tables. There is no switch:
+the release that ships them is the one that starts writing them. This page is
+the runbook for deploying it, which copies the history once from the Markets
+tables, and for rolling it back. Run nothing here before reading it to the end.
 
 ## What Exists
 
-| Series | Markets table (today) | Valmer table | Found by Markets through |
+| Series | Valmer table | Markets table it replaces (copy source) | Found by Markets through |
 | --- | --- | --- | --- |
-| Discount curves | `ms_markets__discountcurvests` (`DiscountCurvesTS`) | `valmer_connectors__discountcurvests__valmer` (`valmer_connectors.DiscountCurvesTS.valmer`, revision `0002`) | the default market-data set's `discount_curves` binding |
-| Index fixings | `ms_markets__indexfixingsts` (`IndexFixingsTS`) | `valmer_connectors__indexfixingsts__valmer` (`valmer_connectors.IndexFixingsTS.valmer`, revision `0002`) | the `interest_rate_index_fixings` binding |
-| Daily Index values | `ms_markets__index_values__t_1d` (`IndexValuesTS.1d`, created by Valmer's revision `0001`) | `valmer_connectors__index_values__t_1d` (`valmer_connectors.IndexValuesTS.1d`, revision `0003`) | the Index dataset catalog, which discovers it |
+| Discount curves | `valmer_connectors__discountcurvests__valmer` (`valmer_connectors.DiscountCurvesTS.valmer`, revision `0002`) | `ms_markets__discountcurvests` (`DiscountCurvesTS`) | the default market-data set's `discount_curves` binding |
+| Index fixings | `valmer_connectors__indexfixingsts__valmer` (`valmer_connectors.IndexFixingsTS.valmer`, revision `0002`) | `ms_markets__indexfixingsts` (`IndexFixingsTS`) | the `interest_rate_index_fixings` binding |
+| Daily Index values | `valmer_connectors__index_values__t_1d` (`valmer_connectors.IndexValuesTS.1d`, revision `0003`) | `ms_markets__index_values__t_1d` (`IndexValuesTS.1d`, created by Valmer's revision `0001`) | the Index dataset catalog, which discovers it |
 
 The curve and fixing instances are built with
 `msm.storage_instances.configured_time_index_instance`, the Index-value table
@@ -29,27 +32,24 @@ table's columns, unique time index, secondary indexes and foreign keys (to
 `ms_markets__curve`, `ms_markets__index` and `ms_markets__indexformuladefinition`),
 in the `valmer_connectors` namespace. In code they are
 `valmer_discount_curves_instance()`, `valmer_index_fixings_instance()` and
-`ValmerDailyIndexValuesStorage`; the Markets Index-value table is
-`MarketsDailyIndexValuesStorage`, and `DailyIndexValuesStorage` is a deprecated
-alias of `ValmerDailyIndexValuesStorage`.
+`ValmerDailyIndexValuesStorage`. Every producer, reader, the attachment
+(`bootstrap_runtime()`) and `registry-seed` name them directly. The Markets
+tables appear only in the one-off move
+(`valmer_connectors.services.time_series_backfill`), as copy source and
+rollback target; `MarketsDailyIndexValuesStorage` names the Markets Index-value
+table for it.
 
-`VALMER_TIME_SERIES_STORAGE` selects which one every Valmer process uses:
-
-| Value | Producers write | Curve builders, queries, verification, control plane, dashboards read | `registry-seed` binds | Attached |
-| --- | --- | --- | --- | --- |
-| `markets` (default, unset) | Markets tables | Markets tables | the Markets tables | Markets tables |
-| `valmer` | Valmer's tables | Valmer's tables | Valmer's instances | Valmer's tables only, nothing in `mainsequence.markets` |
-
-Switching never changes an updater's `update_hash`: output tables are not part
-of it. Each producer bound to Valmer's table gets its own update record
-(MetaTables keys update records by hash and output table), and continues from
-that table's last observation. The exceptions are configurations that name a
-table they read: the TIIE, SOFR and cross-currency curves name the Index-value
-table they read quotes from (`quote_storage_table`), and the cross-currency
-curve the curve storage it reads its upstream curves from
-(`curve_storage_table`), so their hashes change with the switch, and so do
-their update records. Each Index-value producer reconciles the Index dataset
-catalog after a run as before; the catalog discovers whichever table it wrote.
+An output table is not part of an updater's `update_hash`, so most producers
+keep their hashes: each gets its own update record for Valmer's table and
+continues from that table's last observation, which the copy provides. The
+exceptions are configurations that name a table they read: the TIIE, SOFR and
+cross-currency curves name the Index-value table they read quotes from
+(`quote_storage_table`), and the cross-currency curve the curve table it reads
+its upstream curves from (`curve_storage_table`). A storage class in a
+configuration is hashed by its registered table uid, so these three hashes
+rotate once with this release; their data continues from the copied rows.
+Each Index-value producer reconciles the Index dataset catalog after a run as
+before; the catalog discovers the table it wrote.
 
 Out of scope: pricing details stay as they are. They are written through the
 Markets API (`AssetPricingDetails.add_many`), which writes the core table and
@@ -58,25 +58,10 @@ it would find a provider instance of them.
 
 ## Before You Start
 
-- This release (`0.2.0`) is deployed and `migrate-valmer` has applied
-  revisions `0002` and `0003` in the Environment (`metatables migrations current
-  --provider valmer_connectors.migrations:migration` reports `0003`). Until the
-  switch Valmer's tables are empty and nothing writes them.
-- The Valmer Team still holds its table roles on `ms_markets__discountcurvests`,
-  `ms_markets__indexfixingsts` and `ms_markets__index_values__t_1d`: the copy
-  reads them.
-- Grant `data_viewer` on Valmer's three tables to their readers. On the curve
-  and fixing instances: the Markets workload (Markets reads curves and fixings
-  by the binding's table uid) and every application that prices with
-  `msm_pricing` through the default market-data set, which reads the bound
-  table with its own identity. On `valmer_connectors__index_values__t_1d`: the
-  Markets workload (the Index dataset catalog and its value reads) and every
-  application that reads Valmer's Index values directly, for example through
-  `valmer_connectors.storage.daily_index_values_storage()` or the quote
-  queries. A reader without the grant fails once the switch is made.
-- Applications that import `DailyIndexValuesStorage` from Valmer now get
-  Valmer's table (with a `DeprecationWarning`); import
-  `MarketsDailyIndexValuesStorage` until the switch, or use the selector.
+- The Valmer Team holds table `editor` on `ms_markets__discountcurvests`,
+  `ms_markets__indexfixingsts` and `ms_markets__index_values__t_1d`, and
+  `metadata_viewer` on the tables they reference ("Teams And Namespaces" in
+  `docs/deployment.md`): the copy reads them, and its rollback writes them.
 - The default market-data set has one `discount_curves` and one
   `interest_rate_index_fixings` binding. Moving them to Valmer's instances moves
   the whole set: rows another producer wrote to the core tables are no longer
@@ -103,85 +88,93 @@ it would find a provider instance of them.
 
 ## Steps
 
-1. **Copy the history.** Launch `time-series-backfill` (Valmer Time-Series
-   Backfill) from the control plane, or run
-   `valmer-connectors time-series backfill` where the Valmer workload's grants
-   apply. It moves all three series (`--series` selects some) with ms-markets'
-   shared copy (`msm.storage_copies`): it reads both tables through MetaTables,
-   copies, and never recomputes, every row of Valmer's identities that Valmer's
-   table lacks (with empty update statistics, so a later pass fills gaps), then
-   prints per identity the rows in the source,
-   the target and the instance, the rows still missing and the rows copied, and
-   fails if any row is missing. `--dry-run` (the control plane's "Only count")
-   only reports. The TIIE, SOFR and cross-currency curves come from same-day
-   source files and cannot be rebuilt, so the copy is the only source of their
-   history. The same moves run with ms-markets' own command, which prints a
-   table and copies only with `--execute`:
+1. **Hold the schedules.** Disable the schedule of `standard-pipeline-refresh`,
+   the only scheduled Job, and until step 7 launch no Valmer Job but the ones
+   the steps below name.
+   A push re-enables a Job's schedule when it activates the new image
+   ("Workflow Declarations" in `docs/deployment.md`), so check it again right
+   after the push, or run the whole procedure between two scheduled runs
+   (`0 13 * * 1-5`).
+2. **Push.** `migrate-valmer` applies revisions `0002` and `0003` before the
+   API rolls out (`metatables migrations current --provider
+   valmer_connectors.migrations:migration` reports `0003`). Every Job takes the
+   new image and from then on writes and reads only Valmer's tables, which are
+   still empty.
+3. **Grant readers.** Grant `data_viewer` on Valmer's three tables to their
+   readers outside the Valmer Team: the Markets workload on all three (Markets
+   reads curves and fixings by the binding's table uid, and its Index dataset
+   catalog and value reads use the Index-value table), every application that
+   prices with `msm_pricing` through the default market-data set, which reads
+   the bound curve and fixing tables with its own identity, and every
+   application that reads Valmer's daily Index values directly (on
+   `valmer_connectors__index_values__t_1d`). A reader without the grant fails
+   as soon as it reads Valmer's tables: pricing once the bindings move in step
+   5.
+4. **Copy the history.** Launch `time-series-backfill` (Valmer Time-Series
+   Backfill) from the control plane with "Copy rows" set, or run
+   `valmer-connectors time-series backfill --execute` where the Valmer
+   workload's grants apply. It moves the curves, the fixings and the Index
+   values (`--series` selects some) with ms-markets' shared copy
+   (`msm.storage_copies`): it reads both tables through MetaTables, copies, and
+   never recomputes, every row of Valmer's identities that Valmer's table lacks
+   (with empty update statistics, so a later pass fills gaps), then prints per
+   identity the rows in the source, the target and the instance, the rows still
+   missing and the rows copied, and fails if any row is missing. Its report
+   must show `"complete": true`. Without "Copy rows" (`--execute`) it only
+   counts; a counting run first shows what will be copied. The TIIE, SOFR and
+   cross-currency curves come from same-day source files and cannot be rebuilt,
+   so the copy is the only source of their history. The same moves run with
+   ms-markets' own command:
 
    ```bash
    msm series move valmer_connectors.services.time_series_backfill:valmer_series_moves
    msm series move valmer_connectors.services.time_series_backfill:valmer_series_moves --execute
    ```
-2. **Switch.** Add the variable to every resource of
-   `.mainsequence/workflows/valmer-control-plane-api.yaml` except
-   `migrate-valmer`, in the same push:
-
-   ```yaml
-       spec:
-         env_vars:
-           - name: VALMER_TIME_SERIES_STORAGE
-             value: valmer
-   ```
-
-   (the API already has an `env_vars` list; add the entry to it). Every Job
-   takes the new image on that push and from then on writes and reads Valmer's
-   tables, and the Index-value producers' catalog reconcile records Valmer's
-   table.
-3. **Rebind.** Right after the push, launch `registry-seed`. It points the
-   default market-data set's `discount_curves` and `interest_rate_index_fixings`
-   bindings at the instances (their `storage_table_uid`). The scheduled
-   standard pipeline does the same in its first stage.
-4. **Catch up.** Launch `time-series-backfill` again: it copies the rows the
-   core tables received between steps 1 and 2. Its report must show
-   `"complete": true` and no missing rows.
-5. **Verify.** Launch `pipeline-verification`, which reads Valmer's tables
-   now, check that pricing through the default market-data set finds the curves
-   (for example `Curve.get_discount_curve_nodes` through the Markets API), and
-   that the Markets Index catalog lists `valmer_connectors.IndexValuesTS.1d` as
-   a dataset of Valmer's Indexes with values (`Index.list_datasets` or
-   `GET /api/v1/index/{uid}/datasets/`).
-6. **Revoke.** After a soak period, remove the Valmer Team's table roles on
-   `ms_markets__discountcurvests` and `ms_markets__indexfixingsts` and their
-   `metadata_viewer` on `ms_markets__curve`. Valmer's old rows stay in the core
-   tables; deleting them is Markets' decision.
-7. **Drop the legacy Index-value table from Valmer (a later release).** Once
-   every Environment has switched, a release removes
-   `MarketsDailyIndexValuesStorage` from Valmer's migration provider, and the
-   rollback of the Index values with it; the Valmer Team and `migrate-valmer`
-   then drop their roles on `ms_markets__index_values__t_1d`, and Valmer holds
-   nothing in `mainsequence.markets`. The table itself stays registered there
-   until Markets decides what to do with it: Valmer's provider removing a
-   model does not delete its table. Until that release the migration Job keeps
-   its table role on it, because migration admission checks every table of the
-   provider.
+5. **Rebind.** Launch `registry-seed`. It points the default market-data set's
+   `discount_curves` and `interest_rate_index_fixings` bindings at Valmer's
+   instances (their `storage_table_uid`).
+6. **Verify.** Launch `pipeline-verification`, which reads Valmer's tables, and
+   check that pricing through the default market-data set finds the curves (for
+   example `Curve.get_discount_curve_nodes` through the Markets API).
+7. **Resume.** Enable the schedule of `standard-pipeline-refresh` again. Its
+   first stage rebinds as `registry-seed` did, and its producers continue from
+   the copied rows (the TIIE, SOFR and cross-currency curves under their new
+   update hashes). After that run, check that the Markets Index catalog lists
+   `valmer_connectors.IndexValuesTS.1d` as a dataset of Valmer's Indexes with
+   values (`Index.list_datasets` or `GET /api/v1/index/{uid}/datasets/`).
+8. **Clean up (a later release).** After a soak period, a release removes
+   `MarketsDailyIndexValuesStorage` from Valmer's migration provider and the
+   one-off move (and with it the rollback). The Valmer Team then drops its
+   table roles on `ms_markets__discountcurvests`, `ms_markets__indexfixingsts`
+   and `ms_markets__index_values__t_1d` and its `metadata_viewer` on the tables
+   they reference, `migrate-valmer` its role on `mainsequence.markets`, and
+   Valmer holds nothing in `mainsequence.markets`. Until that release the
+   migration Job keeps its table role on `ms_markets__index_values__t_1d`,
+   because migration admission checks every table of the provider. Valmer's
+   old rows stay in the Markets tables, which stay registered there: Valmer's
+   provider removing a model does not delete its table, and deleting them is
+   Markets' decision.
 
 ## Rolling Back
 
-Before step 6 (step 7 for the Index values), while the Valmer Team still holds
-its roles on the Markets tables (the rollback reads Valmer's tables and writes
-the Markets tables):
+Before step 8, while the Valmer Team still holds its roles on the Markets tables
+(the rollback reads Valmer's tables and writes the Markets tables):
 
-1. Set `VALMER_TIME_SERIES_STORAGE` back to `markets` (or remove it) on every
-   resource of the workflow, and push. The Jobs write the core tables again.
-2. Copy the rows Valmer's tables gained back: launch `time-series-backfill` with
-   "Roll back" set, or run `valmer-connectors time-series backfill --rollback`
-   (`msm series rollback
+1. **Hold the schedules** as in step 1.
+2. **Deploy the previous release.** It writes the Markets tables and
+   registries with its own MetaTables grants (Writer on `mainsequence.markets`
+   in its deployment guide) and pins its own ms-markets release, so restore
+   those grants and check that the Environment's Markets deployment still
+   serves it first. Its processes seed the default bindings onto the Markets
+   tables again when they start.
+3. **Copy the rows Valmer's tables gained back.** The previous release has no
+   backfill Job, so run the rollback from a checkout of this release where the
+   Valmer Team's grants apply: `valmer-connectors time-series backfill
+   --rollback --execute`, or `msm series rollback
    valmer_connectors.services.time_series_backfill:valmer_series_moves
-   --execute` does the same). Like the forward copy it writes only the rows the
-   Markets tables lack, so rows the Jobs wrote after the push are kept, and it
-   fails while a row is missing. The Index values go back into
+   --execute`. Like the forward copy it writes only the rows the Markets tables
+   lack and fails while a row is missing. The Index values go back into
    `ms_markets__index_values__t_1d`.
-3. Launch `registry-seed`: it binds the default market-data set to the core
-   tables again.
+4. **Resume** the schedule.
 
 Valmer's tables keep their rows; nothing deletes them.
