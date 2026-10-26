@@ -28,8 +28,8 @@ The dashboard reuses MainSequence Streamlit scaffolding plus sidebar components
 for authenticated-user display and asset lookup, then layers Valmer-specific
 charts and tables on top of the stored output table schema.
 
-The curve page monitors `msm_pricing.data_nodes.DiscountCurvesNode` output. It
-no longer reads the old standalone curve table.
+The curve page monitors `msm_pricing.time_index.DiscountCurvesUpdater` output.
+It no longer reads the old standalone curve table.
 
 ## Spread Analysis
 

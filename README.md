@@ -31,11 +31,11 @@ Vector Analitico CETES and M Bonos rows.
   control-plane API select ms-markets' remote row backend and attach only the
   Valmer tables (see "Markets API Access" in `docs/deployment.md`).
 - Publishes the Valmer TIIE curve through the canonical
-  `msm_pricing.data_nodes.DiscountCurvesNode` path.
+  `msm_pricing.time_index.DiscountCurvesUpdater` path.
 - Publishes the Valmer USD SOFR curve through the same
-  `DiscountCurvesNode` path.
+  `DiscountCurvesUpdater` path.
 - Publishes the Valmer MXN government curve through the same
-  `DiscountCurvesNode` path from CETES and M Bonos Vector Analitico rows.
+  `DiscountCurvesUpdater` path from CETES and M Bonos Vector Analitico rows.
 - Includes a project-specific multipage Streamlit dashboard under
   `dashboards/valmer_monitor/`.
 - Serves the backend half of the Valmer Command Center control plane through

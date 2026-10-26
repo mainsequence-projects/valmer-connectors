@@ -87,7 +87,7 @@ MetaTables API on 0.1.35 and its Markets deployment on 2.2.10; see
 | Pricing hydration | `prepare_for_update()` calls `_sync_asset_registry_and_pricing(...)` before `run()` and writes through `msm_pricing.api.add_many_pricing_details(...)` | live pricing-details write validation, including incomplete-result failure behavior |
 | Runtime bootstrap | `bootstrap_runtime()` is the single project runtime entry point | live idempotency validation |
 | Project migrations | `valmer_connectors.migrations:migration` uses `metatables.migrations` helper machinery; the `migrate-valmer` deployment Job applies it before the API rolls out | first successful hosted Job run |
-| Curves | Valmer TIIE and MXN government curves publish through `DiscountCurvesNode` | live curve updates |
+| Curves | Valmer TIIE and MXN government curves publish through `DiscountCurvesUpdater` | live curve updates |
 | Fixings | no project-owned fixing ETL exists | remains out of scope |
 | Dashboard | monitors source, pricing hydration, and curve health | run with valid credentials |
 

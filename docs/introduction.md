@@ -22,11 +22,11 @@ with Valmer market data for Mexican fixed income.
 - Publishes complete Valmer MXN and USD curve-input quote snapshots as canonical
   daily `Index` observations in Valmer's `valmer_connectors.IndexValuesTS.1d`.
 - Publishes the Valmer TIIE and USD SOFR curves through named dependency-backed
-  `DiscountCurvesNode` implementations that consume those stored observations.
+  `DiscountCurvesUpdater` implementations that consume those stored observations.
 - Publishes the USD/MXN collateral curve from stored XCCY observations and
   same-date stored TIIE/SOFR curve dependencies.
 - Publishes the Valmer MXN government curve through the same
-  `DiscountCurvesNode` path from CETES and M Bonos Vector Analitico rows.
+  `DiscountCurvesUpdater` path from CETES and M Bonos Vector Analitico rows.
 - Publishes FRED Treasury yields, the Federal Funds target upper limit, and the
   Banco de Mexico policy target to the same daily Index-value table.
 - Ships a multipage Streamlit dashboard for source coverage, pricing hydration,

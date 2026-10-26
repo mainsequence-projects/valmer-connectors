@@ -157,7 +157,7 @@ Their input quote conventions differ:
   Annual fixed-payment convention. The persisted `curve` output remains
   bootstrapped zero rates. The Valmer curve runner validates that `key_nodes`
   contain only the included SOFR futures/OIS construction families before the
-  core `DiscountCurvesNode` compresses them.
+  core `DiscountCurvesUpdater` compresses them.
 - `VALMER_MXN_USD_COLLATERAL_DISCOUNT` uses
   `builder_type = rate_helper_curve`, `quote_convention = helper_quote`, and
   `rate_unit = helper_unit`. Its USD/MXN spot, FX swap, and F-TIIE/SOFR CCS
@@ -284,7 +284,7 @@ The command resolves the Banxico SIE token from Main Sequence Secret
 `BANXICO_TOKEN` unless the runtime environment already provides a
 `BANXICO_TOKEN` value. It validates Banxico series metadata by default, parses
 Banxico `fecha`/`dato` observations, converts percentage-form rates to decimal
-rates, and publishes rows through `FixingRatesNode` with:
+rates, and publishes rows through `FixingRatesUpdater` with:
 
 ```text
 time_index
@@ -407,7 +407,7 @@ source_instrument_identifier = "<raw Valmer identifier>"
 The key-node validator rejects Asset references and rejected top-level identity
 fields for these quote families. It also validates quote type/unit, source
 quote/unit, source date, conventions, and raw source identity before core
-`DiscountCurvesNode` compression.
+`DiscountCurvesUpdater` compression.
 
 Run the quote producers before curves when invoking the launchers manually;
 the named curve TimeIndexTableUpdaters declare the same ordering through `dependencies()`.
@@ -477,9 +477,9 @@ clean-price input. M Bonos key-node quotes use `preciolimpio` with
 `quote_unit = price_per_100`.
 The Valmer curve runner validates that the final key-node set contains CETES
 zero-coupon helpers and M Bonos fixed-rate helpers before the core
-`DiscountCurvesNode` compresses the provenance column.
+`DiscountCurvesUpdater` compresses the provenance column.
 
-No row metadata is populated; the core `DiscountCurvesNode` normalizer supplies
+No row metadata is populated; the core `DiscountCurvesUpdater` normalizer supplies
 the nullable storage `metadata_json` column as `None` when the backend contract
 requires it.
 
@@ -567,8 +567,8 @@ Each emitted curve date must have at least one CETES helper and one M Bonos
 helper. Duplicate instrument identifiers fail. Duplicate maturities are reduced
 to one pillar, preferring CETES over M Bonos for the same maturity.
 
-The connector builder follows the current `msm_pricing.DiscountCurvesNode`
-contract:
+The connector builder follows the current
+`msm_pricing.time_index.DiscountCurvesUpdater` contract:
 
 ```text
 time_index
@@ -584,7 +584,7 @@ builder frame uses `curve_identifier`. Do not emit the removed
 The emitted `curve` value is an uncompressed dictionary of zero-rate points
 keyed by days to maturity. The emitted `key_nodes` value is uncompressed
 source-owned JSON using the recommended `CurveKeyNode` shape plus
-Valmer-specific extensions. The core `DiscountCurvesNode` storage, curve codec,
+Valmer-specific extensions. The core `DiscountCurvesUpdater` storage, curve codec,
 and key-node codec own compression and persistence.
 
 Example logical output:
