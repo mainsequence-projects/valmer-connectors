@@ -299,10 +299,10 @@ class CallerAssertionAuthority:
             "iat": now,
             "nbf": now,
             "exp": now + 120,
-            # What the platform states about every caller: its active team UIDs
-            # and whether it is an Organization admin. The SDK refuses an
-            # assertion without them since 9.0.22 (ADR-0048, section 7).
-            "team_uids": [],
+            # What the platform states about every caller: whether it is an
+            # Organization admin. SDK 9.0.29 and later (which ms-markets 3.0
+            # requires) refuse an assertion without it and one that lists the
+            # caller's teams; membership is checked on demand instead.
             "is_organization_admin": False,
             **claims,
         }
@@ -615,10 +615,12 @@ HOSTED_REJECTIONS = {
             key=ed25519.Ed25519PrivateKey.generate(),
         )
     },
-    "assertion-without-the-caller-team-facts": lambda authority: {
+    "assertion-without-the-caller-admin-flag": lambda authority: {
+        ASSERTION_HEADER: authority.sign(OPERATOR_UID, omit=("is_organization_admin",))
+    },
+    "assertion-that-lists-the-caller-teams": lambda authority: {
         ASSERTION_HEADER: authority.sign(
-            OPERATOR_UID,
-            omit=("team_uids", "is_organization_admin"),
+            OPERATOR_UID, team_uids=["0b5e6a3c-7d2f-4c1e-9a8b-3f4e5d6c7b8a"]
         )
     },
     "numeric-user-id-beside-a-valid-assertion": lambda authority: {
@@ -1332,14 +1334,10 @@ def test_an_organization_admin_outside_the_operator_list_is_a_viewer(
     hosted_runtime,
 ) -> None:
     """Operators are the explicit VALMER_CONTROL_PLANE_OPERATOR_UIDS list. The
-    admin flag and team UIDs in the caller assertion grant nothing here."""
+    admin flag in the caller assertion grants nothing here."""
     payload = {"selection": {"mode": "explicit", "uids": ["job-1"]}, "options": {}}
     gateway = FakeControlPlaneGateway()
-    admin_assertion = hosted_runtime.sign(
-        VIEWER_UID,
-        team_uids=["0b5e6a3c-7d2f-4c1e-9a8b-3f4e5d6c7b8a"],
-        is_organization_admin=True,
-    )
+    admin_assertion = hosted_runtime.sign(VIEWER_UID, is_organization_admin=True)
 
     with TestClient(
         create_app(_service(gateway)), headers={ASSERTION_HEADER: admin_assertion}
