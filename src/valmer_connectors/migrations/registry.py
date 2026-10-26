@@ -6,7 +6,7 @@ from msm.base import MarketsBase
 
 def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
     from valmer_connectors.data_nodes.canonical_index_values import (
-        DailyIndexValuesStorage,
+        MarketsDailyIndexValuesStorage,
     )
     from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
     from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
@@ -15,7 +15,7 @@ def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
     return [
         ValmerAssetDetailsTable,
         ValmerVectorPricesStorage,
-        DailyIndexValuesStorage,
+        MarketsDailyIndexValuesStorage,
         # Valmer's instances of the Markets discount-curve and Index-fixing
         # storages (ms-markets ADR 0047), created by revision 0002.
         *valmer_time_series_instances(),

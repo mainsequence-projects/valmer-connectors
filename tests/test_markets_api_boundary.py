@@ -155,7 +155,7 @@ def test_bootstrap_attaches_only_valmer_tables_under_the_markets_api(monkeypatch
     from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
     from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 
-    from valmer_connectors.data_nodes.canonical_index_values import DailyIndexValuesStorage
+    from valmer_connectors.data_nodes.canonical_index_values import MarketsDailyIndexValuesStorage
     from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
     from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 
@@ -165,7 +165,7 @@ def test_bootstrap_attaches_only_valmer_tables_under_the_markets_api(monkeypatch
     assert attached["models"] == [
         ValmerAssetDetailsTable,
         ValmerVectorPricesStorage,
-        DailyIndexValuesStorage,
+        MarketsDailyIndexValuesStorage,
         DiscountCurvesStorage,
         IndexFixingsStorage,
     ]

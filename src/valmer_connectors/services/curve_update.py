@@ -9,9 +9,6 @@ import structlog
 from metatables import UpdateStatistics
 from msm_pricing.data_nodes import CurveConfig, DiscountCurvesNode
 
-from valmer_connectors.data_nodes.canonical_index_values import (
-    DailyIndexValuesStorage,
-)
 from valmer_connectors.data_nodes.curve_building import (
     ValmerQuoteBackedCurveConfig,
     ValmerTiieDiscountCurveNode,
@@ -38,7 +35,7 @@ from valmer_connectors.instruments.mexican_government_bond_curve import (
     build_mxn_government_curve_frame,
     select_mxn_government_bootstrap_instruments,
 )
-from valmer_connectors.storage import discount_curves_storage
+from valmer_connectors.storage import daily_index_values_storage, discount_curves_storage
 
 CurveBuilder = Callable[..., pd.DataFrame]
 KeyNodesValidator = Callable[..., Any]
@@ -172,7 +169,7 @@ def run_tiie_irs_mxn_curve_update(
     ValmerTiieDiscountCurveNode(
         curve_config=ValmerQuoteBackedCurveConfig(
             curve_unique_identifier=curve_identifier,
-            quote_storage_table=DailyIndexValuesStorage,
+            quote_storage_table=daily_index_values_storage(),
             source_families=("tiie_ois",),
         ),
         output_table=discount_curves_storage(),
@@ -190,7 +187,7 @@ def run_usd_sofr_curve_update(
     ValmerUsdSofrDiscountCurveNode(
         curve_config=ValmerQuoteBackedCurveConfig(
             curve_unique_identifier=curve_identifier,
-            quote_storage_table=DailyIndexValuesStorage,
+            quote_storage_table=daily_index_values_storage(),
             source_families=("sofr_future", "sofr_ois"),
         ),
         output_table=discount_curves_storage(),
@@ -211,7 +208,7 @@ def run_usd_mxn_xccy_curve_update(
     node = ValmerUsdMxnCollateralDiscountCurveNode(
         curve_config=ValmerXccyCurveConfig(
             curve_unique_identifier=curve_identifier,
-            quote_storage_table=DailyIndexValuesStorage,
+            quote_storage_table=daily_index_values_storage(),
             # The XCCY curve reads its upstream curves where they are written.
             curve_storage_table=curve_storage,
             source_families=("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),

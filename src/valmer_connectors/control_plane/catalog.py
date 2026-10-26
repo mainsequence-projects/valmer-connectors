@@ -6,11 +6,14 @@ from typing import Literal
 from msm.models import AssetTable
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
-from valmer_connectors.data_nodes.canonical_index_values import DailyIndexValuesStorage
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 from valmer_connectors.services.migrations import MIGRATION_JOB_EXECUTION_PATH
-from valmer_connectors.storage import discount_curves_storage, index_fixings_storage
+from valmer_connectors.storage import (
+    daily_index_values_storage,
+    discount_curves_storage,
+    index_fixings_storage,
+)
 
 
 @dataclass(frozen=True)
@@ -92,7 +95,7 @@ VECTOR_PARAMETERS = (
 # (VALMER_TIME_SERIES_STORAGE, read when the catalog is imported).
 DISCOUNT_CURVE_TABLE_IDENTIFIER = discount_curves_storage().__table__.name
 INDEX_FIXINGS_TABLE_IDENTIFIER = index_fixings_storage().__table__.name
-INDEX_VALUES_TABLE_IDENTIFIER = DailyIndexValuesStorage.__table__.name
+INDEX_VALUES_TABLE_IDENTIFIER = daily_index_values_storage().__table__.name
 CANONICAL_ASSET_TABLE_IDENTIFIER = AssetTable.__table__.name
 CURRENT_PRICING_DETAILS_TABLE_IDENTIFIER = (
     AssetCurrentPricingDetailsTable.__table__.name

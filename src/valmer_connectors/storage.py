@@ -1,21 +1,25 @@
-"""Where Valmer's discount curves and Index fixings live (ms-markets ADR 0047).
+"""Where Valmer's curves, Index fixings and daily Index values live (ms-markets ADR 0047).
 
-Valmer produces two Markets time series besides its own tables: discount curves
-(TIIE, SOFR, USD/MXN cross-currency, MXN government) and Banxico Index fixings.
-ms-markets lets a provider keep such a series in its own namespace: an instance
-of the Markets storage contract (``msm.storage_instances``), migrated by the
-provider's Alembic revisions and found by Markets through the
-``storage_table_uid`` of the default pricing market-data set's bindings.
+Valmer produces three Markets time series besides its own tables: discount
+curves (TIIE, SOFR, USD/MXN cross-currency, MXN government), Banxico Index
+fixings and canonical daily Index values (Valmer curve quotes, FRED and Banxico
+policy rates). ms-markets lets a provider keep each in its own namespace: an
+instance of the Markets storage contract (``msm.storage_instances``) for curves
+and fixings, found by Markets through the ``storage_table_uid`` of the default
+pricing market-data set's bindings, and a provider Index-value table
+(``configured_index_values_storage(namespace=, storage_app=, base=)``), found by
+Markets' Index dataset catalog. Valmer's revisions migrate them.
 
-Valmer's instances are ``valmer_connectors__discountcurvests__valmer`` and
-``valmer_connectors__indexfixingsts__valmer`` in the ``valmer_connectors``
-namespace (revision ``0002``). Which storage the producers write, the curve
-builders and verification read, and the registry seed binds is selected by
-``VALMER_TIME_SERIES_STORAGE``:
+Valmer's tables are ``valmer_connectors__discountcurvests__valmer`` and
+``valmer_connectors__indexfixingsts__valmer`` (revision ``0002``) and
+``valmer_connectors__index_values__t_1d`` (revision ``0003``), all in the
+``valmer_connectors`` namespace. Which tables the producers write, the curve
+builders, queries, control plane and verification read, and the registry seed
+binds is selected by ``VALMER_TIME_SERIES_STORAGE``:
 
 - ``markets`` (the default): the core Markets tables, as before. It stays the
-  default until the instances are migrated and backfilled in an Environment;
-- ``valmer``: Valmer's instances.
+  default until Valmer's tables are migrated and backfilled in an Environment;
+- ``valmer``: Valmer's tables.
 
 The switch is per process and every Valmer workload must agree, so it is set as
 a workflow environment variable; ``docs/time-series-instances.md`` is the
@@ -43,6 +47,7 @@ __all__ = [
     "VALMER_INSTANCE_KEY",
     "VALMER_TIME_SERIES_STORAGE",
     "VALMER_TIME_SERIES_STORAGE_ENV",
+    "daily_index_values_storage",
     "discount_curves_storage",
     "index_fixings_storage",
     "resolve_time_series_storage",
@@ -121,6 +126,25 @@ def index_fixings_storage(storage: str | None = None) -> type[Any]:
     from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 
     return IndexFixingsStorage
+
+
+def daily_index_values_storage(storage: str | None = None) -> type[Any]:
+    """The canonical daily Index-value table the selected time-series storage names.
+
+    The Markets table ``ms_markets__index_values__t_1d`` by default, Valmer's own
+    ``valmer_connectors__index_values__t_1d`` with ``valmer``. The quote, FRED and
+    Banxico policy producers write it, the curve builders, queries, control plane
+    and verification read it, and Markets' Index dataset catalog discovers either.
+    """
+
+    from valmer_connectors.data_nodes.canonical_index_values import (
+        MarketsDailyIndexValuesStorage,
+        ValmerDailyIndexValuesStorage,
+    )
+
+    if resolve_time_series_storage(storage) == VALMER_TIME_SERIES_STORAGE:
+        return ValmerDailyIndexValuesStorage
+    return MarketsDailyIndexValuesStorage
 
 
 def storage_table_identifier(storage: type[Any]) -> str:

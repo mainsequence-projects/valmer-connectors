@@ -9,14 +9,49 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 
 import pandas as pd
+from msm.base import MarketsBase
 from msm.data_nodes.indices import (
     IndexDataNodeConfiguration,
     IndexValuesDataNode,
-    configured_index_values_storage,
 )
+from msm.time_index.indices import configured_index_values_storage
 from pydantic import Field, field_validator, model_validator
 
-DailyIndexValuesStorage = configured_index_values_storage(cadence="1d")
+from valmer_connectors.markets import VALMER_MARKETS_NAMESPACE, VALMER_MARKETS_STORAGE_APP
+
+# Valmer's own canonical daily Index values (ms-markets ADR 0047, decision 4):
+# valmer_connectors__index_values__t_1d, identifier valmer_connectors.IndexValuesTS.1d,
+# in the valmer_connectors namespace, created by revision 0003. MarketsBase is the
+# declarative base of Valmer's own tables, so its migration provider owns it with them.
+ValmerDailyIndexValuesStorage = configured_index_values_storage(
+    cadence="1d",
+    namespace=VALMER_MARKETS_NAMESPACE,
+    storage_app=VALMER_MARKETS_STORAGE_APP,
+    base=MarketsBase,
+)
+# The Markets table ms_markets__index_values__t_1d (IndexValuesTS.1d) that Valmer
+# wrote until its own table existed. Revision 0001 still creates it; it is only
+# the source of the move into ValmerDailyIndexValuesStorage and the target of
+# its rollback (docs/time-series-instances.md).
+MarketsDailyIndexValuesStorage = configured_index_values_storage(cadence="1d")
+
+
+def __getattr__(name: str) -> Any:
+    if name == "DailyIndexValuesStorage":
+        import warnings
+
+        warnings.warn(
+            "valmer_connectors.data_nodes.canonical_index_values.DailyIndexValuesStorage "
+            "is deprecated and now names ValmerDailyIndexValuesStorage "
+            "(valmer_connectors__index_values__t_1d); use ValmerDailyIndexValuesStorage, "
+            "MarketsDailyIndexValuesStorage, or valmer_connectors.storage."
+            "daily_index_values_storage() for the table VALMER_TIME_SERIES_STORAGE selects. "
+            "It is removed in valmer-connectors 1.0.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return ValmerDailyIndexValuesStorage
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class IndexObservationError(RuntimeError):
@@ -241,7 +276,15 @@ class DailyIndexValuesNode(IndexValuesDataNode):
 
     @classmethod
     def _required_output_table(cls):
-        return DailyIndexValuesStorage
+        """The daily Index-value table ``VALMER_TIME_SERIES_STORAGE`` selects.
+
+        The Markets table by default, Valmer's own with ``valmer``; the output
+        table is not part of an updater's ``update_hash``.
+        """
+
+        from valmer_connectors.storage import daily_index_values_storage
+
+        return daily_index_values_storage()
 
 
 class ReferenceRateIndexValuesNode(DailyIndexValuesNode):
@@ -308,8 +351,8 @@ def _normalize_date(value: dt.date | dt.datetime | str | pd.Timestamp) -> dt.dat
 
 __all__ = [
     "DailyIndexValuesNode",
-    "DailyIndexValuesStorage",
     "IndexObservationError",
+    "MarketsDailyIndexValuesStorage",
     "ReferenceRateIndexDefinition",
     "ReferenceRateIndexValuesNode",
     "ReferenceRateObservationConfiguration",
@@ -318,5 +361,6 @@ __all__ = [
     "empty_index_values_frame",
     "normalize_index_value_rows",
     "resolve_reference_rate_update_window",
+    "ValmerDailyIndexValuesStorage",
     "upsert_reference_rate_indexes",
 ]

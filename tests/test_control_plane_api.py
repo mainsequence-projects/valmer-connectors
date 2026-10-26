@@ -63,7 +63,7 @@ from valmer_connectors.control_plane.service import (
     _qualified_table_name,
     _select_meta_table_rows,
 )
-from valmer_connectors.data_nodes.canonical_index_values import DailyIndexValuesStorage
+from valmer_connectors.data_nodes.canonical_index_values import MarketsDailyIndexValuesStorage
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.meta_tables.valmer_asset_details import ValmerAssetDetailsTable
 from valmer_connectors.services.migrations import MIGRATION_WORKFLOW_PATH
@@ -800,7 +800,7 @@ def test_control_plane_uses_registered_namespaced_valmer_table_identifiers() -> 
         == ValmerAssetDetailsTable.__table__.name
     )
     assert VECTOR_TABLE_IDENTIFIER == ValmerVectorPricesStorage.__table__.name
-    assert INDEX_VALUES_TABLE_IDENTIFIER == DailyIndexValuesStorage.__table__.name
+    assert INDEX_VALUES_TABLE_IDENTIFIER == MarketsDailyIndexValuesStorage.__table__.name
     assert INDEX_FIXINGS_TABLE_IDENTIFIER == IndexFixingsStorage.__table__.name
     assert DISCOUNT_CURVE_TABLE_IDENTIFIER == DiscountCurvesStorage.__table__.name
     registered_assets = next(

@@ -8,8 +8,8 @@ from msm.models.indices import IndexTable
 from pydantic import ValidationError
 
 from valmer_connectors.data_nodes.canonical_index_values import (
-    DailyIndexValuesStorage,
     IndexObservationError,
+    MarketsDailyIndexValuesStorage,
     ReferenceRateObservationConfiguration,
     canonical_index_value_row,
     normalize_index_value_rows,
@@ -20,24 +20,24 @@ from valmer_connectors.data_nodes.canonical_index_values import (
 class ReferenceRateStorageTests(unittest.TestCase):
     def test_storage_contract_is_canonical_daily_and_index_keyed(self):
         self.assertEqual(
-            DailyIndexValuesStorage.__metatable_identifier__,
+            MarketsDailyIndexValuesStorage.__metatable_identifier__,
             "IndexValuesTS.1d",
         )
         self.assertEqual(
-            DailyIndexValuesStorage.__table__.name,
+            MarketsDailyIndexValuesStorage.__table__.name,
             index_values_output_table_name(cadence="1d"),
         )
         self.assertEqual(
-            DailyIndexValuesStorage.__index_names__,
+            MarketsDailyIndexValuesStorage.__index_names__,
             ["time_index", "index_identifier"],
         )
-        self.assertEqual(DailyIndexValuesStorage.__cadence__, "1d")
+        self.assertEqual(MarketsDailyIndexValuesStorage.__cadence__, "1d")
         self.assertEqual(
-            DailyIndexValuesStorage.__metatable_extra_hash_components__,
+            MarketsDailyIndexValuesStorage.__metatable_extra_hash_components__,
             {"storage_name": "index_values", "cadence": "1d"},
         )
 
-        columns = DailyIndexValuesStorage.__table__.c
+        columns = MarketsDailyIndexValuesStorage.__table__.c
         self.assertFalse(columns.time_index.nullable)
         self.assertFalse(columns.index_identifier.nullable)
         self.assertFalse(columns.value.nullable)

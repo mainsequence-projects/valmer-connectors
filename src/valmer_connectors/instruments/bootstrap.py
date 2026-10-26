@@ -15,24 +15,23 @@ _STATIC_DEFAULTS_SEEDED = False
 
 
 def valmer_table_models() -> list[Any]:
-    """Valmer's own tables and the canonical daily Index values table.
+    """Valmer's own tables and the canonical daily Index-value table it writes.
 
-    ``ms_markets__index_values__t_1d`` is created by the Valmer migration
-    provider in the Markets namespace until ms-markets adopts it.
+    The Index-value table is the one ``VALMER_TIME_SERIES_STORAGE`` selects: the
+    Markets table ``ms_markets__index_values__t_1d`` by default, Valmer's own
+    ``valmer_connectors__index_values__t_1d`` with ``valmer``.
     """
 
-    from valmer_connectors.data_nodes.canonical_index_values import (
-        DailyIndexValuesStorage,
-    )
     from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
     from valmer_connectors.meta_tables.valmer_asset_details import (
         ValmerAssetDetailsTable,
     )
+    from valmer_connectors.storage import daily_index_values_storage
 
     return [
         ValmerAssetDetailsTable,
         ValmerVectorPricesStorage,
-        DailyIndexValuesStorage,
+        daily_index_values_storage(),
     ]
 
 

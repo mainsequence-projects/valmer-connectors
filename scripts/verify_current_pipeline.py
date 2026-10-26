@@ -15,7 +15,6 @@ from msm.repositories.base import (
 from msm_pricing.data_nodes.curves.key_nodes import decompress_key_nodes_from_string
 from sqlalchemy import func, select
 
-from valmer_connectors.data_nodes.canonical_index_values import DailyIndexValuesStorage
 from valmer_connectors.instruments.bootstrap import bootstrap_runtime
 from valmer_connectors.instruments.curve_bootstrap import (
     VALMER_MXN_GOVERNMENT_BOND_CURVE_UNIQUE_IDENTIFIER,
@@ -33,7 +32,11 @@ from valmer_connectors.runtime import use_markets_api
 from valmer_connectors.services.curve_update import (
     load_mxn_government_curve_source_from_vector_storage,
 )
-from valmer_connectors.storage import discount_curves_storage, index_fixings_storage
+from valmer_connectors.storage import (
+    daily_index_values_storage,
+    discount_curves_storage,
+    index_fixings_storage,
+)
 
 CURVE_IDENTIFIERS = (
     VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
@@ -167,7 +170,7 @@ def _validate_curve_coverage(
 def main() -> None:
     bootstrap_runtime(seed_static_rows=False)
 
-    daily_table = DailyIndexValuesStorage.__table__
+    daily_table = daily_index_values_storage().__table__
     daily_stats = _rows(
         select(
             daily_table.c.index_identifier,

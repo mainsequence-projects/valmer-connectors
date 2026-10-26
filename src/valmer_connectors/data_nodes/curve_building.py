@@ -11,7 +11,7 @@ from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from pydantic import Field
 
 from valmer_connectors.data_nodes.canonical_index_values import (
-    DailyIndexValuesStorage,
+    MarketsDailyIndexValuesStorage,
 )
 from valmer_connectors.data_nodes.curve_quote_indices import (
     MXN_QUOTE_FAMILIES,
@@ -46,7 +46,7 @@ class ValmerQuoteBackedCurveConfig(CurveConfig):
     """Curve updater identity including its selected canonical quote storage."""
 
     quote_storage_table: type[PlatformTimeIndexMetaTable] = Field(
-        default=DailyIndexValuesStorage,
+        default=MarketsDailyIndexValuesStorage,
         description="Registered canonical Index-values storage selected as quote input.",
     )
     source_families: tuple[str, ...] = Field(
@@ -189,29 +189,33 @@ class ValmerUsdMxnCollateralDiscountCurveNode(DiscountCurvesNode):
 
 
 def tiie_curve_config() -> ValmerQuoteBackedCurveConfig:
+    from valmer_connectors.storage import daily_index_values_storage
+
     return ValmerQuoteBackedCurveConfig(
         curve_unique_identifier=VALMER_TIIE_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        quote_storage_table=DailyIndexValuesStorage,
+        quote_storage_table=daily_index_values_storage(),
         source_families=("tiie_ois",),
     )
 
 
 def sofr_curve_config() -> ValmerQuoteBackedCurveConfig:
+    from valmer_connectors.storage import daily_index_values_storage
+
     return ValmerQuoteBackedCurveConfig(
         curve_unique_identifier=VALMER_USD_SOFR_OVERNIGHT_CURVE_UNIQUE_IDENTIFIER,
-        quote_storage_table=DailyIndexValuesStorage,
+        quote_storage_table=daily_index_values_storage(),
         source_families=("sofr_future", "sofr_ois"),
     )
 
 
 def xccy_curve_config() -> ValmerXccyCurveConfig:
-    from valmer_connectors.storage import discount_curves_storage
+    from valmer_connectors.storage import daily_index_values_storage, discount_curves_storage
 
     return ValmerXccyCurveConfig(
         curve_unique_identifier=(
             VALMER_MXN_USD_COLLATERAL_DISCOUNT_CURVE_UNIQUE_IDENTIFIER
         ),
-        quote_storage_table=DailyIndexValuesStorage,
+        quote_storage_table=daily_index_values_storage(),
         curve_storage_table=discount_curves_storage(),
         source_families=("fx_spot", "fx_forward", "tiie_sofr_xccy_basis"),
     )

@@ -6,7 +6,7 @@ from msm.models import IndexDatasetAvailabilityTable, IndexFormulaInputTable
 from msm_pricing.instruments.json_codec import calendar_from_json
 
 from valmer_connectors.data_nodes.canonical_index_values import (
-    DailyIndexValuesStorage,
+    MarketsDailyIndexValuesStorage,
 )
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.instruments.bootstrap import seed_static_defaults
@@ -759,7 +759,7 @@ class ValmerCurveBootstrapTests(unittest.TestCase):
             markets_models=[
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
-                DailyIndexValuesStorage,
+                MarketsDailyIndexValuesStorage,
                 IndexDatasetAvailabilityTable,
                 IndexFormulaInputTable,
             ],

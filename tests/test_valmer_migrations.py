@@ -17,7 +17,7 @@ from msm_pricing.models.curves import CurveTable
 from sqlalchemy import create_engine
 
 from valmer_connectors.data_nodes.canonical_index_values import (
-    DailyIndexValuesStorage,
+    MarketsDailyIndexValuesStorage,
 )
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.markets import (
@@ -76,7 +76,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             (
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
-                DailyIndexValuesStorage,
+                MarketsDailyIndexValuesStorage,
                 valmer_discount_curves_instance(),
                 valmer_index_fixings_instance(),
             ),
@@ -89,7 +89,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             (
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
-                DailyIndexValuesStorage,
+                MarketsDailyIndexValuesStorage,
                 valmer_discount_curves_instance(),
                 valmer_index_fixings_instance(),
             ),
@@ -116,7 +116,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            DailyIndexValuesStorage.__table__.name,
+            MarketsDailyIndexValuesStorage.__table__.name,
             index_values_output_table_name(cadence="1d"),
         )
         self.assertEqual(
@@ -128,7 +128,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             f"{VALMER_MARKETS_NAMESPACE}.vector_de_precios_valmer",
         )
         self.assertEqual(
-            DailyIndexValuesStorage.__metatable_identifier__,
+            MarketsDailyIndexValuesStorage.__metatable_identifier__,
             "IndexValuesTS.1d",
         )
         self.assertEqual(
@@ -140,7 +140,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             VALMER_MARKETS_NAMESPACE,
         )
         self.assertEqual(
-            DailyIndexValuesStorage.__table__.info["namespace"],
+            MarketsDailyIndexValuesStorage.__table__.info["namespace"],
             "mainsequence.markets",
         )
 
@@ -153,7 +153,7 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             {
                 ValmerAssetDetailsTable.__table__.name,
                 ValmerVectorPricesStorage.__table__.name,
-                DailyIndexValuesStorage.__table__.name,
+                MarketsDailyIndexValuesStorage.__table__.name,
                 "valmer_connectors__discountcurvests__valmer",
                 "valmer_connectors__indexfixingsts__valmer",
                 AssetTable.__table__.name,

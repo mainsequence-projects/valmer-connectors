@@ -55,24 +55,88 @@ def test_an_unknown_storage_is_refused(monkeypatch) -> None:
         resolve_time_series_storage()
 
 
-def test_valmer_storage_attaches_no_markets_curve_or_fixing_table(
-    valmer_storage, monkeypatch
-) -> None:
-    """Only the daily Index values table still pulls Markets tables into the runtime."""
+def test_valmer_storage_attaches_no_markets_table(valmer_storage, monkeypatch) -> None:
+    """With Valmer's own tables the runtime attaches nothing in mainsequence.markets."""
 
     from msm.api.remote import use_remote_backend
     from msm.models.registration import resolve_markets_meta_table_models
 
+    from valmer_connectors.data_nodes.canonical_index_values import (
+        MarketsDailyIndexValuesStorage,
+        ValmerDailyIndexValuesStorage,
+    )
     from valmer_connectors.instruments.bootstrap import _valmer_markets_models
 
     use_remote_backend(SimpleNamespace(call=lambda *args: pytest.fail("no row call")))
     models = _valmer_markets_models()
 
-    assert valmer_discount_curves_instance() in models
+    assert valmer_discount_curves_instance() in models and ValmerDailyIndexValuesStorage in models
     assert DiscountCurvesStorage not in models and IndexFixingsStorage not in models
-    resolved = {model.__name__ for model in resolve_markets_meta_table_models(models)}
-    assert resolved & {"CurveTable", "DiscountCurvesStorage", "IndexFixingsStorage"} == set()
-    assert {"IndexTable", "IndexFormulaDefinitionTable"} <= resolved
+    assert MarketsDailyIndexValuesStorage not in models
+    resolved = resolve_markets_meta_table_models(models)
+    assert {model.__table__.info["namespace"] for model in resolved} == {"valmer_connectors"}
+
+
+def test_valmer_owns_its_daily_index_value_table() -> None:
+    from valmer_connectors.data_nodes.canonical_index_values import (
+        MarketsDailyIndexValuesStorage,
+        ValmerDailyIndexValuesStorage,
+    )
+
+    table = ValmerDailyIndexValuesStorage.__table__
+    assert table.name == "valmer_connectors__index_values__t_1d"
+    assert table.info["namespace"] == "valmer_connectors"
+    assert table.info["identifier"] == "valmer_connectors.IndexValuesTS.1d"
+    assert ValmerDailyIndexValuesStorage.__cadence__ == "1d"
+    assert ValmerDailyIndexValuesStorage.__index_names__ == ["time_index", "index_identifier"]
+    assert [column.name for column in table.columns] == [
+        column.name for column in MarketsDailyIndexValuesStorage.__table__.columns
+    ]
+    assert {key.target_fullname for key in table.foreign_keys} == {
+        "ms_markets__index.unique_identifier",
+        "ms_markets__indexformuladefinition.uid",
+    }
+    assert MarketsDailyIndexValuesStorage.__table__.name == "ms_markets__index_values__t_1d"
+    assert MarketsDailyIndexValuesStorage.__table__.info["namespace"] == "mainsequence.markets"
+
+
+def test_daily_index_values_follow_the_switch(monkeypatch) -> None:
+    from valmer_connectors.data_nodes.canonical_index_values import (
+        DailyIndexValuesNode,
+        MarketsDailyIndexValuesStorage,
+        ValmerDailyIndexValuesStorage,
+    )
+    from valmer_connectors.data_nodes.curve_building import (
+        sofr_curve_config,
+        tiie_curve_config,
+        xccy_curve_config,
+    )
+
+    monkeypatch.delenv(VALMER_TIME_SERIES_STORAGE_ENV, raising=False)
+    assert storage.daily_index_values_storage() is MarketsDailyIndexValuesStorage
+    assert DailyIndexValuesNode._required_output_table() is MarketsDailyIndexValuesStorage
+    assert tiie_curve_config().quote_storage_table is MarketsDailyIndexValuesStorage
+
+    monkeypatch.setenv(VALMER_TIME_SERIES_STORAGE_ENV, "valmer")
+    assert storage.daily_index_values_storage() is ValmerDailyIndexValuesStorage
+    # Every quote, FRED and Banxico policy producer writes the selected table.
+    assert DailyIndexValuesNode._required_output_table() is ValmerDailyIndexValuesStorage
+    for config in (tiie_curve_config(), sofr_curve_config(), xccy_curve_config()):
+        assert config.quote_storage_table is ValmerDailyIndexValuesStorage
+
+
+def test_the_old_daily_index_values_name_is_a_deprecated_alias() -> None:
+    import valmer_connectors.data_nodes as data_nodes
+    from valmer_connectors.data_nodes import canonical_index_values
+
+    with pytest.warns(DeprecationWarning, match="ValmerDailyIndexValuesStorage"):
+        alias = canonical_index_values.DailyIndexValuesStorage
+    with pytest.warns(DeprecationWarning):
+        package_alias = data_nodes.DailyIndexValuesStorage
+
+    assert alias is package_alias is canonical_index_values.ValmerDailyIndexValuesStorage
+    with pytest.raises(AttributeError):
+        canonical_index_values.NoSuchStorage  # noqa: B018
 
 
 def test_banxico_fixings_write_the_selected_storage(valmer_storage, monkeypatch) -> None:

@@ -15,10 +15,6 @@ from msm.repositories.base import (
 from msm_pricing.data_nodes.curves.key_nodes import decompress_key_nodes_from_string
 from sqlalchemy import and_, select
 
-from valmer_connectors.data_nodes.canonical_index_values import (
-    DailyIndexValuesStorage,
-)
-
 # Canonical IndexValuesTS has no unit column. Quote type/unit and raw-source
 # provenance are required in metadata_json for strict curve-input validation.
 _QUOTE_COLUMNS = [
@@ -38,7 +34,7 @@ class ValmerCurveQuoteSnapshotError(RuntimeError):
 
 def load_valmer_curve_quote_snapshot(
     *,
-    output_table=DailyIndexValuesStorage,
+    output_table=None,
     time_index: Any,
     source_families: Iterable[str],
     timeout: int | float | tuple[float, float] | None = None,
@@ -60,7 +56,7 @@ def load_valmer_curve_quote_snapshot(
 
 def load_valmer_curve_quote_snapshots(
     *,
-    output_table=DailyIndexValuesStorage,
+    output_table=None,
     source_families: Iterable[str],
     after_time_index: Any | None = None,
     timeout: int | float | tuple[float, float] | None = None,
@@ -222,6 +218,11 @@ def _read_quote_rows(
     after_time_index: pd.Timestamp | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> pd.DataFrame:
+    if output_table is None:
+        from valmer_connectors.storage import daily_index_values_storage
+
+        # The Markets table or Valmer's own (VALMER_TIME_SERIES_STORAGE).
+        output_table = daily_index_values_storage()
     table = output_table.__table__
     filters = [table.c.index_identifier.like("VALMER_CURVE_QUOTE.%")]
     if time_index is not None:
