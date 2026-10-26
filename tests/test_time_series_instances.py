@@ -13,13 +13,12 @@ import uuid
 from types import SimpleNamespace
 from typing import Any
 
-import pandas as pd
 import pytest
 from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 
 from valmer_connectors import storage
-from valmer_connectors.data_nodes import time_series_backfill
+from valmer_connectors.services import time_series_backfill
 from valmer_connectors.storage import (
     VALMER_TIME_SERIES_STORAGE_ENV,
     discount_curves_storage,
@@ -175,148 +174,162 @@ def test_the_registry_seed_binds_valmer_instances(valmer_storage, monkeypatch) -
     assert result["market_data_set"] is default_set
 
 
-def _fake_tables(monkeypatch, *, source: list[dict[str, Any]], instance: list[dict[str, Any]]):
-    """Serve compiled selects from two in-memory tables, keyed by physical name."""
+class FakeTables:
+    """Rows of each table as ``{key: {time_index, ...}}``, copied the way the shared copy does.
 
-    tables = {
-        IndexFixingsStorage.__table__.name: source,
-        valmer_index_fixings_instance().__table__.name: instance,
-    }
-    reads: list[str] = []
+    It replaces ``msm.storage_copies.copy_time_index_rows``: it writes only the
+    source rows the target lacks (identified by key and time), unless a key is
+    told to fail, and reports the counts of both sides afterwards.
+    """
 
-    def select(statement):
-        (table,) = statement.get_final_froms()
-        reads.append(table.name)
-        rows = tables[table.name]
-        compiled = statement.compile()
-        params = compiled.params
-        identity = next(value for key, value in params.items() if key.startswith("index_identifier"))
-        rows = [row for row in rows if row["index_identifier"] == identity]
-        times = next((value for key, value in params.items() if key.startswith("time_index")), None)
-        if times is not None:
-            wanted = {pd.Timestamp(value) for value in times}
-            rows = [row for row in rows if pd.Timestamp(row["time_index"]) in wanted]
-        columns = [column.name for column in statement.selected_columns]
-        return [{name: row[name] for name in columns} for row in rows]
+    def __init__(self) -> None:
+        self.rows: dict[str, dict[str, set[str]]] = {}
+        self.calls: list[tuple[str, str, bool]] = []
+        self.unwritable: set[str] = set()
 
-    monkeypatch.setattr(time_series_backfill, "_select", select)
-    return reads
+    def table(self, storage_class: type[Any]) -> dict[str, set[str]]:
+        return self.rows.setdefault(storage_class.__table__.name, {})
+
+    def copy(self, source, target, *, key_column, keys, dry_run=False, **_kwargs):
+        from msm.storage_copies import KeyCopy, TimeIndexCopyReport
+
+        self.calls.append((source.__table__.name, target.__table__.name, dry_run))
+        source_rows, target_rows = self.table(source), self.table(target)
+        results = []
+        for key in keys:
+            held = target_rows.setdefault(key, set())
+            missing = source_rows.get(key, set()) - held
+            copied = 0
+            if not dry_run and key not in self.unwritable:
+                held |= missing
+                copied = len(missing)
+            results.append(
+                KeyCopy(
+                    key=key,
+                    source_rows=len(source_rows.get(key, set())),
+                    target_rows=len(held),
+                    missing_rows=len(source_rows.get(key, set()) - held),
+                    copied_rows=copied,
+                )
+            )
+        return TimeIndexCopyReport(
+            source_table=source.__table__.name,
+            target_table=target.__table__.name,
+            key_column=key_column,
+            keys=tuple(results),
+            dry_run=dry_run,
+        )
 
 
-def test_the_backfill_reads_only_the_rows_an_instance_lacks(monkeypatch) -> None:
-    day = pd.Timestamp("2026-10-01", tz="UTC")
-    source = [
-        {"time_index": (day + pd.Timedelta(days=offset)).isoformat(), "index_identifier": "TIIE_28", "rate": 0.07 + offset / 1000}
-        for offset in range(3)
-    ]
-    instance = [dict(source[0])]
-    _fake_tables(monkeypatch, source=source, instance=instance)
+@pytest.fixture
+def tables(monkeypatch) -> FakeTables:
+    fake = FakeTables()
+    monkeypatch.setattr("msm.storage_copies.copy_time_index_rows", fake.copy)
+    return fake
 
-    missing = time_series_backfill.missing_time_indexes(
-        source_table=IndexFixingsStorage,
-        instance_table=valmer_index_fixings_instance(),
-        identity_column="index_identifier",
-        identity="TIIE_28",
+
+def test_valmer_series_moves_name_valmer_tables_and_identities() -> None:
+    from msm.storage_copies import TableSeriesMove
+
+    curves, fixings = time_series_backfill.valmer_series_moves()
+
+    assert all(isinstance(move, TableSeriesMove) for move in (curves, fixings))
+    assert (curves.core, curves.instance, curves.key_column, curves.label) == (
+        DiscountCurvesStorage,
+        valmer_discount_curves_instance(),
+        "curve_identifier",
+        "discount_curves",
     )
-    rows = time_series_backfill.read_rows(
+    assert "VALMER_TIIE_OVERNIGHT" in curves.keys and len(curves.keys) == 4
+    assert (fixings.core, fixings.instance, fixings.key_column) == (
         IndexFixingsStorage,
-        identity_column="index_identifier",
-        identity="TIIE_28",
-        time_indexes=missing,
+        valmer_index_fixings_instance(),
+        "index_identifier",
     )
+    assert set(fixings.keys) >= {"TIIE_28", "CETE_28"} and len(fixings.keys) == 7
+    assert time_series_backfill.valmer_series_moves(["index_fixings"])[0].label == "index_fixings"
+    with pytest.raises(ValueError, match="Unknown Valmer time series"):
+        time_series_backfill.valmer_series_moves(["vector"])
 
-    assert missing == [day + pd.Timedelta(days=1), day + pd.Timedelta(days=2)]
-    assert [row["rate"] for row in rows] == pytest.approx([0.071, 0.072])
-    (plan,) = time_series_backfill.time_series_copy_plans(["index_fixings"])
-    status = time_series_backfill.copy_status(plan)
-    assert status["TIIE_28"] == {
+
+def test_the_backfill_copies_history_then_fills_the_gaps(tables) -> None:
+    """A second pass after the switch copies only what the core table got in between."""
+
+    core = tables.table(IndexFixingsStorage)
+    instance = tables.table(valmer_index_fixings_instance())
+    core["TIIE_28"] = {"d1", "d2", "d3"}
+
+    report = time_series_backfill.backfill_valmer_time_series(series=["index_fixings"])
+
+    tiie = report["series"]["index_fixings"]["identities"]["TIIE_28"]
+    assert tiie == {
         "source_rows": 3,
-        "instance_rows": 1,
-        "missing_rows": 2,
-        "latest_source": (day + pd.Timedelta(days=2)).isoformat(),
-        "latest_instance": day.isoformat(),
+        "target_rows": 3,
+        "instance_rows": 3,
+        "missing_rows": 0,
+        "copied_rows": 3,
     }
+    assert report["complete"] is True and report["series"]["index_fixings"]["status"] == "moved"
+
+    # The switch: the producers write d5 to the instance; the core table got d4 first.
+    instance["TIIE_28"].add("d5")
+    core["TIIE_28"].add("d4")
+    report = time_series_backfill.backfill_valmer_time_series(series=["index_fixings"])
+
+    tiie = report["series"]["index_fixings"]["identities"]["TIIE_28"]
+    assert tiie["copied_rows"] == 1 and tiie["instance_rows"] == 5 and tiie["missing_rows"] == 0
+    assert instance["TIIE_28"] == {"d1", "d2", "d3", "d4", "d5"}
 
 
-def test_the_copy_updater_returns_the_missing_rows_in_the_instance_contract(monkeypatch) -> None:
-    day = pd.Timestamp("2026-10-01", tz="UTC")
-    source = [
-        {"time_index": (day + pd.Timedelta(days=offset)).isoformat(), "index_identifier": "TIIE_28", "rate": 0.07}
-        for offset in range(2)
-    ]
-    _fake_tables(monkeypatch, source=source, instance=[])
-    updater = object.__new__(time_series_backfill.ValmerTimeSeriesCopyUpdater)
-    updater.copy_config = time_series_backfill.ValmerTimeSeriesCopyConfiguration(
-        series="index_fixings",
-        identities=("TIIE_28",),
-    )
-    updater.page_size = 1
-    updater._output_table = valmer_index_fixings_instance()
+def test_a_dry_run_only_counts(tables) -> None:
+    tables.table(DiscountCurvesStorage)["VALMER_TIIE_OVERNIGHT"] = {"d1", "d2"}
 
-    frame = updater.update()
+    report = time_series_backfill.backfill_valmer_time_series(dry_run=True)
 
-    assert list(frame.index.names) == ["time_index", "index_identifier"]
-    assert len(frame) == 2 and list(frame.columns) == ["rate"]
+    curve = report["series"]["discount_curves"]["identities"]["VALMER_TIIE_OVERNIGHT"]
+    assert curve["missing_rows"] == 2 and curve["copied_rows"] == 0
+    assert report["complete"] is False
+    assert {dry_run for *_tables, dry_run in tables.calls} == {True}
+    assert tables.table(valmer_discount_curves_instance())["VALMER_TIIE_OVERNIGHT"] == set()
 
 
-def test_curve_metadata_read_back_as_text_is_decoded() -> None:
-    frame = pd.DataFrame([{"metadata_json": json.dumps({"source": "valmer"})}, {"metadata_json": None}])
+def test_an_incomplete_copy_fails_the_backfill(tables) -> None:
+    tables.table(IndexFixingsStorage)["CETE_28"] = {"d1"}
+    tables.unwritable.add("CETE_28")
 
-    decoded = time_series_backfill._decoded_json_columns(frame, valmer_discount_curves_instance())
+    with pytest.raises(RuntimeError, match="index_fixings.*CETE_28"):
+        time_series_backfill.backfill_valmer_time_series()
 
-    assert decoded["metadata_json"].tolist() == [{"source": "valmer"}, None]
+
+def test_a_failed_copy_fails_the_backfill(monkeypatch) -> None:
+    def copy(*args, **kwargs):
+        raise LookupError("valmer_connectors__indexfixingsts__valmer is not registered")
+
+    monkeypatch.setattr("msm.storage_copies.copy_time_index_rows", copy)
+
+    with pytest.raises(RuntimeError, match="not registered"):
+        time_series_backfill.backfill_valmer_time_series(series=["index_fixings"])
 
 
-def test_the_backfill_copies_every_series_and_fails_on_gaps(monkeypatch) -> None:
-    import msm
+def test_the_rollback_copies_the_instance_rows_back_into_the_core_table(tables) -> None:
+    core = tables.table(DiscountCurvesStorage)
+    instance = tables.table(valmer_discount_curves_instance())
+    core["VALMER_TIIE_OVERNIGHT"] = {"d1", "d2"}
+    instance["VALMER_TIIE_OVERNIGHT"] = {"d1", "d2", "d3", "d4"}
 
-    from valmer_connectors.services import time_series_backfill as service
-
-    attached: list[Any] = []
-    ran: list[tuple[str, Any, int]] = []
-
-    class FakeCopyUpdater:
-        def __init__(self, config, output_table):
-            self.config, self.output_table = config, output_table
-
-        def set_page_size(self, page_size):
-            self.page_size = page_size
-            return self
-
-        def run(self, *, override_update_stats=None):
-            # Empty statistics: the runner must not drop rows older than the
-            # instance's latest observation, which is what a gap is.
-            assert override_update_stats is not None
-            assert override_update_stats.max_time_index_value is None
-            ran.append((self.config.series, self.output_table, self.page_size))
-            return (False, pd.DataFrame())
-
-    statuses = {"discount_curves": 0, "index_fixings": 0}
-    monkeypatch.setattr(msm, "start_engine", lambda **kwargs: attached.extend(kwargs["models"]))
-    monkeypatch.setattr(service, "ValmerTimeSeriesCopyUpdater", FakeCopyUpdater)
-    monkeypatch.setattr(
-        service,
-        "copy_status",
-        lambda plan: {
-            identity: {"missing_rows": statuses[plan.series]} for identity in plan.identities
-        },
+    report = time_series_backfill.backfill_valmer_time_series(
+        series=["discount_curves"], rollback=True
     )
 
-    report = service.backfill_valmer_time_series(page_size=50)
-
-    assert [series for series, _table, _size in ran] == ["discount_curves", "index_fixings"]
-    assert [table for _series, table, _size in ran] == storage.valmer_time_series_instances()
-    assert {size for *_rest, size in ran} == {50}
-    assert DiscountCurvesStorage in attached and valmer_index_fixings_instance() in attached
-    assert report["complete"] is True
-
-    statuses["index_fixings"] = 3
-    with pytest.raises(RuntimeError, match="index_fixings"):
-        service.backfill_valmer_time_series()
-
-    ran.clear()
-    report = service.backfill_valmer_time_series(dry_run=True)
-    assert ran == [] and report["complete"] is False and report["dry_run"] is True
+    entry = report["series"]["discount_curves"]
+    assert (entry["source_table"], entry["target_table"]) == (
+        "valmer_connectors__discountcurvests__valmer",
+        "ms_markets__discountcurvests",
+    )
+    assert entry["status"] == "rolled_back"
+    assert entry["identities"]["VALMER_TIIE_OVERNIGHT"]["instance_rows"] == 4
+    assert entry["identities"]["VALMER_TIIE_OVERNIGHT"]["copied_rows"] == 2
+    assert core["VALMER_TIIE_OVERNIGHT"] == {"d1", "d2", "d3", "d4"}
 
 
 def test_the_backfill_job_and_cli_forward_their_options(monkeypatch, capsys) -> None:
@@ -325,19 +338,19 @@ def test_the_backfill_job_and_cli_forward_their_options(monkeypatch, capsys) -> 
     from pathlib import Path
 
     from valmer_connectors.cli.main import main
-    from valmer_connectors.services import time_series_backfill as service
 
     calls: list[dict[str, Any]] = []
     monkeypatch.setattr(
-        service,
+        time_series_backfill,
         "backfill_valmer_time_series",
         lambda **kwargs: calls.append(kwargs) or {"complete": True},
     )
 
     assert main(["time-series", "backfill", "--series", "index_fixings", "--dry-run"]) == 0
+    assert main(["time-series", "backfill", "--rollback"]) == 0
     script = str(Path(__file__).resolve().parents[1] / "scripts" / "backfill_valmer_time_series.py")
     previous_argv = sys.argv
-    sys.argv = [script, "--page-size", "25"]
+    sys.argv = [script, "--rollback"]
     try:
         with pytest.raises(SystemExit) as exit_info:
             runpy.run_path(script, run_name="__main__")
@@ -346,7 +359,19 @@ def test_the_backfill_job_and_cli_forward_their_options(monkeypatch, capsys) -> 
 
     assert exit_info.value.code == 0
     assert calls == [
-        {"series": ["index_fixings"], "page_size": 200, "dry_run": True},
-        {"series": None, "page_size": 25, "dry_run": False},
+        {"series": ["index_fixings"], "dry_run": True, "rollback": False},
+        {"series": None, "dry_run": False, "rollback": True},
+        {"series": None, "dry_run": False, "rollback": True},
     ]
     assert json.loads(capsys.readouterr().out.split("\n}\n")[0] + "\n}") == {"complete": True}
+
+
+def test_msm_series_loads_the_valmer_moves() -> None:
+    """``msm series move|rollback`` calls the module:callable the runbook names."""
+
+    from msm_cli.rename_preflight import load_objects
+
+    moves = load_objects("valmer_connectors.services.time_series_backfill:valmer_series_moves")
+
+    assert [move.label for move in moves] == ["discount_curves", "index_fixings"]
+

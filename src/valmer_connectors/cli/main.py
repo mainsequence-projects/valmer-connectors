@@ -85,8 +85,8 @@ def _time_series_backfill_command(args: argparse.Namespace) -> int:
 
     report = backfill_valmer_time_series(
         series=args.series,
-        page_size=args.page_size,
         dry_run=args.dry_run,
+        rollback=args.rollback,
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
@@ -432,7 +432,8 @@ def build_parser() -> argparse.ArgumentParser:
         "backfill",
         help=(
             "Copy, never recompute, Valmer's curves and fixings from the core Markets "
-            "tables into Valmer's own instances (the time-series-backfill Job)."
+            "tables into Valmer's own instances, or back with --rollback (the "
+            "time-series-backfill Job)."
         ),
     )
     time_series_backfill_parser.add_argument(
@@ -443,15 +444,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Copy only this series; repeat for both (default: both).",
     )
     time_series_backfill_parser.add_argument(
-        "--page-size",
-        type=_positive_int,
-        default=200,
-        help="Rows per source read.",
-    )
-    time_series_backfill_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Only report the rows each instance is missing.",
+        help="Only report the rows each target is missing.",
+    )
+    time_series_backfill_parser.add_argument(
+        "--rollback",
+        action="store_true",
+        help=(
+            "Copy the rows the instances gained back into the core tables. Set "
+            "VALMER_TIME_SERIES_STORAGE back to markets first (docs/time-series-instances.md)."
+        ),
     )
     time_series_backfill_parser.set_defaults(func=_time_series_backfill_command)
 

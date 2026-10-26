@@ -413,9 +413,6 @@ REMAINING_DIRECT_ACCESS = {
     # Operator-only repair of stored pricing-detail payloads: no Markets route
     # reads timestamped pricing details or filters them by payload content.
     "src/valmer_connectors/services/pricing_details_repair.py",
-    # One-off copy of Valmer's own curve and fixing rows out of the core tables
-    # into Valmer's instances (docs/time-series-instances.md).
-    "src/valmer_connectors/data_nodes/time_series_backfill.py",
 }
 
 
