@@ -227,7 +227,7 @@ and key.
 The two repositories must be released in dependency order:
 
 1. confirm that the Environment's MetaTables API runs the locked client's release, that its
-   ms-markets deployment runs 3.0.1, has applied revision `0022` in the same DataSource and
+   ms-markets deployment runs 3.0.2, has applied revision `0022` in the same DataSource and
    serves the Markets API, and that the Valmer Team holds the grants "Teams And Namespaces" lists
    (see "Publishing", "Teams And Namespaces" and "Markets API Access" in `docs/deployment.md`),
    then push `valmer-connectors`. Its API 3.0.0 workflow declares the FastAPI

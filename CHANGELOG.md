@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.2 (2026-10-28)
+
+### Dependencies
+
+- Requires exactly `ms-markets==3.0.2`, the release the Environment's Markets
+  deployment runs. 3.0.2 only makes portfolio contract instances carry their
+  core storage layout, which this project does not use. `uv.lock` and
+  `requirements.txt` resolve ms-markets 3.0.2 and move nothing else.
+
+### Documentation
+
+- `docs/deployment.md` records the verified effect of a missing declared
+  object: the first Production push of 0.2.1 did not create the seven Jobs
+  that declare the missing Secrets, Constant or Bucket. The API's `runner` on
+  those Jobs was therefore refused, so nothing migrated or deployed. Create
+  the objects before the push.
+
 ## 0.2.1 (2026-10-27)
 
 ### Dependencies

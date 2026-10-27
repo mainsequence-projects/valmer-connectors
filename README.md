@@ -128,9 +128,9 @@ Detailed guides:
   CodeRepository, Job, and Artifact APIs, plus the
   `mainsequence-metatable>=0.1.57,<0.2` client (imported and run as
   `metatables`) for MetaTables, updaters, and migrations, and exactly
-  `ms-markets==3.0.1`, the release the Environment's Markets deployment runs
+  `ms-markets==3.0.2`, the release the Environment's Markets deployment runs
 - For hosted runs and deployment, an Environment whose MetaTables API runs the
-  locked client's release, whose ms-markets deployment runs 3.0.1, has applied
+  locked client's release, whose ms-markets deployment runs 3.0.2, has applied
   its revision `0022` and serves the Markets API, and a Team that owns the
   Valmer namespaces (see "Teams And Namespaces" and "Markets API Access" in
   `docs/deployment.md`)
@@ -163,7 +163,7 @@ rollout while the previous release keeps serving. Do not run
 not migrate at application startup.
 
 Push only after the Environment's MetaTables API runs the release of the
-locked client, and the ms-markets 3.0.1 deployment's migration Job has
+locked client, and the ms-markets 3.0.2 deployment's migration Job has
 succeeded in the same DataSource. Before the first push in an Environment, an
 Organization admin sets up the Valmer Team: `migrate-valmer` needs `editor` on
 the `valmer_connectors` namespace and a role on the daily Index values table its

@@ -25,13 +25,13 @@ Push only when the Environment is ready for this image:
 
 - its MetaTables API, the API release of the `MetaTables` repository's branch
   in that Environment, runs the release of the locked `mainsequence-metatable`
-  client (ms-markets 3.0.1 needs 0.1.57 or later). Keep the client and the
+  client (ms-markets 3.0.2 needs 0.1.57 or later). Keep the client and the
   API on one release. Clients since
   0.1.35 ignore unknown `/runtime-context/` fields, so the failure of the 0.1.20
   client against an API on 0.1.18 or older
   ([MetaTables issue #33](https://github.com/mainsequence-projects/MetaTables/issues/33))
   no longer applies;
-- its ms-markets deployment runs 3.0.1, that deployment's migration Job has
+- its ms-markets deployment runs 3.0.2, that deployment's migration Job has
   applied revision `0022` in the same DataSource (see [Migrations](#migrations)),
   and its Markets API (the `api` release of the `MainSequenceMarkets`
   repository) is deployed;

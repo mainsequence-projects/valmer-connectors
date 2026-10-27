@@ -22,7 +22,7 @@ its code reads, and `standard-pipeline-refresh` declares those of the scripts it
 source read and its declaration together. Artifact and MetaTable grants stay by hand ("Objects
 Outside MetaTables" in `docs/deployment.md`).
 A push needs the Environment's MetaTables API on the locked client's release (0.1.57 or later), its
-ms-markets deployment on 3.0.1 with its migration (revision `0022`) applied and its Markets API
+ms-markets deployment on 3.0.2 with its migration (revision `0022`) applied and its Markets API
 deployed, the Valmer Team owning
 `valmer_connectors` with the table roles on `mainsequence.markets` that "Teams And Namespaces"
 lists, including every new workload User. See "Publishing", "Teams And Namespaces" and "Markets API

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valmer-connectors"
-version = "0.2.1"
+version = "0.2.2"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -13,11 +13,12 @@ dependencies = [
     "mainsequence>=9.0.29,<10",
     "mainsequence-metatable>=0.1.57,<0.2",
     # Exactly the ms-markets release the Environment's Markets deployment runs.
-    # 3.0.1 is 3.0.0 (msm.client, the remote row backend, the publication
+    # 3.0.2 is 3.0.0 (msm.client, the remote row backend, the publication
     # composites and msm.storage_instances, ADR 0047) without the Markets
-    # API's registry-writer allow-list; it needs mainsequence 9.0.29 and
+    # API's registry-writer allow-list, and with portfolio contract instances
+    # that carry their core storage layout; it needs mainsequence 9.0.29 and
     # mainsequence-metatable 0.1.57.
-    "ms-markets==3.0.1",
+    "ms-markets==3.0.2",
     "pandas-market-calendars>=5.4.0",
     "plotly>=6.8.0",
     "quantlib>=1.42.1",

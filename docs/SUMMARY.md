@@ -25,7 +25,7 @@
 - `docs/control-plane.md`: two-repository Command Center control-plane architecture, FastAPI
   contracts, Job authorization, static-site integration, release order, and verification.
 - `docs/deployment.md`: publishing with Git and its Environment prerequisites
-  (the locked MetaTables release, ms-markets 3.0.1 migrated with its Markets
+  (the locked MetaTables release, ms-markets 3.0.2 migrated with its Markets
   API and the Valmer Team), the
   single workflow file and its declared access, the deployment migration Job,
   the Valmer namespaces and Team, the cleanup of the Jobs that moved files, and
