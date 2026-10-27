@@ -15,8 +15,7 @@ dependencies = [
     # Exactly the ms-markets release the Environment's Markets deployment runs.
     # 3.0.0 ships msm.client, the remote row backend, the publication
     # composites and msm.storage_instances (ADR 0047); it needs mainsequence
-    # 9.0.29 and mainsequence-metatable 0.1.57. uv.lock and requirements.txt
-    # are regenerated once 3.0.0 is on PyPI.
+    # 9.0.29 and mainsequence-metatable 0.1.57.
     "ms-markets==3.0.0",
     "pandas-market-calendars>=5.4.0",
     "plotly>=6.8.0",

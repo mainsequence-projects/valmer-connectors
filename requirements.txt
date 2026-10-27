@@ -38,6 +38,9 @@ certifi==2026.10.19
     # via
     #   httpcore
     #   httpx
+    #   mainsequence
+    #   mainsequence-metatable
+    #   ms-markets
     #   requests
 cffi==2.1.1 ; platform_python_implementation != 'PyPy'
     # via cryptography
@@ -144,12 +147,12 @@ korean-lunar-calendar==0.4.0
     # via exchange-calendars
 loguru==0.7.3
     # via fastembed
-mainsequence==9.0.24
+mainsequence==9.0.33
     # via
     #   mainsequence-metatable
     #   ms-markets
     #   valmer-connectors
-mainsequence-metatable==0.1.35
+mainsequence-metatable==0.1.57
     # via
     #   ms-markets
     #   valmer-connectors
@@ -173,7 +176,7 @@ more-itertools==11.1.0
     # via
     #   jaraco-classes
     #   jaraco-functools
-ms-markets==2.2.10
+ms-markets==3.0.0
     # via valmer-connectors
 narwhals==2.25.0
     # via
