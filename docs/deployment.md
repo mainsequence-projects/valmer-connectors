@@ -361,13 +361,24 @@ own container, so it declares what those Jobs declare. The API and the other
 Jobs read none of these objects.
 
 A declaration gives a policy; it does not create the object. Create each one
-in the Environment before its Jobs run, or they fail when they reach it. The
-names are the defaults: the `VALMER_*_NAME` environment variables of
-`src/valmer_connectors/settings.py` rename some of them, and a renamed object
-needs its declaration renamed too. What a push does with a declaration whose
-object is missing, or whose policy the pushing person cannot give, has not
-been checked for workflow API 3.0.0, so read the `access` results of the
-workflow action after the push. To check one grant:
+in the Environment before the push. The names are the defaults: the
+`VALMER_*_NAME` environment variables of `src/valmer_connectors/settings.py`
+rename some of them, and a renamed object needs its declaration renamed too.
+
+A missing object blocks the whole push, not only its Jobs. The 2026-10-27
+Production push of `ea0d59e` (workflow run
+`8b3ee99a-6495-40a1-9892-af404167cdae`) ran before any of these objects existed
+there:
+
+- The seven Jobs that declare them were not created, while the nine that
+  declare none were.
+- The API's `runner` declarations on those seven Jobs were then refused
+  (`declared_access_not_granted`, reason `not_created`), so the API was not
+  applied.
+- With the API refused, the migration was not admitted, and the run failed
+  without migrating or deploying.
+
+After a push, read the workflow run's step errors. To check one grant:
 `mainsequence secrets access explain <secret uid> secrets.read_value --user <workload user uid>`
 or
 `mainsequence constants access explain <constant uid> constants.read --user <workload user uid>`.
