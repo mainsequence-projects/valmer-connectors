@@ -340,21 +340,67 @@ Still outside the Markets API, each for a stated reason:
 
 ### Objects Outside MetaTables
 
-The workflow declares no Secret, Constant or Bucket: a declared object that
-cannot be granted would refuse the whole group. A person who manages the Job
-grants each one with `add-to-view` and the Job's `workload_user_uid`;
-until then the Job fails when it reaches the object. The names are the
-defaults; the `VALMER_*_NAME` environment variables of
-`src/valmer_connectors/settings.py` override some of them.
+The source Jobs read Secrets, a Constant and a Bucket of their Environment by
+name. The workflow declares each one in the `access` of every Job that reads
+it, with the narrowest policy the code needs, so the push gives that Job's
+workload User the policy:
 
-| Object | Kind | Jobs |
-| --- | --- | --- |
-| `FRED_API_KEY` | Secret | `fred-reference-rates-refresh`, `standard-pipeline-refresh` |
-| `BANXICO_TOKEN` | Secret | `banxico-fixings-refresh`, `banxico-tiie-fixings-refresh`, `banxico-policy-refresh`, `standard-pipeline-refresh` |
-| `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID`, `VALMER_ONEDRIVE_CLIENT_SECRET` | Secrets | `vector-onedrive-refresh` |
-| `VALMER_ONEDRIVE_DRIVE_ID` | Constant | `vector-onedrive-refresh` |
-| `Hitorical Valmer Vector Analytico` | Bucket and its Artifacts | `vector-refresh`, `standard-pipeline-refresh` |
-| `dbo.vector_precios_gubernamental_pip_vista` | MetaTable (Reader) | `vector-metatable-refresh`, and the API for that Job's preflight |
+| Object | Kind | Declared policy | Jobs |
+| --- | --- | --- | --- |
+| `FRED_API_KEY` | Secret | `value_reader` | `fred-reference-rates-refresh`, `standard-pipeline-refresh` |
+| `BANXICO_TOKEN` | Secret | `value_reader` | `banxico-fixings-refresh`, `banxico-tiie-fixings-refresh`, `banxico-policy-refresh`, `standard-pipeline-refresh` |
+| `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID`, `VALMER_ONEDRIVE_CLIENT_SECRET` | Secrets | `value_reader` | `vector-onedrive-refresh` |
+| `VALMER_ONEDRIVE_DRIVE_ID` | Constant | `reader` | `vector-onedrive-refresh` |
+| `Hitorical Valmer Vector Analytico` | Bucket | `reader` | `vector-refresh`, `standard-pipeline-refresh` |
+
+Each Job reads the value of its Secrets (`reader` on a Secret shows only its
+name) and of the Constant, and lists and downloads the Bucket's Artifacts
+without uploading any (uploading takes `contributor`).
+`standard-pipeline-refresh` runs the vector, Banxico and FRED scripts in its
+own container, so it declares what those Jobs declare. The API and the other
+Jobs read none of these objects.
+
+A declaration gives a policy; it does not create the object. Create each one
+in the Environment before its Jobs run, or they fail when they reach it. The
+names are the defaults: the `VALMER_*_NAME` environment variables of
+`src/valmer_connectors/settings.py` rename some of them, and a renamed object
+needs its declaration renamed too. What a push does with a declaration whose
+object is missing, or whose policy the pushing person cannot give, has not
+been checked for workflow API 3.0.0, so read the `access` results of the
+workflow action after the push. To check one grant:
+`mainsequence secrets access explain <secret uid> secrets.read_value --user <workload user uid>`
+or
+`mainsequence constants access explain <constant uid> constants.read --user <workload user uid>`.
+
+Two grants stay outside the workflow:
+
+- **The vector Artifacts.** A Bucket `reader` lists only the Artifacts the
+  workload can already see, because each Artifact has its own policies. The
+  workload Users of `vector-refresh` and `standard-pipeline-refresh` need
+  `viewer` on every Artifact in the Bucket, given by a person who holds
+  `owner` on it (whoever uploaded it). The workflow does not name them, because
+  every new vector file is a new Artifact. The CLI has no Artifact commands;
+  with the SDK:
+
+  ```python
+  from mainsequence.client import Artifact
+
+  for artifact in Artifact.filter(bucket__name="Hitorical Valmer Vector Analytico"):
+      artifact.attach_policy("viewer", principal_type="user", principal_uid="<workload user uid>")
+  ```
+
+  Grant each new Artifact when it is uploaded. A Job that a push recreates has
+  a new workload User, which needs these grants again; a grant to the Valmer
+  Team (`principal_type="team"` and its UID), whose members both workload
+  Users already are ("Teams And Namespaces"), survives it.
+- **The MetaTable `dbo.vector_precios_gubernamental_pip_vista`.** It is
+  granted in MetaTables, not in the workflow: `data_viewer` on the table for
+  the workload Users of `vector-metatable-refresh` and of the API, which reads
+  it in that Job's preflight. With the locked MetaTables client, call
+  `grant_role("<workload user uid>", "data_viewer")` on the registered
+  `MetaTable`, or `grant_role("<team uid>", "data_viewer", principal_kind="team")`
+  for the Valmer Team, whose members both workload Users already are ("Teams
+  And Namespaces"), so the grant survives a recreated Job.
 
 ## Cleanup After The Push: The Removed Jobs Workflow
 

@@ -87,21 +87,23 @@
 
 ## Give the pipeline Jobs their source credentials
 
-- Scope: the source Jobs read objects that the workflow does not declare:
-  the Secrets `FRED_API_KEY`, `BANXICO_TOKEN`, `VALMER_ONEDRIVE_TENANT_ID`,
-  `VALMER_ONEDRIVE_CLIENT_ID` and `VALMER_ONEDRIVE_CLIENT_SECRET`, the Constant
-  `VALMER_ONEDRIVE_DRIVE_ID`, the Bucket `Hitorical Valmer Vector Analytico`
-  with the vector Artifacts, and the registered MetaTable
-  `dbo.vector_precios_gubernamental_pip_vista`. On 2026-10-11 Production had
-  none of them. Create each where it belongs, then grant each Job's workload
-  User view as "Objects Outside MetaTables" in `docs/deployment.md` lists.
-  Until then those Jobs, and the scheduled standard pipeline, fail at their
-  first source read.
+- Scope: the source Jobs read the Secrets `FRED_API_KEY`, `BANXICO_TOKEN`,
+  `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID` and
+  `VALMER_ONEDRIVE_CLIENT_SECRET`, the Constant `VALMER_ONEDRIVE_DRIVE_ID`, the
+  Bucket `Hitorical Valmer Vector Analytico` with the vector Artifacts, and the
+  registered MetaTable `dbo.vector_precios_gubernamental_pip_vista`. On
+  2026-10-11 Production had none of them. Create each where it belongs. The
+  workflow declares the Secret, Constant and Bucket policies; grant the vector
+  Artifacts and the MetaTable by hand, as "Objects Outside MetaTables" in
+  `docs/deployment.md` lists. Until then those Jobs, and the scheduled standard
+  pipeline, fail at their first source read.
 - Owning skill: `mainsequence-access-control-and-sharing`.
 - Expected output: every source Job and one scheduled standard-pipeline run
   succeed, and the control plane's preflight for `vector-metatable-refresh`
   passes its one-row probe.
-- Required evidence: the grants, and one succeeded JobRun per source Job.
+- Required evidence: the workflow action's `access` results for the declared
+  objects, the Artifact and MetaTable grants, and one succeeded JobRun per
+  source Job.
 
 ## Renew the local review host's access token
 

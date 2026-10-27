@@ -9,14 +9,24 @@ import metatables
 import pytest
 import yaml
 
+from valmer_connectors.banxico.settings import BANXICO_TOKEN_SECRET_NAME
 from valmer_connectors.cli.main import main as cli_main
 from valmer_connectors.control_plane.catalog import JOB_LAUNCH_PROFILES
+from valmer_connectors.control_plane.pipeline import PIPELINE_SCRIPTS
+from valmer_connectors.fred.settings import FRED_API_KEY_SECRET_NAME
 from valmer_connectors.services.migrations import (
     MIGRATION_JOB_EXECUTION_PATH,
     MIGRATION_JOB_PROVIDERS,
     MIGRATION_WORKFLOW_PATH,
     VALMER_MIGRATION_PROVIDER,
     migration_command_lines,
+)
+from valmer_connectors.settings import (
+    DEFAULT_VALMER_ONEDRIVE_CLIENT_ID_SECRET_NAME,
+    DEFAULT_VALMER_ONEDRIVE_CLIENT_SECRET_SECRET_NAME,
+    DEFAULT_VALMER_ONEDRIVE_DRIVE_ID_CONSTANT_NAME,
+    DEFAULT_VALMER_ONEDRIVE_TENANT_ID_SECRET_NAME,
+    DEFAULT_VALMER_VECTOR_BUCKET_NAME,
 )
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +49,45 @@ WITHOUT_MARKETS_API = {"migrate-valmer", "pipeline-verification", "time-series-b
 # Resource-level fields this file uses. The workflow API also accepts
 # acts_for_requester, which no workload here needs.
 RESOURCE_FIELDS = {"key", "kind", "spec", "access"}
+
+# Objects outside MetaTables, declared on each Job whose code reads them under
+# their default names (docs/deployment.md, "Objects Outside MetaTables"). A
+# Secret whose value a Job reads takes value_reader (reader shows only its
+# name), the Constant reader, and the vector Bucket reader: the Job lists and
+# downloads its Artifacts and never uploads. Workflow API 3.0.0 accepted these
+# kinds and policies in the branch validate-workflow route (2026-10-27).
+OBJECT_ACCESS_KINDS = ("secrets", "constants", "buckets")
+
+
+def _secrets(*names: str) -> list[dict[str, str]]:
+    return [{"name": name, "policy": "value_reader"} for name in names]
+
+
+def _readers(*names: str) -> list[dict[str, str]]:
+    return [{"name": name, "policy": "reader"} for name in names]
+
+
+BANXICO_TOKEN = _secrets(BANXICO_TOKEN_SECRET_NAME)
+VECTOR_BUCKET = _readers(DEFAULT_VALMER_VECTOR_BUCKET_NAME)
+DECLARED_OBJECTS = {
+    "vector-refresh": {"buckets": VECTOR_BUCKET},
+    "vector-onedrive-refresh": {
+        "secrets": _secrets(
+            DEFAULT_VALMER_ONEDRIVE_TENANT_ID_SECRET_NAME,
+            DEFAULT_VALMER_ONEDRIVE_CLIENT_ID_SECRET_NAME,
+            DEFAULT_VALMER_ONEDRIVE_CLIENT_SECRET_SECRET_NAME,
+        ),
+        "constants": _readers(DEFAULT_VALMER_ONEDRIVE_DRIVE_ID_CONSTANT_NAME),
+    },
+    "banxico-fixings-refresh": {"secrets": BANXICO_TOKEN},
+    "banxico-tiie-fixings-refresh": {"secrets": BANXICO_TOKEN},
+    "fred-reference-rates-refresh": {"secrets": _secrets(FRED_API_KEY_SECRET_NAME)},
+    "banxico-policy-refresh": {"secrets": BANXICO_TOKEN},
+    "standard-pipeline-refresh": {
+        "secrets": _secrets(BANXICO_TOKEN_SECRET_NAME, FRED_API_KEY_SECRET_NAME),
+        "buckets": VECTOR_BUCKET,
+    },
+}
 
 # Spec fields that workflow API 2.3.0 accepted for these kinds. The backend
 # rejects unknown fields, including the retired resource_uid and release_kind
@@ -226,7 +275,7 @@ def test_every_workload_declares_reader_on_the_metatables_branch() -> None:
         )
         assert resource["access"]["branches"] == expected_branches, key
         expected = {"branches", "resources"} if key == API_KEY else {"branches"}
-        assert set(resource["access"]) == expected, key
+        assert set(resource["access"]) == expected | set(DECLARED_OBJECTS.get(key, {})), key
 
 
 def test_the_api_holds_runner_on_exactly_the_jobs_it_launches() -> None:
@@ -238,6 +287,40 @@ def test_the_api_holds_runner_on_exactly_the_jobs_it_launches() -> None:
     assert granted == [{"key": profile.key, "policy": "runner"} for profile in JOB_LAUNCH_PROFILES]
     assert MIGRATION_JOB_KEY not in {entry["key"] for entry in granted}
     assert {entry["key"] for entry in granted} <= set(_jobs())
+
+
+def _declared_objects(resource: dict) -> dict[str, list[dict[str, str]]]:
+    access = resource["access"]
+    return {kind: access[kind] for kind in OBJECT_ACCESS_KINDS if kind in access}
+
+
+def test_each_source_job_declares_the_objects_its_code_reads() -> None:
+    resources = _resources()
+
+    assert set(DECLARED_OBJECTS) <= set(_jobs())
+    for key, resource in resources.items():
+        # The API and the Jobs without a source read declare none.
+        assert _declared_objects(resource) == DECLARED_OBJECTS.get(key, {}), key
+
+
+def test_the_standard_pipeline_declares_what_its_stage_jobs_declare() -> None:
+    jobs = _jobs()
+    resources = _resources()
+    expected: dict[str, list[dict[str, str]]] = {}
+
+    # run_pipeline runs each stage script in the scheduled Job's own container,
+    # so its workload User reads what each stage Job's workload User reads.
+    for script_name in PIPELINE_SCRIPTS:
+        execution_path = f"scripts/{script_name}"
+        stage_keys = [key for key, spec in jobs.items() if spec["execution_path"] == execution_path]
+        assert len(stage_keys) == 1, script_name
+        for kind, entries in _declared_objects(resources[stage_keys[0]]).items():
+            declared = expected.setdefault(kind, [])
+            for entry in entries:
+                if entry not in declared:
+                    declared.append(entry)
+
+    assert _declared_objects(resources["standard-pipeline-refresh"]) == expected
 
 
 def test_migration_job_applies_only_the_valmer_provider(monkeypatch, capsys) -> None:
