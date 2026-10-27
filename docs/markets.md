@@ -136,8 +136,7 @@ adapter exists
 
 Every Markets step is one set-based `msm.api` row call per batch, never one
 call per asset. In Valmer's own processes they run on the Markets API
-(ms-markets ADR 0047; write-policy resources `asset`, `asset-snapshots` and
-`asset-pricing-details`); only `ValmerAssetDetailsTable` is written with
+(ms-markets ADR 0047); only `ValmerAssetDetailsTable` is written with
 MetaTables. An application that imports the helper runs them on whichever
 backend it selected.
 

@@ -26,7 +26,7 @@
   contracts, Job authorization, static-site integration, release order, and verification.
 - `docs/deployment.md`: publishing with Git and its Environment prerequisites
   (the locked MetaTables release, ms-markets 3.0.0 migrated with its Markets
-  API, the Valmer Team and the Markets registry writers), the
+  API and the Valmer Team), the
   single workflow file and its declared access, the deployment migration Job,
   the Valmer namespaces and Team, the cleanup of the Jobs that moved files, and
   verification commands.

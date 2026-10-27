@@ -388,7 +388,7 @@ def _publish_valmer_asset_snapshots(
     )
     # Asset snapshots are a Markets table that applications publish into
     # (ms-markets ADR 0047): one AssetSnapshots.publish call, which runs on the
-    # Markets API under the remote backend (write-policy resource asset-snapshots).
+    # Markets API under the remote backend.
     row_count = int(AssetSnapshots.publish(snapshot_rows))
     logger.info(f"Published {row_count} Valmer asset snapshot rows.")
     return row_count

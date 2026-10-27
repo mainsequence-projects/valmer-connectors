@@ -39,10 +39,6 @@ Push only when the Environment is ready for this image:
   `mainsequence.markets` that [Teams And Namespaces](#teams-and-namespaces)
   lists, and the Job and release workload Users that the push creates are
   added to it before the `migrate` step starts;
-- the Environment's `MARKETS_REGISTRY_WRITERS` constant lists those workload
-  Users under the Markets resources they write (see
-  [Markets API Access](#markets-api-access)); the Markets API refuses any
-  other registry write with 403;
 - for the first 0.2.0 push, the schedules are held: from that image on Valmer
   writes and reads only its own tables, so its history is copied before they
   resume (steps 1 to 7 of `docs/time-series-instances.md`).
@@ -316,25 +312,10 @@ not through MetaTables grants on `mainsequence.markets`:
   `valmer_connectors` keeps the one it chose, and one that keeps the runtime
   backend attaches the Markets registries and pricing tables it uses itself.
 
-Two things make the calls work in each Environment:
-
-- the workflow grants every workload except `migrate-valmer`,
-  `pipeline-verification` and `time-series-backfill` view on the
-  `MainSequenceMarkets` branch, which lets it find the Markets API;
-- an Environment admin adds the workload User uids of the Jobs and the API to
-  the Markets `MARKETS_REGISTRY_WRITERS` constant under the resources they
-  write. The Markets API refuses an application's write to any other resource
-  with 403 (`MarketsAccessError`).
-
-| Workloads | `MARKETS_REGISTRY_WRITERS` resources |
-| --- | --- |
-| `vector-refresh`, `vector-onedrive-refresh`, `vector-metatable-refresh` | `asset`, `asset-snapshots`, `asset-pricing-details` (writes timestamped and current pricing details) |
-| `irs-mxn-quotes-refresh`, `irs-usd-quotes-refresh`, `fred-reference-rates-refresh`, `banxico-policy-refresh` | `index-type`, `index` (the Index rows and the dataset reconcile after each run) |
-| `registry-seed` | `index-type`, `index`, `index-convention-details`, `curve`, `curve-building-details`, `pricing-market-data-set` (only when the default set is missing), `pricing-market-data-set-curve-binding`, `pricing-market-data-set-binding` |
-| `tiie-curve-refresh`, `sofr-curve-refresh`, `xccy-curve-refresh`, `xccy-curve-rebuild` | `index-type`, `index` (they can run their quote updaters as dependencies) |
-| `standard-pipeline-refresh` | the union of the rows above, since it runs every stage in its own workload |
-| `banxico-fixings-refresh`, `banxico-tiie-fixings-refresh`, `government-curve-refresh`, the API | none: they only read registries |
-| `time-series-backfill`, `pipeline-verification`, `migrate-valmer` | none: they make no Markets row call |
+In each Environment the workflow grants every workload except `migrate-valmer`,
+`pipeline-verification` and `time-series-backfill` view on the
+`MainSequenceMarkets` branch. That grant is what lets a workload reach the
+Markets API and write through it.
 
 The control-plane API reads current pricing details through the Markets API
 and Valmer's own tables through MetaTables, so it attaches no markets runtime.

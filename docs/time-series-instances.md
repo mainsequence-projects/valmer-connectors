@@ -89,10 +89,6 @@ it would find a provider instance of them.
   Valmer writes `ms_markets__index_values__t_1d`, and the move copies only
   Valmer's identifiers (the FRED and Banxico policy ones and every
   `VALMER_CURVE_QUOTE.*` in the tables' statistics).
-- The Markets `MARKETS_REGISTRY_WRITERS` constant lists the `registry-seed` and
-  `standard-pipeline-refresh` workload Users under
-  `pricing-market-data-set-binding`, the resource the seed writes the bindings
-  through.
 
 ## Steps
 

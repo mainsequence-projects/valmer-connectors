@@ -222,7 +222,7 @@ def _upsert_asset_table_rows(
     """Idempotently create or update AssetTable rows with explicit asset types.
 
     One ``Asset.upsert_many`` row call per batch, which runs on the Markets API
-    under the remote backend (write-policy resource ``asset``).
+    under the remote backend.
     """
 
     asset_types = _normalize_asset_type_map(asset_type_by_identifier)

@@ -228,11 +228,9 @@ The two repositories must be released in dependency order:
 
 1. confirm that the Environment's MetaTables API runs the locked client's release, that its
    ms-markets deployment runs 3.0.0, has applied revision `0022` in the same DataSource and
-   serves the Markets API, that the Valmer
-   Team holds the grants "Teams And Namespaces" lists and the Markets `MARKETS_REGISTRY_WRITERS`
-   constant lists the Valmer workloads (see "Publishing", "Teams And Namespaces" and "Markets API
-   Access" in `docs/deployment.md`), then push
-   `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI
+   serves the Markets API, and that the Valmer Team holds the grants "Teams And Namespaces" lists
+   (see "Publishing", "Teams And Namespaces" and "Markets API Access" in `docs/deployment.md`),
+   then push `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI
    release by `source_path` (`api/valmer_control_plane/main.py`) with every-commit automatic
    redeployment, three retained revisions, and the platform's default static-site CORS policy,
    gates it on the `migrate-valmer` Job, keeps the pipeline Jobs outside the graph, declares

@@ -13,9 +13,8 @@ name: valmer-control-plane-api
 # the migration Job and the read-only verification Job do not. The API also
 # declares edit on every Job it launches: a workload sees and runs only the
 # Jobs granted to it. Table access is not declared here; the Valmer Team
-# grants it, and the Markets MARKETS_REGISTRY_WRITERS constant lists the
-# registries each workload may write (see docs/deployment.md, "Teams And
-# Namespaces" and "Markets API Access").
+# grants it (see docs/deployment.md, "Teams And Namespaces" and "Markets API
+# Access").
 
 resources:
   - key: valmer-control-plane-api

@@ -21,8 +21,7 @@ A push needs the Environment's MetaTables API on the locked client's release (0.
 ms-markets deployment on 3.0.0 with its migration (revision `0022`) applied and its Markets API
 deployed, the Valmer Team owning
 `valmer_connectors` with the table roles on `mainsequence.markets` that "Teams And Namespaces"
-lists, including every new workload User, and those workload Users in the Markets
-`MARKETS_REGISTRY_WRITERS` constant. See "Publishing", "Teams And Namespaces" and "Markets API
+lists, including every new workload User. See "Publishing", "Teams And Namespaces" and "Markets API
 Access" in `docs/deployment.md`.
 
 Markets registries are reached only through the Markets API (ms-markets ADR 0047): the composition

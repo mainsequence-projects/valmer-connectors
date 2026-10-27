@@ -1251,8 +1251,7 @@ def upsert_valmer_market_data_source_bindings() -> dict[str, Any]:
     the tables pricing reads Valmer's curves and fixings from; their
     ``storage_table_uid`` is how Markets and every pricing consumer find them.
     ``bootstrap_runtime()`` attaches both tables, so their uids are known; under
-    the Markets API the binding write is an API call (write-policy resource
-    ``pricing-market-data-set-binding``).
+    the Markets API the binding write is an API call.
     """
 
     from msm_pricing.api import PricingMarketDataSetBinding
