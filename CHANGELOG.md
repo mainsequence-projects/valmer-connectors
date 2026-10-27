@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.1 (2026-10-27)
+
+### Dependencies
+
+- Requires exactly `ms-markets==3.0.1`, whose Markets API no longer has the
+  registry-writer allow-list; its client API is unchanged from 3.0.0.
+  `uv.lock` and `requirements.txt` resolve the published ms-markets 3.0.1 and
+  move nothing else. Deploy against an Environment whose ms-markets deployment
+  runs 3.0.1.
+- The docs drop the `MARKETS_REGISTRY_WRITERS` constant: the workflow's grant
+  on the `MainSequenceMarkets` branch is what lets a workload call the Markets
+  API (`999262f`).
+
+### Deployment
+
+- The workflow moves to workflow API 3.0.0, the only version the backend
+  accepts, so pushes deploy again. Its branch access entries declare
+  `policy: reader` and the API's Job entries `policy: runner` instead of a
+  level (`2ea684b`,
+  [issue #2](https://github.com/mainsequence-projects/valmer-connectors/issues/2)).
+- The source Jobs declare the Secrets (`value_reader`), the
+  `VALMER_ONEDRIVE_DRIVE_ID` Constant (`reader`) and the vector Bucket
+  (`reader`) their code reads, and `standard-pipeline-refresh` declares those
+  of the scripts it runs, instead of being granted them by hand with the
+  removed `add-to-view` (`ff92e0e`,
+  [issue #3](https://github.com/mainsequence-projects/valmer-connectors/issues/3)).
+
 ## 0.2.0 (2026-10-27)
 
 Valmer reaches Markets through the Markets API (ms-markets ADR 0047) instead
