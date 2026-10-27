@@ -1,4 +1,4 @@
-api_version: "2.3.0"
+api_version: "3.0.0"
 name: valmer-control-plane-api
 
 # The repository's only workflow file: the control-plane API, the migration
@@ -7,14 +7,15 @@ name: valmer-control-plane-api
 # key creates a new target, and the old one is not carried over.
 #
 # Every workload reaches the Environment's MetaTables API, so each declares
-# view on the MetaTables repository's branch. Every workload that reaches
+# reader on the MetaTables repository's branch. Every workload that reaches
 # Markets registries through the Markets API (ms-markets ADR 0047) also
-# declares view on the MainSequenceMarkets branch, which lets it find that API;
+# declares reader on the MainSequenceMarkets branch, which lets it find that API;
 # the migration Job and the read-only verification Job do not. The API also
-# declares edit on every Job it launches: a workload sees and runs only the
-# Jobs granted to it. Table access is not declared here; the Valmer Team
-# grants it (see docs/deployment.md, "Teams And Namespaces" and "Markets API
-# Access").
+# declares runner on every Job it launches: a workload sees and runs only the
+# Jobs granted to it, and the API only lists those Jobs, runs them and reads
+# their runs, never changes them. Table access is not declared here; the
+# Valmer Team grants it (see docs/deployment.md, "Teams And Namespaces" and
+# "Markets API Access").
 
 resources:
   - key: valmer-control-plane-api
@@ -34,47 +35,47 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
       # The JOB_LAUNCH_PROFILES of src/valmer_connectors/control_plane/catalog.py.
       resources:
         - key: vector-refresh
-          level: edit
+          policy: runner
         - key: vector-onedrive-refresh
-          level: edit
+          policy: runner
         - key: vector-metatable-refresh
-          level: edit
+          policy: runner
         - key: irs-mxn-quotes-refresh
-          level: edit
+          policy: runner
         - key: irs-usd-quotes-refresh
-          level: edit
+          policy: runner
         - key: banxico-fixings-refresh
-          level: edit
+          policy: runner
         - key: banxico-tiie-fixings-refresh
-          level: edit
+          policy: runner
         - key: fred-reference-rates-refresh
-          level: edit
+          policy: runner
         - key: banxico-policy-refresh
-          level: edit
+          policy: runner
         - key: tiie-curve-refresh
-          level: edit
+          policy: runner
         - key: sofr-curve-refresh
-          level: edit
+          policy: runner
         - key: xccy-curve-refresh
-          level: edit
+          policy: runner
         - key: xccy-curve-rebuild
-          level: edit
+          policy: runner
         - key: government-curve-refresh
-          level: edit
+          policy: runner
         - key: standard-pipeline-refresh
-          level: edit
+          policy: runner
         - key: pipeline-verification
-          level: edit
+          policy: runner
         - key: registry-seed
-          level: edit
+          policy: runner
         - key: time-series-backfill
-          level: edit
+          policy: runner
 
   - key: migrate-valmer
     kind: job
@@ -92,7 +93,7 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
 
   # Pipeline Jobs. The control-plane API launches every one of them, and
   # standard-pipeline-refresh is the only scheduled Job. No execution step
@@ -117,9 +118,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: vector-onedrive-refresh
     kind: job
@@ -137,9 +138,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: vector-metatable-refresh
     kind: job
@@ -157,9 +158,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: irs-mxn-quotes-refresh
     kind: job
@@ -177,9 +178,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: irs-usd-quotes-refresh
     kind: job
@@ -197,9 +198,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: banxico-fixings-refresh
     kind: job
@@ -217,9 +218,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: banxico-tiie-fixings-refresh
     kind: job
@@ -237,9 +238,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: fred-reference-rates-refresh
     kind: job
@@ -257,9 +258,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: banxico-policy-refresh
     kind: job
@@ -277,9 +278,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: tiie-curve-refresh
     kind: job
@@ -297,9 +298,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: sofr-curve-refresh
     kind: job
@@ -317,9 +318,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: xccy-curve-refresh
     kind: job
@@ -337,9 +338,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: xccy-curve-rebuild
     kind: job
@@ -357,9 +358,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: government-curve-refresh
     kind: job
@@ -377,9 +378,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: standard-pipeline-refresh
     kind: job
@@ -401,9 +402,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   - key: pipeline-verification
     kind: job
@@ -421,7 +422,7 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
 
   # Writes the static Markets registry rows (Index, conventions, curves,
   # market-data bindings) that bootstrap_runtime() no longer seeds by default.
@@ -442,9 +443,9 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
         - repository: MainSequenceMarkets
-          level: view
+          policy: reader
 
   # Copies Valmer's curves, fixings and daily Index values from the core
   # Markets tables into Valmer's own tables, or back with --rollback
@@ -466,7 +467,7 @@ resources:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
 
 execution:
   steps:

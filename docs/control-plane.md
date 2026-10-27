@@ -150,7 +150,7 @@ schedule included, as soon as the commit image is verified, whatever a step's `n
 a Job in the graph would tie its promotion policy to the API's group. The pipeline Jobs keep
 their own every-push redeployment (see "Workflow Declarations" in `docs/deployment.md`).
 
-The workflow grants the API `edit` on each of the eighteen Jobs it launches. Hosted, the API
+The workflow grants the API `runner` on each of the eighteen Jobs it launches. Hosted, the API
 sees only the Jobs granted to its workload User, so its Jobs and Job-runs collections list
 those eighteen and not the migration Job. Wherever the migration Job is listed, as in a local
 review that runs with the developer's own access, preflight blocks it: hosted migrations run
@@ -230,12 +230,12 @@ The two repositories must be released in dependency order:
    ms-markets deployment runs 3.0.0, has applied revision `0022` in the same DataSource and
    serves the Markets API, and that the Valmer Team holds the grants "Teams And Namespaces" lists
    (see "Publishing", "Teams And Namespaces" and "Markets API Access" in `docs/deployment.md`),
-   then push `valmer-connectors`. Its API 2.3.0 workflow declares the FastAPI
+   then push `valmer-connectors`. Its API 3.0.0 workflow declares the FastAPI
    release by `source_path` (`api/valmer_control_plane/main.py`) with every-commit automatic
    redeployment, three retained revisions, and the platform's default static-site CORS policy,
    gates it on the `migrate-valmer` Job, keeps the pipeline Jobs outside the graph, declares
    MetaTables branch access on every workload, MainSequenceMarkets branch access on every workload
-   that calls the Markets API, and grants the API edit on the Jobs it launches.
+   that calls the Markets API, and grants the API `runner` on the Jobs it launches.
    Before the migration step starts, add the new Jobs' workload Users to the Valmer Team (see
    "Teams And Namespaces" in `docs/deployment.md`);
 2. confirm that the workflow run's `migrate` step succeeded before its `deploy_api` step;

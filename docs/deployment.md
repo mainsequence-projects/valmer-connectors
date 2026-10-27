@@ -3,7 +3,7 @@
 ## Publishing
 
 A plain `git push` publishes this repository. `.mainsequence/workflows/` holds
-one workflow file, `valmer-control-plane-api.yaml` (workflow API 2.3.0), and it
+one workflow file, `valmer-control-plane-api.yaml` (workflow API 3.0.0), and it
 decides what deploys. It declares the control-plane FastAPI release, the
 `migrate-valmer` Job and the eighteen pipeline Jobs. Every resource declares
 `tag_regex: null`, so every push to the branch is eligible:
@@ -15,9 +15,9 @@ decides what deploys. It declares the control-plane FastAPI release, the
   launches, so each one redeploys on every push by itself; its new image is
   active as soon as the commit image is verified, before the migration runs
   (see [Workflow Declarations](#workflow-declarations));
-- every workload declares view on the MetaTables repository's branch, every
+- every workload declares `reader` on the MetaTables repository's branch, every
   workload that calls the Markets API also on the `MainSequenceMarkets`
-  branch, and the API declares edit on the eighteen Jobs (see
+  branch, and the API declares `runner` on the eighteen Jobs (see
   [Teams And Namespaces](#teams-and-namespaces) for table access and
   [Markets API Access](#markets-api-access) for registry writes).
 
@@ -184,7 +184,7 @@ nullable or defaulted columns first, and drop or rename only in a later
 release.
 
 The API is declared as `kind: fastapi` with
-`source_path: api/valmer_control_plane/main.py`. Workflow API 2.3.0 files carry
+`source_path: api/valmer_control_plane/main.py`. Workflow API 3.0.0 files carry
 no resource, release or Job UIDs. The backend binds each target through the
 workflow file path and its resource key (the API also through its release
 kind), so neither the file nor a key may be renamed. Validate an edited
@@ -204,22 +204,23 @@ Command Center SDK's exact stable release target has been configured. See
 ## Teams And Namespaces
 
 Every workload of the workflow declares
-`access.branches: [{repository: MetaTables, level: view}]`, view on the
+`access.branches: [{repository: MetaTables, policy: reader}]`, `reader` on the
 MetaTables repository's branch in its Environment, which a workload needs to
 discover that Environment's MetaTables API. Without it `upgrade_application`
 and every table read or write fail to resolve the API. Every workload except
 `migrate-valmer`, `pipeline-verification` and `time-series-backfill` also declares
-`{repository: MainSequenceMarkets, level: view}`, which it needs to discover
+`{repository: MainSequenceMarkets, policy: reader}`, which it needs to discover
 the Markets API (see [Markets API Access](#markets-api-access)). A grant on another
 repository's branch needs a push that the platform resolves to a person (a
 member whose GitHub account an Organization admin linked) who manages the
-workload and holds view on that branch. Otherwise the resource fails with
+workload and holds `reader` on that branch. Otherwise the resource fails with
 `declared_access_not_granted`, and nothing of its group is applied.
 
-The API also declares `access.resources` at `edit` on each of the eighteen
-Jobs it launches. A workload has no implicit access to the other workloads of
-its branch: the hosted API lists, and can launch, only the Jobs granted to it,
-and a launch needs edit. `migrate-valmer` is not granted, so the hosted Jobs
+The API also declares `access.resources` with `policy: runner` on each of the
+eighteen Jobs it launches. A workload has no implicit access to the other
+workloads of its branch: the hosted API lists, and can launch, only the Jobs
+granted to it. It lists a Job, runs it and reads its runs, never changes it,
+which `runner` covers. `migrate-valmer` is not granted, so the hosted Jobs
 collection does not list it; wherever it is listed, as in a local review, the
 preflight refuses its execution path.
 
@@ -313,7 +314,7 @@ not through MetaTables grants on `mainsequence.markets`:
   backend attaches the Markets registries and pricing tables it uses itself.
 
 In each Environment the workflow grants every workload except `migrate-valmer`,
-`pipeline-verification` and `time-series-backfill` view on the
+`pipeline-verification` and `time-series-backfill` `reader` on the
 `MainSequenceMarkets` branch. That grant is what lets a workload reach the
 Markets API and write through it.
 

@@ -28,7 +28,7 @@ def use_markets_api() -> None:
 
     The Markets API is found in the caller's Environment on the first row call
     (``LazyRemoteBackend``), so a process that never touches a Markets registry
-    never needs to see it. A workload reaches it with ``view`` on the
+    never needs to see it. A workload reaches it with ``reader`` on the
     ``MainSequenceMarkets`` branch; ``MARKETS_API_URL`` (and ``MARKETS_API_TOKEN``)
     select a local Markets API instead.
     """

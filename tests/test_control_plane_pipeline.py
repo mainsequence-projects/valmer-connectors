@@ -42,7 +42,7 @@ def test_control_plane_workflow_declares_described_jobs_for_every_launch_profile
 
     # The pipeline Jobs share the repository's single workflow file with the API
     # and its migration Job.
-    assert workflow["api_version"] == "2.3.0"
+    assert workflow["api_version"] == "3.0.0"
     assert set(jobs_by_key) == {profile.key for profile in JOB_LAUNCH_PROFILES}
     for profile in JOB_LAUNCH_PROFILES:
         assert jobs_by_key[profile.key]["name"].strip()

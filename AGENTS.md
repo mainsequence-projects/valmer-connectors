@@ -13,10 +13,10 @@ each target by workflow file path and key, so a new file or key creates a new ta
 `execution.steps` the API waits for the `migrate-valmer` Job; the operational and scheduled Jobs
 stay out of the graph, because a step would not hold their new image back and would tie their
 promotion policy to the API's group (see "Workflow Declarations" in `docs/deployment.md`). Keep
-every revision backward compatible (expand first). Every workload declares view on the
-`MetaTables` branch, every workload that calls the Markets API also view on the
-`MainSequenceMarkets` branch, and the API declares edit on each Job of `JOB_LAUNCH_PROFILES`: add a
-launch profile and its grant together.
+every revision backward compatible (expand first). The file is workflow API 3.0.0, whose access
+entries name policies: every workload declares `reader` on the `MetaTables` branch, every workload
+that calls the Markets API also `reader` on the `MainSequenceMarkets` branch, and the API declares
+`runner` on each Job of `JOB_LAUNCH_PROFILES`: add a launch profile and its grant together.
 A push needs the Environment's MetaTables API on the locked client's release (0.1.57 or later), its
 ms-markets deployment on 3.0.0 with its migration (revision `0022`) applied and its Markets API
 deployed, the Valmer Team owning

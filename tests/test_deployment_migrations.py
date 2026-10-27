@@ -23,32 +23,36 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIRECTORY = REPOSITORY_ROOT / ".mainsequence" / "workflows"
 API_KEY = "valmer-control-plane-api"
 MIGRATION_JOB_KEY = "migrate-valmer"
-# The MetaTables repository's exact platform name; every workload discovers its API.
-METATABLES_BRANCH_VIEW = [{"repository": "MetaTables", "level": "view"}]
+# The MetaTables repository's exact platform name; every workload discovers its
+# API with reader on its branch (workflow API 3.0.0 names a policy).
+METATABLES_BRANCH_READER = [{"repository": "MetaTables", "policy": "reader"}]
 # Workloads that reach Markets registries through the Markets API (ms-markets
 # ADR 0047) also discover it on the MainSequenceMarkets branch.
-MARKETS_BRANCH_VIEW = [
-    *METATABLES_BRANCH_VIEW,
-    {"repository": "MainSequenceMarkets", "level": "view"},
+MARKETS_BRANCH_READER = [
+    *METATABLES_BRANCH_READER,
+    {"repository": "MainSequenceMarkets", "policy": "reader"},
 ]
 # The migration Job applies only Valmer's provider, the verification Job only
 # reads tables and the time-series backfill only copies table rows; none calls
 # the Markets API.
 WITHOUT_MARKETS_API = {"migrate-valmer", "pipeline-verification", "time-series-backfill"}
-# Resource-level fields this file uses. Workflow API 2.3.0 also accepts
-# acts_for_requester on a fastapi resource, which no agent here needs.
+# Resource-level fields this file uses. The workflow API also accepts
+# acts_for_requester, which no workload here needs.
 RESOURCE_FIELDS = {"key", "kind", "spec", "access"}
 
-# Spec fields that workflow API 2.3.0 accepts for these kinds. The backend
+# Spec fields that workflow API 2.3.0 accepted for these kinds. The backend
 # rejects unknown fields, including the retired resource_uid and release_kind
 # and the 2.1.0-only Job fields uid, cluster_uid and namespace. Copied by hand
 # from CodeRepositoryWorkflowService.FASTAPI_FIELDS and .JOB_FIELDS, plus
 # env_vars (WORKFLOW_ENV_VARS_API_VERSIONS), in tdag-django
 # timeseries_orm/tdag/pod_manager/services/code_repository_workflows.py at
 # a618e4140, checked again at 122a395fe (2026-10-03) and refreshed at
-# f16c42249 (2026-10-11, WORKFLOW_API_VERSION "2.3.0"). They do not follow
-# backend changes: refresh them with every workflow API bump, and validate the
-# file through the branch validate-workflow endpoint before pushing.
+# f16c42249 (2026-10-11, WORKFLOW_API_VERSION "2.3.0"). For workflow API 3.0.0
+# they were not refreshed from the backend source, only compared with the
+# branch's 3.0.0 workflow template (2026-10-27), whose fastapi and job fields
+# are all here. They do not follow backend changes: refresh them with every
+# workflow API bump, and validate the file through the branch validate-workflow
+# endpoint before pushing.
 FASTAPI_FIELDS = {
     "mcp_enabled",
     "min_scale",
@@ -109,10 +113,10 @@ def test_the_api_workflow_is_the_repository_s_only_workflow_file() -> None:
     )
 
 
-def test_api_workflow_declares_the_release_as_an_api_2_3_0_fastapi_resource() -> None:
+def test_api_workflow_declares_the_release_as_an_api_3_0_0_fastapi_resource() -> None:
     workflow = _load(MIGRATION_WORKFLOW_PATH)
 
-    assert workflow["api_version"] == "2.3.0"
+    assert workflow["api_version"] == "3.0.0"
     assert workflow["name"] == "valmer-control-plane-api"
     assert {resource["key"]: resource["kind"] for resource in workflow["resources"]} == {
         "valmer-control-plane-api": "fastapi",
@@ -175,7 +179,7 @@ def _jobs() -> dict[str, dict]:
     }
 
 
-def test_every_job_declares_only_api_2_3_0_job_fields() -> None:
+def test_every_job_declares_only_known_job_fields() -> None:
     jobs = _jobs()
 
     assert len(jobs) == len(JOB_LAUNCH_PROFILES) + 1
@@ -214,23 +218,24 @@ def _resources() -> dict[str, dict]:
     }
 
 
-def test_every_workload_declares_view_on_the_metatables_branch() -> None:
+def test_every_workload_declares_reader_on_the_metatables_branch() -> None:
     for key, resource in _resources().items():
         assert set(resource) <= RESOURCE_FIELDS, key
         expected_branches = (
-            METATABLES_BRANCH_VIEW if key in WITHOUT_MARKETS_API else MARKETS_BRANCH_VIEW
+            METATABLES_BRANCH_READER if key in WITHOUT_MARKETS_API else MARKETS_BRANCH_READER
         )
         assert resource["access"]["branches"] == expected_branches, key
         expected = {"branches", "resources"} if key == API_KEY else {"branches"}
         assert set(resource["access"]) == expected, key
 
 
-def test_the_api_holds_edit_on_exactly_the_jobs_it_launches() -> None:
+def test_the_api_holds_runner_on_exactly_the_jobs_it_launches() -> None:
     granted = _resources()[API_KEY]["access"]["resources"]
 
     # The control plane lists and runs a branch Job only when its workload is
-    # granted that Job; launching needs edit. The migration Job is not launched.
-    assert granted == [{"key": profile.key, "level": "edit"} for profile in JOB_LAUNCH_PROFILES]
+    # granted that Job. It lists the Job, runs it and reads its runs, never
+    # changes it, which runner covers. The migration Job is not launched.
+    assert granted == [{"key": profile.key, "policy": "runner"} for profile in JOB_LAUNCH_PROFILES]
     assert MIGRATION_JOB_KEY not in {entry["key"] for entry in granted}
     assert {entry["key"] for entry in granted} <= set(_jobs())
 
