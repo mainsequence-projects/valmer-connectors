@@ -16,11 +16,10 @@ promotion policy to the API's group (see "Workflow Declarations" in `docs/deploy
 every revision backward compatible (expand first). The file is workflow API 3.0.0, whose access
 entries name policies: every workload declares `reader` on the `MetaTables` branch, every workload
 that calls the Markets API also `reader` on the `MainSequenceMarkets` branch, and the API declares
-`runner` on each Job of `JOB_LAUNCH_PROFILES`: add a launch profile and its grant together. Each
-source Job also declares the Secrets (`value_reader`), Constant (`reader`) and Bucket (`reader`)
-its code reads, and `standard-pipeline-refresh` declares those of the scripts it runs: add a
-source read and its declaration together. Artifact and MetaTable grants stay by hand ("Objects
-Outside MetaTables" in `docs/deployment.md`).
+`runner` on each Job of `JOB_LAUNCH_PROFILES`: add a launch profile and its grant together. No
+resource declares a Secret, Constant or Bucket: the deployment needs none, and a declaration on
+an object the Environment lacks blocks the whole push. Grants on the objects the source Jobs read
+are by hand ("Objects Outside MetaTables" in `docs/deployment.md`).
 A push needs the Environment's MetaTables API on the locked client's release (0.1.57 or later), its
 ms-markets deployment on 3.0.2 with its migration (revision `0022`) applied and its Markets API
 deployed, the Valmer Team owning

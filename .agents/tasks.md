@@ -92,18 +92,17 @@
   `VALMER_ONEDRIVE_CLIENT_SECRET`, the Constant `VALMER_ONEDRIVE_DRIVE_ID`, the
   Bucket `Hitorical Valmer Vector Analytico` with the vector Artifacts, and the
   registered MetaTable `dbo.vector_precios_gubernamental_pip_vista`. On
-  2026-10-11 Production had none of them. Create each where it belongs. The
-  workflow declares the Secret, Constant and Bucket policies; grant the vector
-  Artifacts and the MetaTable by hand, as "Objects Outside MetaTables" in
-  `docs/deployment.md` lists. Until then those Jobs, and the scheduled standard
-  pipeline, fail at their first source read.
+  2026-10-11 Production had none of them; the deployment needs none of them.
+  Where a source Job should run, create what it reads and grant its workload
+  User by hand, as "Objects Outside MetaTables" in `docs/deployment.md` lists.
+  The workflow never declares them. Until then those Jobs, and the scheduled
+  standard pipeline, fail at their first source read.
 - Owning skill: `mainsequence-access-control-and-sharing`.
 - Expected output: every source Job and one scheduled standard-pipeline run
   succeed, and the control plane's preflight for `vector-metatable-refresh`
   passes its one-row probe.
-- Required evidence: the workflow action's `access` results for the declared
-  objects, the Artifact and MetaTable grants, and one succeeded JobRun per
-  source Job.
+- Required evidence: the grants on each object, the Artifact and MetaTable
+  grants, and one succeeded JobRun per source Job.
 
 ## Renew the local review host's access token
 

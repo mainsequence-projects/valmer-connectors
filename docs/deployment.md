@@ -340,35 +340,38 @@ Still outside the Markets API, each for a stated reason:
 
 ### Objects Outside MetaTables
 
-The source Jobs read Secrets, a Constant and a Bucket of their Environment by
-name. The workflow declares each one in the `access` of every Job that reads
-it, with the narrowest policy the code needs, so the push gives that Job's
-workload User the policy:
+Some source Jobs read a Secret, a Constant or a Bucket of their Environment by
+name (the defaults; the `VALMER_*_NAME` environment variables of
+`src/valmer_connectors/settings.py` rename some of them):
 
-| Object | Kind | Declared policy | Jobs |
-| --- | --- | --- | --- |
-| `FRED_API_KEY` | Secret | `value_reader` | `fred-reference-rates-refresh`, `standard-pipeline-refresh` |
-| `BANXICO_TOKEN` | Secret | `value_reader` | `banxico-fixings-refresh`, `banxico-tiie-fixings-refresh`, `banxico-policy-refresh`, `standard-pipeline-refresh` |
-| `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID`, `VALMER_ONEDRIVE_CLIENT_SECRET` | Secrets | `value_reader` | `vector-onedrive-refresh` |
-| `VALMER_ONEDRIVE_DRIVE_ID` | Constant | `reader` | `vector-onedrive-refresh` |
-| `Hitorical Valmer Vector Analytico` | Bucket | `reader` | `vector-refresh`, `standard-pipeline-refresh` |
+| Object | Kind | Read by |
+| --- | --- | --- |
+| `FRED_API_KEY` | Secret | `fred-reference-rates-refresh`, `standard-pipeline-refresh` |
+| `BANXICO_TOKEN` | Secret | `banxico-fixings-refresh`, `banxico-tiie-fixings-refresh`, `banxico-policy-refresh`, `standard-pipeline-refresh` |
+| `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID`, `VALMER_ONEDRIVE_CLIENT_SECRET` | Secrets | `vector-onedrive-refresh` |
+| `VALMER_ONEDRIVE_DRIVE_ID` | Constant | `vector-onedrive-refresh` |
+| `Hitorical Valmer Vector Analytico` | Bucket | `vector-refresh`, `standard-pipeline-refresh` |
 
-Each Job reads the value of its Secrets (`reader` on a Secret shows only its
-name) and of the Constant, and lists and downloads the Bucket's Artifacts
-without uploading any (uploading takes `contributor`).
-`standard-pipeline-refresh` runs the vector, Banxico and FRED scripts in its
-own container, so it declares what those Jobs declare. The API and the other
-Jobs read none of these objects.
+The deployment needs none of them, and the workflow declares none of them.
+The API and the other Jobs read none of them.
 
-A declaration gives a policy; it does not create the object. Create each one
-in the Environment before the push. The names are the defaults: the
-`VALMER_*_NAME` environment variables of `src/valmer_connectors/settings.py`
-rename some of them, and a renamed object needs its declaration renamed too.
+A Job that reads one fails at that read when it is not available. The FRED and
+Banxico Jobs take `FRED_API_KEY` and `BANXICO_TOKEN` from their environment
+first and read the Secret only when the variable is unset.
+`standard-pipeline-refresh` runs the vector, Banxico and FRED scripts as stages
+in its own container and stops at the first stage that fails.
 
-A missing object blocks the whole push, not only its Jobs. The 2026-10-27
-Production push of `ea0d59e` (workflow run
-`8b3ee99a-6495-40a1-9892-af404167cdae`) ran before any of these objects existed
-there:
+In an Environment that has one of these objects, a person who owns it gives
+the Job's workload User its policy by hand: `value_reader` on a Secret
+(`mainsequence secrets access grant`; `reader` shows only its name), and
+`reader` on the Constant or the Bucket. A Job that a push recreates has a new
+workload User, which needs the grant again.
+
+Never declare them in the workflow. The platform applies a declaration only
+to an object that exists, and a declaration on a missing object blocks the
+whole push, not only its Jobs. The 2026-10-27 Production push of `ea0d59e`
+(workflow run `8b3ee99a-6495-40a1-9892-af404167cdae`) declared them before any
+existed there:
 
 - The seven Jobs that declare them were not created, while the nine that
   declare none were.
@@ -378,12 +381,12 @@ there:
 - With the API refused, the migration was not admitted, and the run failed
   without migrating or deploying.
 
-After a push, read the workflow run's step errors. To check one grant:
+To check one grant:
 `mainsequence secrets access explain <secret uid> secrets.read_value --user <workload user uid>`
 or
 `mainsequence constants access explain <constant uid> constants.read --user <workload user uid>`.
 
-Two grants stay outside the workflow:
+Two more grants are always by hand:
 
 - **The vector Artifacts.** A Bucket `reader` lists only the Artifacts the
   workload can already see, because each Artifact has its own policies. The

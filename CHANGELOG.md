@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.3 (2026-10-28)
+
+### Deployment
+
+- The workflow declares no Secret, Constant or Bucket any more. The
+  deployment needs none of them, and the platform refuses a declaration on an
+  object the Environment does not have, which failed the whole first
+  Production push of 0.2.1. This removes the declarations added in `ff92e0e`
+  and the tests that required them. The source Jobs that read these objects
+  still fail at that read where the object is missing; where one exists, its
+  owner grants the Job's workload User by hand ("Objects Outside MetaTables"
+  in `docs/deployment.md`). 0.2.2's note to create the objects before the push
+  no longer applies.
+
 ## 0.2.2 (2026-10-28)
 
 ### Dependencies

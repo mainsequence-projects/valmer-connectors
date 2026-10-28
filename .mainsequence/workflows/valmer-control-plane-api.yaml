@@ -17,15 +17,9 @@ name: valmer-control-plane-api
 # Valmer Team grants it (see docs/deployment.md, "Teams And Namespaces" and
 # "Markets API Access").
 #
-# Each source Job also declares the objects outside MetaTables that its code
-# reads, under their default names: value_reader on each Secret whose value it
-# reads, reader on the OneDrive drive-id Constant, and reader on the vector
-# Bucket, whose Artifacts it lists and downloads but never uploads to.
-# standard-pipeline-refresh runs the vector, Banxico and FRED scripts in its
-# own container, so it declares what those Jobs declare. A Bucket policy does
-# not show the Artifacts in it: each vector Artifact still needs viewer for the
-# workload Users of vector-refresh and standard-pipeline-refresh (see
-# docs/deployment.md, "Objects Outside MetaTables").
+# No resource declares a Secret, Constant or Bucket. The platform applies a
+# declaration only to an object the Environment has; one on a missing object
+# fails the whole push (docs/deployment.md, "Objects Outside MetaTables").
 
 resources:
   - key: valmer-control-plane-api
@@ -131,9 +125,6 @@ resources:
           policy: reader
         - repository: MainSequenceMarkets
           policy: reader
-      buckets:
-        - name: Hitorical Valmer Vector Analytico
-          policy: reader
 
   - key: vector-onedrive-refresh
     kind: job
@@ -153,16 +144,6 @@ resources:
         - repository: MetaTables
           policy: reader
         - repository: MainSequenceMarkets
-          policy: reader
-      secrets:
-        - name: VALMER_ONEDRIVE_TENANT_ID
-          policy: value_reader
-        - name: VALMER_ONEDRIVE_CLIENT_ID
-          policy: value_reader
-        - name: VALMER_ONEDRIVE_CLIENT_SECRET
-          policy: value_reader
-      constants:
-        - name: VALMER_ONEDRIVE_DRIVE_ID
           policy: reader
 
   - key: vector-metatable-refresh
@@ -244,9 +225,6 @@ resources:
           policy: reader
         - repository: MainSequenceMarkets
           policy: reader
-      secrets:
-        - name: BANXICO_TOKEN
-          policy: value_reader
 
   - key: banxico-tiie-fixings-refresh
     kind: job
@@ -267,9 +245,6 @@ resources:
           policy: reader
         - repository: MainSequenceMarkets
           policy: reader
-      secrets:
-        - name: BANXICO_TOKEN
-          policy: value_reader
 
   - key: fred-reference-rates-refresh
     kind: job
@@ -290,9 +265,6 @@ resources:
           policy: reader
         - repository: MainSequenceMarkets
           policy: reader
-      secrets:
-        - name: FRED_API_KEY
-          policy: value_reader
 
   - key: banxico-policy-refresh
     kind: job
@@ -313,9 +285,6 @@ resources:
           policy: reader
         - repository: MainSequenceMarkets
           policy: reader
-      secrets:
-        - name: BANXICO_TOKEN
-          policy: value_reader
 
   - key: tiie-curve-refresh
     kind: job
@@ -439,14 +408,6 @@ resources:
         - repository: MetaTables
           policy: reader
         - repository: MainSequenceMarkets
-          policy: reader
-      secrets:
-        - name: BANXICO_TOKEN
-          policy: value_reader
-        - name: FRED_API_KEY
-          policy: value_reader
-      buckets:
-        - name: Hitorical Valmer Vector Analytico
           policy: reader
 
   - key: pipeline-verification
