@@ -10,22 +10,29 @@ Do not introduce additional historical agent-state logs.
 `.mainsequence/workflows/valmer-control-plane-api.yaml` is the repository's only workflow file.
 Declare every API, agent and Job in it, and keep its path and resource keys: the backend identifies
 each target by workflow file path and key, so a new file or key creates a new target. In
-`execution.steps` the API waits for the `migrate-valmer` Job; the operational and scheduled Jobs
-stay out of the graph, because a step would not hold their new image back and would tie their
-promotion policy to the API's group (see "Workflow Declarations" in `docs/deployment.md`). Keep
-every revision backward compatible (expand first). The file is workflow API 3.0.0, whose access
-entries name policies: every workload declares `reader` on the `MetaTables` branch, every workload
-that calls the Markets API also `reader` on the `MainSequenceMarkets` branch, and the API declares
-`runner` on each Job of `JOB_LAUNCH_PROFILES`: add a launch profile and its grant together. No
-resource declares a Secret, Constant or Bucket: the deployment needs none, and a declaration on
-an object the Environment lacks blocks the whole push. Grants on the objects the source Jobs read
-are by hand ("Objects Outside MetaTables" in `docs/deployment.md`).
-A push needs the Environment's MetaTables API on the locked client's release (0.1.57 or later), its
-ms-markets deployment on 3.0.2 with its migration (revision `0022`) applied and its Markets API
-deployed, the Valmer Team owning
-`valmer_connectors` with the table roles on `mainsequence.markets` that "Teams And Namespaces"
-lists, including every new workload User. See "Publishing", "Teams And Namespaces" and "Markets API
-Access" in `docs/deployment.md`.
+`execution.steps` both APIs (`valmer-control-plane-api` and `valmer-data-api`) wait for the
+`migrate-valmer` Job; the operational and scheduled Jobs stay out of the graph, because a step would
+not hold their new image back and would tie their promotion policy to the APIs' group (see "Workflow
+Declarations" in `docs/deployment.md`). Keep every revision backward compatible (expand first). The
+file is workflow API 3.0.0, whose access entries name policies: every workload declares `reader` on
+the `MetaTables` branch, every workload that calls the Markets API also `reader` on the
+`MainSequenceMarkets` branch, and the control-plane API declares `runner` on each Job of
+`JOB_LAUNCH_PROFILES`: add a launch profile and its grant together. No resource declares a Secret,
+Constant or Bucket: the deployment needs none, and a declaration on an object the Environment lacks
+blocks the whole push. Grants on the objects the source Jobs read are by hand ("Objects Outside
+MetaTables" in `docs/deployment.md`). A push needs the Environment's MetaTables API on the locked
+client's release (0.1.57 or later), its ms-markets deployment on 3.0.2 with its migration (revision
+`0022`) applied and its Markets API deployed, the Valmer Team owning `valmer_connectors` with the
+table roles on `mainsequence.markets` that "Teams And Namespaces" lists, including every new
+workload User. See "Publishing", "Teams And Namespaces" and "Markets API Access" in
+`docs/deployment.md`.
+
+Other applications read Valmer data only through the Valmer data API (ADR 0010,
+`docs/data-api.md`); none of them installs or imports `valmer_connectors`. The SQL that joins
+Valmer's tables for them lives in `src/valmer_connectors/data_api/`. Its routes change only by
+addition: removing or renaming a route or field needs a new API version, and a column a consumer
+reads is never renamed or dropped in place. A consumer pipeline that needs a Valmer time series as
+an input references the table by the identifier the `GET /api/v1/datasets/` route publishes.
 
 Markets registries are reached only through the Markets API (ms-markets ADR 0047): the composition
 roots (Job scripts, the CLI, the control-plane API module) call

@@ -1,19 +1,20 @@
 api_version: "3.0.0"
 name: valmer-control-plane-api
 
-# The repository's only workflow file: the control-plane API, the migration
-# Job that gates it, and every pipeline Job. A target's identity is this file
-# path plus its resource key, so rename neither: on the next push a new path or
-# key creates a new target, and the old one is not carried over.
+# The repository's only workflow file: the control-plane API, the data API
+# (ADR 0010), the migration Job that gates both, and every pipeline Job. A
+# target's identity is this file path plus its resource key, so rename neither:
+# on the next push a new path or key creates a new target, and the old one is
+# not carried over.
 #
 # Every workload reaches the Environment's MetaTables API, so each declares
 # reader on the MetaTables repository's branch. Every workload that reaches
 # Markets registries through the Markets API (ms-markets ADR 0047) also
 # declares reader on the MainSequenceMarkets branch, which lets it find that API;
-# the migration Job and the read-only verification Job do not. The API also
-# declares runner on every Job it launches: a workload sees and runs only the
-# Jobs granted to it, and the API only lists those Jobs, runs them and reads
-# their runs, never changes them. Table access is not declared here; the
+# the migration Job and the read-only verification Job do not. The
+# control-plane API also declares runner on every Job it launches: a workload
+# sees and runs only the Jobs granted to it, and the API only lists those Jobs,
+# runs them and reads their runs, never changes them. Table access is not declared here; the
 # Valmer Team grants it (see docs/deployment.md, "Teams And Namespaces" and
 # "Markets API Access").
 #
@@ -80,6 +81,26 @@ resources:
           policy: runner
         - key: time-series-backfill
           policy: runner
+
+  # The data API other applications read Valmer data through (ADR 0010,
+  # docs/data-api.md). Its release name comes from its source path
+  # (valmer_data_api), which consumers discover with reader on this repository's
+  # branch. It reads Asset rows through the Markets API and launches no Job.
+  - key: valmer-data-api
+    kind: fastapi
+    spec:
+      source_path: api/valmer_data_api/main.py
+      automatic_deployment: true
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+      revision_retention_count: 3
+    access:
+      branches:
+        - repository: MetaTables
+          policy: reader
+        - repository: MainSequenceMarkets
+          policy: reader
 
   - key: migrate-valmer
     kind: job
@@ -483,5 +504,9 @@ execution:
       needs: [image]
     deploy_api:
       deploy: valmer-control-plane-api
+      image_from: image
+      needs: [migrate]
+    deploy_data_api:
+      deploy: valmer-data-api
       image_from: image
       needs: [migrate]

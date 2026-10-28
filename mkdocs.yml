@@ -12,6 +12,7 @@ nav:
   - MetaTable Query Optimization: metatable-query-optimization.md
   - Agent Skills: agent-skills.md
   - Command Center Control Plane: control-plane.md
+  - Valmer Data API: data-api.md
   - Dashboards: dashboards.md
   - Deployment: deployment.md
   - Time-Series Instances: time-series-instances.md

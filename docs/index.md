@@ -21,6 +21,7 @@ must follow when registering assets from different vector sources.
 - [MetaTable Query Optimization](metatable-query-optimization.md)
 - [Agent Skills](agent-skills.md)
 - [Command Center Control Plane](control-plane.md)
+- [Valmer Data API](data-api.md)
 - [Dashboards](dashboards.md)
 - [Deployment](deployment.md)
 - [New Version Migration](new-version-migration.md)

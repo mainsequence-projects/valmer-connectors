@@ -356,9 +356,13 @@ caller also needs access to this table. Valmer vector observations reference
 `AssetTable.unique_identifier` with `ON DELETE RESTRICT` instead, so an Asset
 with stored vector history cannot be deleted until that history is removed.
 
-## Public Valmer Detail Query API
+## Valmer Detail Query Helpers
 
-Downstream projects should read static Valmer detail fields through:
+Other applications read static Valmer detail fields through the data API's
+`POST /api/v1/assets/maturity/` route, never by importing this package
+([ADR 0010](adr/0010-valmer-data-api-consumer-boundary.md), `docs/data-api.md`).
+The helpers below are this repository's own code; the data API answers that
+route with the same alias expansion.
 
 ```python
 from valmer_connectors.queries import (
@@ -368,7 +372,7 @@ from valmer_connectors.queries import (
 )
 ```
 
-The query API is read-only and uses the active governed `ms-markets` runtime.
+The query helpers are read-only and use the active governed `ms-markets` runtime.
 It calls `ensure_valmer_asset_detail_runtime(...)`, compiles a projected SQL
 statement with `compile_markets_statement(...)`, and executes it with
 `execute_markets_operation(...)`.
@@ -384,7 +388,7 @@ detail row can be addressed by both its Valmer unique identifier and its
 canonical `AssetTable.unique_identifier`.
 
 `read_valmer_asset_detail_maturity_fields(...)` returns the static maturity and
-coupon fields used by downstream valuation and analytics code:
+coupon fields that valuation and analytics code reads:
 
 ```text
 asset_uid

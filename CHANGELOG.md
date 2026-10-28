@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+### Added
+
+- The Valmer data API (ADR 0010, `docs/data-api.md`): a FastAPI release of its
+  own, `api/valmer_data_api/main.py` over `src/valmer_connectors/data_api/`,
+  through which other applications read Valmer data instead of installing this
+  package. Its routes serve the dataset contract of the vector table,
+  valuation dates, vector snapshots, history and latest observations, asset
+  details and maturity fields, bond snapshots and history, the Bonds filters,
+  search and instrument header, and the Bond Comparison filters and universe.
+  The SQL that marketsanalytics compiled against Valmer's tables now lives
+  here. It reads Valmer's tables by MetaTable identifier, as the control plane
+  does, and Asset rows through the Markets API, and attaches no markets
+  runtime. Every route needs a platform credential.
+
+### Deployment
+
+- The workflow declares `valmer-data-api` (`reader` on the `MetaTables` and
+  `MainSequenceMarkets` branches, no Job grants) and a `deploy_data_api` step
+  that waits for `migrate`, like the control-plane API. Its workload User joins
+  the Valmer Team. Consumers find it with `reader` on this repository's branch.
+
+### Documentation
+
+- ADR 0010 is accepted and records the consumer boundary; `docs/data-api.md`,
+  `docs/deployment.md`, `docs/markets.md`, the README and AGENTS.md describe
+  the data API. The query-helper promotion plan is marked superseded.
+
 ## 0.2.3 (2026-10-28)
 
 ### Deployment

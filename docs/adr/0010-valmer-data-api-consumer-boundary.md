@@ -2,11 +2,38 @@
 
 ## Status
 
-Proposed
+Accepted / Implemented Locally; Deployment Pending
 
 Drafted 2026-10-28 from a review of this repository, of the two projects that
-install `valmer-connectors`, and of ms-markets ADR 0047. Nothing in it is
-implemented.
+install `valmer-connectors`, and of ms-markets ADR 0047.
+
+Implemented on 2026-10-28, on branch `adr-0010-valmer-data-api` here and on
+branch `valmer-data-api` in each consumer. Nothing is pushed or deployed. While
+implementing it:
+
+- The data API is `src/valmer_connectors/data_api/` behind
+  `api/valmer_data_api/main.py`, declared as `valmer-data-api` with a
+  `deploy_data_api` step after `migrate`; `docs/data-api.md` is its contract.
+- Its release name is taken to be `valmer_data_api`, from the source path, as
+  the Markets API is `api` from `api/main.py`. Consumers can override it with
+  `VALMER_DATA_API_RELEASE_NAME`. Confirm the name after the first push.
+- The open question on a client package is decided: each consumer carries its
+  own small client module (discovery and the routes it calls). No client
+  distribution exists, so no consumer installs anything from this repository.
+- mexicofundcompetition keeps checking its fund share-class Assets against the
+  Markets asset registry, as it already did; it needs no data API route for
+  that.
+- marketsanalytics reads through its own client,
+  `src/marketsanalytics/platform/valmer_api.py`. Its eight fixed-income routes
+  that need only Valmer data no longer wait for the core runtime. The
+  Mexico-US spread reads its reference rates through the Markets Index dataset
+  routes. Overnight indexes come from
+  `src/marketsanalytics/local_ms_markets/overnight_indexes.py` until ms-markets
+  owns them, and `local_valmer/` is gone. Its lock dropped 17 packages; Ruff,
+  which only Valmer brought in, is now in its dev group.
+- Each consumer's client was run against the data API application in process,
+  with fake tables: every route they call answered, through the request
+  identity and the request models.
 
 ## Date
 
@@ -34,8 +61,8 @@ implemented.
 Two projects install the package from a Git tag. Both were reviewed at their
 `main` heads on 2026-10-28.
 
-`marketsanalytics` (0.1.16, `9df19cd`) installs tag `v0.2.1` and pins
-`ms-markets[portfolios]==3.0.1`:
+`marketsanalytics` (0.1.16, `9df19cd`) installs tag `v0.2.3` and pins
+`ms-markets[portfolios]==3.0.2`:
 
 - Seven services under `api/app/services/fixed_income_analytics/` back ten
   routes. All seven attach Valmer's tables with
@@ -84,8 +111,9 @@ import nothing from this repository. `.agents/tasks.md` also names a
 
 - **Versions move in lockstep.** This project pins the exact ms-markets
   release that the Environment's Markets deployment runs, and every consumer
-  inherits that pin. marketsanalytics pins `ms-markets==3.0.1`, so it cannot
-  take Valmer 0.2.2 or later, which require 3.0.2.
+  inherits that pin. marketsanalytics re-pinned twice in 14 hours only to
+  follow Valmer: `40156ed` (2026-10-27) took ms-markets 3.0.1 with Valmer
+  v0.2.1, and `9df19cd` (2026-10-28) took 3.0.2 with v0.2.3.
 - **Consumers depend on Valmer's physical schema.** A Valmer revision that
   renames or splits a column breaks marketsanalytics at runtime, and no test
   in this repository sees it. The expand-first rule protects this project's
@@ -229,15 +257,18 @@ published table contracts, never on a Python module of this project.
 Identifiers keep the ADR 0001 rule, `tipovalor_emisora_serie`. A consumer may
 build one from those three fields without importing
 `build_valmer_unique_identifier`, citing ADR 0001 as its source. Whether an
-identifier exists is answered by the data API.
+identifier exists is answered by the registry that holds it: the Markets asset
+registry for Assets, the data API for Valmer detail rows.
 
 ### 6. Discovery And Access Follow The Markets API
 
 - A consumer finds the data API's release by repository (`valmer-connectors`)
   and release name in its own Environment, the way `msm.client.discovery`
   finds the Markets API: `ResourceRelease.filter_admin`, then
-  `resolve_runtime_access` for the URL and token. `VALMER_API_URL`, with an
-  optional `VALMER_API_TOKEN`, selects a local API.
+  `resolve_runtime_access` for the URL and token. `VALMER_DATA_API_URL`, with
+  an optional `VALMER_DATA_API_TOKEN`, selects a local API;
+  `VALMER_DATA_API_RELEASE_UID`, `VALMER_DATA_API_RELEASE_NAME` and
+  `VALMER_DATA_API_REPOSITORY_NAME` pin or rename the release to find.
 - Each consumer resource that calls the API declares `reader` on the
   `valmer-connectors` branch in its workflow.
 - The API installs the SDK request identity once, as the control plane does
@@ -253,7 +284,7 @@ identifier exists is answered by the data API.
 The data API is a new `fastapi` resource in
 `.mainsequence/workflows/valmer-control-plane-api.yaml`, the repository's
 only workflow file, with its own key (working name `valmer-data-api`) and
-source path (working name `api/valmer_data/main.py`):
+source path `api/valmer_data_api/main.py`:
 
 - The new key creates a new target, which is intended. The file path and the
   existing keys do not change.
@@ -315,7 +346,8 @@ project.
   table.
 - `fund_configuration/service.py` reads fund price history from the data API.
 - The Actinver parser and `valuation_identifier_candidates` build identifiers
-  by the ADR 0001 rule and check which exist through the data API.
+  by the ADR 0001 rule; the candidates are checked against the Markets asset
+  registry, as before.
 - The workflow adds `reader` on the `valmer-connectors` branch to each
   resource that calls the API. The resources that build portfolios keep
   `data_viewer` on the vector.
@@ -350,34 +382,35 @@ Each step leaves every consumer working (expand first).
 
 ### valmer-connectors
 
-- [ ] Add `src/valmer_connectors/data_api/` with the route families of
+- [x] Add `src/valmer_connectors/data_api/` with the route families of
   decision 3, built on `valmer_connectors.queries` and on the queries now in
   marketsanalytics' fixed-income services.
-- [ ] Add the dataset discovery route of decision 4.
-- [ ] Add `api/valmer_data/main.py` and install the SDK request identity once.
-- [ ] Declare the `valmer-data-api` resource and its deploy step in the
-  workflow file, and add its workload User to the Valmer Team.
-- [ ] Test each route against its response model, including page limits and
+- [x] Add the dataset discovery route of decision 4.
+- [x] Add `api/valmer_data_api/main.py` and install the SDK request identity
+  once.
+- [x] Declare the `valmer-data-api` resource and its deploy step in the
+  workflow file.
+- [ ] Add the data API's workload User to the Valmer Team after the first push.
+- [x] Test each route against its response model, including page limits and
   batch sizes.
-- [ ] Document the data API in `docs/` and add it to `mkdocs.yml`.
+- [x] Document the data API in `docs/` and add it to `mkdocs.yml`.
 
 ### mexicofundcompetition
 
-- [ ] Add `reader` on the `valmer-connectors` branch where the API is called.
-- [ ] Build the valuation source from the vector's MetaTable, found by
+- [x] Add `reader` on the `valmer-connectors` branch where the API is called.
+- [x] Build the valuation source from the vector's MetaTable, found by
   identifier.
-- [ ] Read fund price history from the data API.
-- [ ] Cite ADR 0001 for identifier construction and check existence through
-  the API.
-- [ ] Remove `VECTOR_IDENTIFIER` and the `valmer-connectors` dependency.
+- [x] Read fund price history from the data API.
+- [x] Cite ADR 0001 for identifier construction.
+- [x] Remove `VECTOR_IDENTIFIER` and the `valmer-connectors` dependency.
 
 ### marketsanalytics
 
-- [ ] Move each route family in the order of "Migration Path" step 3.
-- [ ] Read the Mexico-US spread reference rates through Markets' Index
+- [x] Move each route family in the order of "Migration Path" step 3.
+- [x] Read the Mexico-US spread reference rates through Markets' Index
   dataset routes.
-- [ ] Take overnight indexes as "Curve Conventions" describes.
-- [ ] Remove `src/marketsanalytics/local_valmer/`, the
+- [x] Take overnight indexes as "Curve Conventions" describes.
+- [x] Remove `src/marketsanalytics/local_valmer/`, the
   `_valmer_markets_models` call, `VECTOR_IDENTIFIER` and the
   `valmer-connectors` dependency.
 
@@ -429,10 +462,6 @@ This ADR does not decide to:
 
 ## Open Questions
 
-- **Client package.** Ship a small client distribution now (request and
-  response models plus discovery, with no table classes and no dependency on
-  `ms-markets` or QuantLib), or let consumers call the routes through a shared
-  discovery helper until the models settle.
 - **Licensing policy.** Which Teams or people may read Valmer data through the
   API, and what is recorded for each read.
 - **Asset-details hydration.** Whether Markets' `include` on asset lookups,
@@ -442,7 +471,7 @@ This ADR does not decide to:
 
 ## Superseded Guidance
 
-Once accepted, this ADR supersedes:
+This ADR supersedes:
 
 - `docs/implementation/valmer-query-helper-promotion-plan.md`, which made
   `valmer_connectors.queries` a package for other projects to import;

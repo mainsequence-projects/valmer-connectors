@@ -1,5 +1,10 @@
 # Valmer Query Helper Promotion Plan
 
+> Superseded by [ADR 0010](../adr/0010-valmer-data-api-consumer-boundary.md):
+> other projects no longer import `valmer_connectors.queries`; they read Valmer
+> data through the Valmer data API (`docs/data-api.md`). The helpers remain this
+> repository's own code.
+
 ## Decision
 
 Create a dedicated read/query package:

@@ -1,0 +1,1 @@
+"""Valmer data FastAPI resource."""
