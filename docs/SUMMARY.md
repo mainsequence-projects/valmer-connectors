@@ -80,4 +80,5 @@
 - `docs/adr/0007-banxico-tiie-cete-fixings.md`
 - `docs/adr/0008-usd-mxn-cross-currency-discount-curve.md`
 - `docs/adr/0009-external-reference-rate-observations.md`
+- `docs/adr/0010-valmer-data-api-consumer-boundary.md`
 - `docs/adr/cli/0004-valmer-connectors-cli-design.md`

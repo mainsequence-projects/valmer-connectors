@@ -69,6 +69,7 @@ vector_de_precios_valmer  current pricing details
 - [ADR 0007: Banxico TIIE And CETE Fixings](adr/0007-banxico-tiie-cete-fixings.md)
 - [ADR 0008: USD/MXN Cross-Currency Discount Curve](adr/0008-usd-mxn-cross-currency-discount-curve.md)
 - [ADR 0009: External Reference-Rate Observations](adr/0009-external-reference-rate-observations.md)
+- [ADR 0010: Valmer Data API Consumer Boundary](adr/0010-valmer-data-api-consumer-boundary.md)
 - [ADR 0004: Valmer Connectors CLI Design](adr/cli/0004-valmer-connectors-cli-design.md)
 
 ## Operational Files
