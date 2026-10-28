@@ -38,6 +38,9 @@ Vector Analitico CETES and M Bonos rows.
   `DiscountCurvesUpdater` path from CETES and M Bonos Vector Analitico rows.
 - Includes a project-specific multipage Streamlit dashboard under
   `dashboards/valmer_monitor/`.
+- Serves Valmer data to other applications through the Valmer data API
+  (`api/valmer_data_api/main.py`, `docs/data-api.md`). Other applications never
+  install or import this package (ADR 0010).
 - Serves the backend half of the Valmer Command Center control plane through
   `api/valmer_control_plane/main.py`; the separate `ValmerConnectorsMonitor`
   Vite repository owns the SDK-native user interface.
@@ -118,6 +121,8 @@ Detailed guides:
 - `docs/instruments.md`: Valmer row-to-instrument mapping
 - `docs/control-plane.md`: two-repository Command Center control-plane architecture,
   Job authorization, contracts, release order, and verification
+- `docs/data-api.md`: the Valmer data API other applications read through, its
+  discovery and its route contract
 
 ## Quickstart
 
@@ -155,7 +160,7 @@ package without `PYTHONPATH`.
 Hosted environments are migrated only by the deployment workflow.
 `.mainsequence/workflows/valmer-control-plane-api.yaml` prepares the image, runs
 the `migrate-valmer` Job (`scripts/migrate_valmer.py`) from it, and deploys the
-control-plane API with `needs: [migrate]`. The Job calls
+control-plane API and the data API with `needs: [migrate]`. The Job calls
 `metatables.upgrade_application("valmer_connectors.migrations:migration")`. A
 database already at head is left unchanged, and a failure blocks the API
 rollout while the previous release keeps serving. Do not run
@@ -337,6 +342,7 @@ for MkDocs through `mkdocs.yml`.
 - `CHANGELOG.md`: release notes
 - `docs/dashboards.md`: dashboards currently shipped by the project
 - `docs/control-plane.md`: FastAPI and Vite/Command Center control-plane boundary
+- `docs/data-api.md`: the Valmer data API and its route contract
 - `docs/SUMMARY.md`: documentation map required by the project instructions
 - `.agents/tasks.md`: current open tasks, when that file exists in the checkout
 - `.agents/record.md`: durable verified project references and decisions, when
@@ -352,12 +358,14 @@ This repository currently does not create:
 The repository now includes:
 
 - `.mainsequence/workflows/valmer-control-plane-api.yaml`, the only workflow
-  file: the control-plane API, the `migrate-valmer` Job that gates it, the
-  described manual Jobs and the scheduled dependency-ordered standard pipeline
+  file: the control-plane API, the data API, the `migrate-valmer` Job that gates
+  them, the described manual Jobs and the scheduled dependency-ordered standard
+  pipeline
 - independent FRED and Banxico analytical reference-rate producers
 - `valmer-connectors runtime validate` for runtime validation
 - a project-specific dashboard overview plus source, pricing, and curve pages
 - the FastAPI backend for the separate SDK-native Vite control-plane application
+- the Valmer data API, the only way other applications read Valmer data
 
 For deployment verification and current backend follow-up, see
 `docs/deployment.md`.

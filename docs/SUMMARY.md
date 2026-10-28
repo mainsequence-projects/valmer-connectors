@@ -24,6 +24,8 @@
 - `docs/dashboards.md`: Streamlit dashboard pages and monitoring purpose.
 - `docs/control-plane.md`: two-repository Command Center control-plane architecture, FastAPI
   contracts, Job authorization, static-site integration, release order, and verification.
+- `docs/data-api.md`: the Valmer data API other applications read Valmer data through, its
+  discovery, access and route contract (ADR 0010).
 - `docs/deployment.md`: publishing with Git and its Environment prerequisites
   (the locked MetaTables release, ms-markets 3.0.2 migrated with its Markets
   API and the Valmer Team), the
@@ -80,4 +82,5 @@
 - `docs/adr/0007-banxico-tiie-cete-fixings.md`
 - `docs/adr/0008-usd-mxn-cross-currency-discount-curve.md`
 - `docs/adr/0009-external-reference-rate-observations.md`
+- `docs/adr/0010-valmer-data-api-consumer-boundary.md`
 - `docs/adr/cli/0004-valmer-connectors-cli-design.md`

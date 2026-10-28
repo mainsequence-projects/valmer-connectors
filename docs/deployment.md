@@ -152,14 +152,17 @@ autogenerate compares the models with the runtime that the command selects.
 ## Workflow Declarations
 
 `.mainsequence/workflows/valmer-control-plane-api.yaml` is the only workflow
-file. Besides the API and `migrate-valmer`, it declares the control-plane Jobs
-and their platform-owned descriptions. The standard pipeline is the only
+file. Besides the control-plane API, the data API (`valmer-data-api`,
+[ADR 0010](adr/0010-valmer-data-api-consumer-boundary.md), `docs/data-api.md`)
+and `migrate-valmer`, it declares the control-plane Jobs and their
+platform-owned descriptions. The standard pipeline is the only
 scheduled Job; leaf Jobs and source/rebuild variants are manual operations. The
 platform catalog deliberately excludes launch configurations that depend on a
 developer workstation or exist only to run UI, debugging, examples, or
 migration administration.
 
-Only the API and `migrate-valmer` are in `execution.steps`. The eighteen
+Only the two APIs and `migrate-valmer` are in `execution.steps`: `deploy_api`
+and `deploy_data_api` both wait for the `migrate` step. The eighteen
 pipeline Jobs, the `JOB_LAUNCH_PROFILES` of
 `src/valmer_connectors/control_plane/catalog.py` with the scheduled
 `standard-pipeline-refresh` and `pipeline-verification` among them, stay out
@@ -216,8 +219,8 @@ member whose GitHub account an Organization admin linked) who manages the
 workload and holds `reader` on that branch. Otherwise the resource fails with
 `declared_access_not_granted`, and nothing of its group is applied.
 
-The API also declares `access.resources` with `policy: runner` on each of the
-eighteen Jobs it launches. A workload has no implicit access to the other
+The control-plane API also declares `access.resources` with `policy: runner`
+on each of the eighteen Jobs it launches; the data API launches none. A workload has no implicit access to the other
 workloads of its branch: the hosted API lists, and can launch, only the Jobs
 granted to it. It lists a Job, runs it and reads its runs, never changes it,
 which `runner` covers. `migrate-valmer` is not granted, so the hosted Jobs
@@ -263,6 +266,14 @@ describes, one Team per Environment owns the Valmer tables, for example
 | table `editor` on `ms_markets__index_values__t_1d`, `ms_markets__discountcurvests` and `ms_markets__indexfixingsts`, until a later release | the one-off move reads them and its rollback runs the copy updater on them (`tables.operate_updaters`); `migrate-valmer` needs the role on `ms_markets__index_values__t_1d` (below) |
 | `metadata_viewer` on the tables those three reference (`ms_markets__index`, `ms_markets__indexformuladefinition`, `ms_markets__curve`) and on the tables their foreign keys reach in turn, until the same release | the move attaches the Markets tables, and attaching a Markets-namespace storage also attaches its foreign-key targets |
 | nothing else on `mainsequence.markets` | registries go through the Markets API |
+
+The data API's workload User joins the Valmer Team like the Jobs, which
+covers its reads of `valmer_connectors__valmerassetdetails` and
+`valmer_connectors__vector_de_precios_valmer`. Other applications read Valmer
+data through the data API and hold no role on those two tables, except a
+pipeline that references the vector by identifier as an input (ADR 0010,
+decision 4), which needs `data_viewer` on
+`valmer_connectors__vector_de_precios_valmer` alone.
 
 The Markets workload and every application that prices through the default
 market-data set need `data_viewer` on Valmer's curve and fixing tables, which

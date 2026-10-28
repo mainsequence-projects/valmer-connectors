@@ -15,37 +15,28 @@
 - Required evidence: the migration JobRun log, `current` output, updater
   exits, before/after governed row counts, and the updater record list.
 
-## Roll valmer-connectors 0.1.48 out to consumers
+## Publish the data API and move its consumers
 
-- Scope: once `main` and the `v0.1.48` tag are pushed, move the three
-  consumers to the commit that tag names, together with mainsequence 9.0.24,
-  mainsequence-metatable 0.1.35 and ms-markets 2.2.10. 0.1.47 was tagged
-  locally only and never published, so every consumer moves from 0.1.46 or
-  an unpublished 0.1.47 build.
-  - mexicofundcompetition: its `[tool.uv.sources]` git source has no `rev`
-    and locks `926dce6` (0.1.46). Set
-    `rev = "<v0.1.48 commit>"` and run
-    `uv lock --upgrade-package valmer-connectors`.
-  - qisfactory: replace the sibling `path` source of its `fixed-income-mx`
-    extra with the same pinned git source, raise the extra to
-    `valmer-connectors>=0.1.48`, and keep `--extra fixed-income-mx` in the
-    `requirements.txt` export.
-  - marketsanalytics: rebuild the vendored wheel from the `v0.1.48` commit as
-    its `vendor/README.md` describes, and raise its floor to 0.1.48.
-  Uninstalling 0.1.46 deletes the top-level `migrations` files it shared with
-  ms-markets 2.0.x; ms-markets 2.1 and later install no top-level `migrations`
-  package. Consumers do not apply the Valmer or ms-markets providers; those
-  deployments migrate their own schemas.
-- Hosted prerequisite: the consumer's Environment runs MetaTables 0.1.35 and
-  ms-markets 2.2.10, and in its DataSource the ms-markets migration and then
-  `migrate-valmer` have succeeded before the consumer is pushed.
-- Expected output: each consumer locks valmer-connectors 0.1.48 from that
-  commit, `import msm_migrations, valmer_connectors.migrations` succeeds, and
-  no top-level `migrations`, `banxico`, `fred`, `agents`, `cli`,
-  `command_center` or `msm_command_center` module is installed.
-- Required evidence: each consumer's `uv.lock` entry and `requirements.txt`
-  line, the site-packages listing and import check, and for marketsanalytics
-  the wheel's SHA-256.
+- Scope: push `adr-0010-valmer-data-api` (ADR 0010). The push creates the
+  `valmer-data-api` release and its workload User; add that User to the Valmer
+  Team, then confirm the release is named `valmer_data_api` (consumers search
+  for that name; `VALMER_DATA_API_RELEASE_NAME` overrides it). Then push the
+  consumers' `valmer-data-api` branches: mexicofundcompetition first, then
+  marketsanalytics. Their workflows declare `reader` on the `valmer-connectors`
+  branch, so each push needs a person who manages the workload and holds
+  `reader` on that branch. The Valmer Team grants mexicofundcompetition's three
+  portfolio-building Jobs `data_viewer` on
+  `valmer_connectors__vector_de_precios_valmer`; marketsanalytics' workload
+  drops its roles on the Valmer details and vector tables.
+- Owning skills: `mainsequence-command-center-fastapi`, `resource-release` and
+  `mainsequence-access-control-and-sharing`.
+- Expected output: both consumers deploy with no `valmer-connectors` package,
+  and their Valmer screens read through the data API.
+- Required evidence: the workflow run with succeeded `deploy_data_api`, the
+  release name, `GET /api/v1/datasets/` and one bond search through the API as
+  a consumer workload, a request without a credential refused, each consumer's
+  `uv.lock` without `valmer-connectors`, and one Valmer screen per consumer
+  matching the package-backed release for the same valuation date.
 
 ## Publish and verify the two-repository control plane
 

@@ -231,7 +231,11 @@ def _deployed_public_ingress() -> list[dict[str, str]]:
     """Return the API's workflow `public_ingress`, which the platform projects as
     FASTAPI_PUBLIC_INGRESS (an absent declaration is an empty list)."""
     workflow = yaml.safe_load((REPOSITORY_ROOT / MIGRATION_WORKFLOW_PATH).read_text("utf-8"))
-    (api,) = [resource for resource in workflow["resources"] if resource["kind"] == "fastapi"]
+    (api,) = [
+        resource
+        for resource in workflow["resources"]
+        if resource["key"] == "valmer-control-plane-api"
+    ]
     return list(api["spec"].get("public_ingress", []))
 
 

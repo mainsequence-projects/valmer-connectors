@@ -22,6 +22,7 @@ from valmer_connectors.services.migrations import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIRECTORY = REPOSITORY_ROOT / ".mainsequence" / "workflows"
 API_KEY = "valmer-control-plane-api"
+DATA_API_KEY = "valmer-data-api"
 MIGRATION_JOB_KEY = "migrate-valmer"
 # The MetaTables repository's exact platform name; every workload discovers its
 # API with reader on its branch (workflow API 3.0.0 names a policy).
@@ -120,15 +121,25 @@ def test_api_workflow_declares_the_release_as_an_api_3_0_0_fastapi_resource() ->
     assert workflow["name"] == "valmer-control-plane-api"
     assert {resource["key"]: resource["kind"] for resource in workflow["resources"]} == {
         "valmer-control-plane-api": "fastapi",
+        "valmer-data-api": "fastapi",
         "migrate-valmer": "job",
         **{profile.key: "job" for profile in JOB_LAUNCH_PROFILES},
     }
-    api = workflow["resources"][0]["spec"]
-    assert set(api) <= FASTAPI_FIELDS
-    assert api["source_path"] == "api/valmer_control_plane/main.py"
-    assert (REPOSITORY_ROOT / api["source_path"]).is_file()
-    assert api["automatic_deployment"] is True
-    assert api["revision_retention_count"] == 3
+    specs = {resource["key"]: resource["spec"] for resource in workflow["resources"]}
+    for key, source_path in (
+        (API_KEY, "api/valmer_control_plane/main.py"),
+        (DATA_API_KEY, "api/valmer_data_api/main.py"),
+    ):
+        api = specs[key]
+        assert set(api) <= FASTAPI_FIELDS, key
+        assert api["source_path"] == source_path
+        assert (REPOSITORY_ROOT / api["source_path"]).is_file()
+        assert api["automatic_deployment"] is True
+        assert api["automatic_redeployment"] == {"enabled": True, "tag_regex": None}
+        assert api["revision_retention_count"] == 3
+    # The data API serves other applications, not the operator console.
+    assert "env_vars" not in specs[DATA_API_KEY]
+    assert "cors_allowed_origins" not in specs[DATA_API_KEY]
 
 
 def test_migration_job_shares_the_api_promotion_policy() -> None:
@@ -168,6 +179,11 @@ def test_api_deploys_only_after_the_migration_job_runs_from_its_image() -> None:
             "image_from": "image",
             "needs": ["migrate"],
         },
+        "deploy_data_api": {
+            "deploy": DATA_API_KEY,
+            "image_from": "image",
+            "needs": ["migrate"],
+        },
     }
 
 
@@ -198,11 +214,11 @@ def test_operational_jobs_stay_outside_the_deployment_graph() -> None:
     scheduled = {key for key, spec in jobs.items() if "task_schedule" in spec}
     launched = {profile.key for profile in JOB_LAUNCH_PROFILES}
 
-    # Only the API and its migration Job are in the graph. The backend
+    # Only the two APIs and their migration Job are in the graph. The backend
     # activates a Job's new image, schedule included, as soon as the commit
     # image is verified, whatever a step's needs say, and a Job in the graph
     # would tie its promotion policy to the API's group.
-    assert referenced == {API_KEY, MIGRATION_JOB_KEY}
+    assert referenced == {API_KEY, DATA_API_KEY, MIGRATION_JOB_KEY}
     assert scheduled == {"standard-pipeline-refresh"}
     assert scheduled | {"pipeline-verification"} <= launched
     assert not launched & referenced
