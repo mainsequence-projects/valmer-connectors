@@ -398,8 +398,8 @@ PIPELINE_STAGES: tuple[dict[str, object], ...] = (
         "id": "storage-migration",
         "label": "Storage migration",
         "description": (
-            "Copy Valmer's curves, fixings and daily Index values from the Markets "
-            "tables into Valmer's own tables, or back (docs/time-series-instances.md)."
+            "Copy Valmer's curves and fixings from the Markets tables into Valmer's "
+            "own tables, or back (docs/time-series-instances.md)."
         ),
         "actions": ["time-series-backfill"],
     },

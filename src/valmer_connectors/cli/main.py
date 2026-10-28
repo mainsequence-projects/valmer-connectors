@@ -431,17 +431,17 @@ def build_parser() -> argparse.ArgumentParser:
     time_series_backfill_parser = time_series_subcommands.add_parser(
         "backfill",
         help=(
-            "Copy, never recompute, Valmer's curves, fixings and daily Index values from "
-            "the Markets tables into Valmer's own tables, or back with --rollback (the "
-            "time-series-backfill Job)."
+            "Copy, never recompute, Valmer's curves and fixings from the Markets tables "
+            "into Valmer's own tables, or back with --rollback (the time-series-backfill "
+            "Job)."
         ),
     )
     time_series_backfill_parser.add_argument(
         "--series",
         action="append",
-        choices=("discount_curves", "index_fixings", "index_values"),
+        choices=("discount_curves", "index_fixings"),
         default=None,
-        help="Copy only this series; repeat for several (default: all three).",
+        help="Copy only this series; repeat for both (default: both).",
     )
     time_series_backfill_parser.add_argument(
         "--execute",

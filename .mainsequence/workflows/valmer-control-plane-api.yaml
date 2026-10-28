@@ -480,7 +480,7 @@ resources:
     kind: job
     spec:
       name: Valmer Time-Series Backfill
-      description: Copy Valmer's discount curves, Banxico fixings and daily Index values from the Markets tables into Valmer's own tables, or back.
+      description: Copy Valmer's discount curves and Banxico fixings from the Markets tables into Valmer's own tables, or back.
       execution_path: scripts/backfill_valmer_time_series.py
       cpu_request: "1"
       memory_request: "4"
@@ -498,6 +498,10 @@ execution:
   steps:
     image:
       prepare_image: valmer-control-plane-api
+    # A deployment must use its own resource's image step: the backend refuses
+    # deploy_data_api with image_from: image.
+    data_api_image:
+      prepare_image: valmer-data-api
     migrate:
       run_job: migrate-valmer
       image_from: image
@@ -508,5 +512,5 @@ execution:
       needs: [migrate]
     deploy_data_api:
       deploy: valmer-data-api
-      image_from: image
-      needs: [migrate]
+      image_from: data_api_image
+      needs: [migrate, data_api_image]

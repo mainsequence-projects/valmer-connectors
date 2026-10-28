@@ -29,11 +29,6 @@ ValmerDailyIndexValuesStorage = configured_index_values_storage(
     storage_app=VALMER_MARKETS_STORAGE_APP,
     base=MarketsBase,
 )
-# The Markets table ms_markets__index_values__t_1d (IndexValuesTS.1d) that Valmer
-# wrote before its own table existed. Revision 0001 still creates it; only the
-# one-off move uses it, as copy source and rollback target
-# (valmer_connectors.services.time_series_backfill, docs/time-series-instances.md).
-MarketsDailyIndexValuesStorage = configured_index_values_storage(cadence="1d")
 
 
 class IndexObservationError(RuntimeError):
@@ -326,7 +321,6 @@ def _normalize_date(value: dt.date | dt.datetime | str | pd.Timestamp) -> dt.dat
 __all__ = [
     "DailyIndexValuesNode",
     "IndexObservationError",
-    "MarketsDailyIndexValuesStorage",
     "ReferenceRateIndexDefinition",
     "ReferenceRateIndexValuesNode",
     "ReferenceRateObservationConfiguration",

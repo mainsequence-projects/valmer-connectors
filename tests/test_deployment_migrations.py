@@ -169,6 +169,9 @@ def _steps() -> dict[str, dict]:
 def test_api_deploys_only_after_the_migration_job_runs_from_its_image() -> None:
     assert _steps() == {
         "image": {"prepare_image": API_KEY},
+        # Each deployment uses its own resource's image step; the backend refuses a
+        # deploy step whose image_from names another resource's image.
+        "data_api_image": {"prepare_image": DATA_API_KEY},
         "migrate": {
             "run_job": MIGRATION_JOB_KEY,
             "image_from": "image",
@@ -181,8 +184,8 @@ def test_api_deploys_only_after_the_migration_job_runs_from_its_image() -> None:
         },
         "deploy_data_api": {
             "deploy": DATA_API_KEY,
-            "image_from": "image",
-            "needs": ["migrate"],
+            "image_from": "data_api_image",
+            "needs": ["migrate", "data_api_image"],
         },
     }
 

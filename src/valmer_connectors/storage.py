@@ -15,8 +15,8 @@ each in its own namespace, migrated by its own revisions:
   Index dataset catalog.
 
 Valmer's producers write and its readers read only these tables. The Markets
-tables Valmer wrote before (``DiscountCurvesTS``, ``IndexFixingsTS``,
-``IndexValuesTS.1d``) appear only in the one-off move
+tables Valmer wrote curves and fixings to before (``DiscountCurvesTS``,
+``IndexFixingsTS``) appear only in the one-off move
 (``valmer_connectors.services.time_series_backfill``), as copy source and
 rollback target; docs/time-series-instances.md is the runbook.
 """

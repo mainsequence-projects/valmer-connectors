@@ -12,8 +12,10 @@ branch `valmer-data-api` in each consumer. Nothing is pushed or deployed. While
 implementing it:
 
 - The data API is `src/valmer_connectors/data_api/` behind
-  `api/valmer_data_api/main.py`, declared as `valmer-data-api` with a
-  `deploy_data_api` step after `migrate`; `docs/data-api.md` is its contract.
+  `api/valmer_data_api/main.py`, declared as `valmer-data-api` with its own
+  `data_api_image` step and a `deploy_data_api` step after `migrate`;
+  `docs/data-api.md` is its contract. The backend refused the first version,
+  whose deploy step used the control plane's image step.
 - Its release name is taken to be `valmer_data_api`, from the source path, as
   the Markets API is `api` from `api/main.py`. Consumers can override it with
   `VALMER_DATA_API_RELEASE_NAME`. Confirm the name after the first push.

@@ -2,6 +2,22 @@
 
 ## 0.3.0 (unreleased)
 
+### Fixed
+
+- A fresh Environment migrates without any role on `mainsequence.markets`
+  (#4). The migration provider no longer registers the Markets table
+  `ms_markets__index_values__t_1d` that revision `0001` creates, so the first
+  Production migration no longer fails with `namespace_access_required`. The
+  one-off move loses its daily Index-value part and keeps the curve and fixing
+  moves, because Production still holds Valmer's curves and Banxico fixings in
+  the Markets tables. An Environment with Valmer rows still in
+  `ms_markets__index_values__t_1d` copies them with 0.2.3's move before it
+  deploys this release ("Daily Index Values" in
+  `docs/time-series-instances.md`).
+- The data API has its own image step, `data_api_image`. The backend refused
+  the workflow file of the first 0.3.0 merge because `deploy_data_api` used the
+  control plane's `image` step, so that merge started no workflow run.
+
 ### Added
 
 - The Valmer data API (ADR 0010, `docs/data-api.md`): a FastAPI release of its

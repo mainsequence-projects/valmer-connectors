@@ -508,7 +508,6 @@ def test_no_module_uses_a_pre_3_0_ms_markets_name() -> None:
 CORE_TIME_SERIES_TABLES = {
     "DiscountCurvesStorage",
     "IndexFixingsStorage",
-    "MarketsDailyIndexValuesStorage",
 }
 # Where they may still be named, and why.
 CORE_TIME_SERIES_REFERENCES = {
@@ -516,10 +515,6 @@ CORE_TIME_SERIES_REFERENCES = {
     "src/valmer_connectors/services/time_series_backfill.py",
     # The storage contracts Valmer's curve and fixing instances copy.
     "src/valmer_connectors/storage.py",
-    # The Markets daily Index-value class the move reads.
-    "src/valmer_connectors/data_nodes/canonical_index_values.py",
-    # Revision 0001 created ms_markets__index_values__t_1d; a later release drops it.
-    "src/valmer_connectors/migrations/registry.py",
 }
 
 

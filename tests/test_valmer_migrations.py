@@ -12,14 +12,10 @@ from msm.models.assets import AssetTable
 from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import markets_auto_register_namespace
-from msm.time_index.indices import index_values_output_table_name
 from msm_pricing.models.curves import CurveTable
 from sqlalchemy import create_engine
 
-from valmer_connectors.data_nodes.canonical_index_values import (
-    MarketsDailyIndexValuesStorage,
-    ValmerDailyIndexValuesStorage,
-)
+from valmer_connectors.data_nodes.canonical_index_values import ValmerDailyIndexValuesStorage
 from valmer_connectors.data_nodes.valmer_vector_storage import ValmerVectorPricesStorage
 from valmer_connectors.markets import (
     VALMER_MARKETS_NAMESPACE,
@@ -77,7 +73,6 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             (
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
-                MarketsDailyIndexValuesStorage,
                 valmer_discount_curves_instance(),
                 valmer_index_fixings_instance(),
                 ValmerDailyIndexValuesStorage,
@@ -85,13 +80,19 @@ class ValmerMigrationProviderTests(unittest.TestCase):
         )
         self.assertEqual(METATABLE_PROVIDER_MODELS, VALMER_MIGRATION_MODELS)
 
+    def test_every_provider_table_lives_in_valmers_namespace(self):
+        # A fresh Environment migrates without any role on mainsequence.markets
+        # (valmer-connectors#4): the provider registers no Markets table.
+        for model in VALMER_MIGRATION_MODELS:
+            with self.subTest(model=model.__name__):
+                self.assertEqual(model.__table__.info["namespace"], VALMER_MARKETS_NAMESPACE)
+
     def test_provider_registers_only_project_models(self):
         self.assertEqual(
             tuple(migration.metatable_models),
             (
                 ValmerAssetDetailsTable,
                 ValmerVectorPricesStorage,
-                MarketsDailyIndexValuesStorage,
                 valmer_discount_curves_instance(),
                 valmer_index_fixings_instance(),
                 ValmerDailyIndexValuesStorage,
@@ -119,10 +120,6 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            MarketsDailyIndexValuesStorage.__table__.name,
-            index_values_output_table_name(cadence="1d"),
-        )
-        self.assertEqual(
             ValmerAssetDetailsTable.__metatable_identifier__,
             f"{VALMER_MARKETS_NAMESPACE}.ValmerAssetDetails",
         )
@@ -131,20 +128,12 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             f"{VALMER_MARKETS_NAMESPACE}.vector_de_precios_valmer",
         )
         self.assertEqual(
-            MarketsDailyIndexValuesStorage.__metatable_identifier__,
-            "IndexValuesTS.1d",
-        )
-        self.assertEqual(
             ValmerAssetDetailsTable.__table__.info["namespace"],
             VALMER_MARKETS_NAMESPACE,
         )
         self.assertEqual(
             ValmerVectorPricesStorage.__table__.info["namespace"],
             VALMER_MARKETS_NAMESPACE,
-        )
-        self.assertEqual(
-            MarketsDailyIndexValuesStorage.__table__.info["namespace"],
-            "mainsequence.markets",
         )
 
     def test_provider_metadata_includes_core_markets_reference_tables(self):
@@ -156,7 +145,6 @@ class ValmerMigrationProviderTests(unittest.TestCase):
             {
                 ValmerAssetDetailsTable.__table__.name,
                 ValmerVectorPricesStorage.__table__.name,
-                MarketsDailyIndexValuesStorage.__table__.name,
                 "valmer_connectors__discountcurvests__valmer",
                 "valmer_connectors__indexfixingsts__valmer",
                 "valmer_connectors__index_values__t_1d",
@@ -356,8 +344,6 @@ class ValmerTimeSeriesInstanceMigrationTests(unittest.TestCase):
         self.assertEqual(revision.down_revision, "0002")
         table_name = ValmerDailyIndexValuesStorage.__table__.name
         self.assertEqual(table_name, "valmer_connectors__index_values__t_1d")
-        # The legacy Markets table stays registered until every Environment moved.
-        self.assertIn(MarketsDailyIndexValuesStorage, VALMER_MIGRATION_MODELS)
 
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "valmer.sqlite"

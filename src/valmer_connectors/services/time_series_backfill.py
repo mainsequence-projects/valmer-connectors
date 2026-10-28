@@ -1,4 +1,4 @@
-"""Move Valmer's curves, fixings and daily Index values into Valmer's own tables, and back.
+"""Move Valmer's curves and fixings into Valmer's own tables, and back.
 
 The runbook is docs/time-series-instances.md. Valmer chooses which tables and
 identities move (``time_series_copy_plans``); ms-markets' shared copy
@@ -13,8 +13,8 @@ and ``valmer-connectors time-series backfill``); with ``rollback=True`` it copie
 the rows Valmer's tables gained back into the core tables. Valmer's producers
 always use Valmer's tables, so the moves carry no callbacks, and this module is
 the only place that touches the Markets tables (``DiscountCurvesTS``,
-``IndexFixingsTS``, ``IndexValuesTS.1d``). ``valmer_series_moves`` is the
-``module:callable`` for ``msm series move|rollback``.
+``IndexFixingsTS``). ``valmer_series_moves`` is the ``module:callable`` for
+``msm series move|rollback``.
 """
 
 from __future__ import annotations
@@ -27,14 +27,13 @@ import structlog
 
 LOGGER = structlog.get_logger(__name__)
 
-TimeSeriesName = Literal["discount_curves", "index_fixings", "index_values"]
-TIME_SERIES_NAMES: tuple[str, ...] = ("discount_curves", "index_fixings", "index_values")
+TimeSeriesName = Literal["discount_curves", "index_fixings"]
+TIME_SERIES_NAMES: tuple[str, ...] = ("discount_curves", "index_fixings")
 
 __all__ = [
     "TIME_SERIES_NAMES",
     "TimeSeriesCopyPlan",
     "backfill_valmer_time_series",
-    "daily_index_value_identifiers",
     "time_series_copy_plans",
     "valmer_series_moves",
 ]
@@ -54,12 +53,10 @@ class TimeSeriesCopyPlan:
 def time_series_copy_plans(
     series: Iterable[str] | None = None,
 ) -> list[TimeSeriesCopyPlan]:
-    """The plans for ``series`` (all three by default), in a stable order.
+    """The plans for ``series`` (both by default), in a stable order.
 
-    Only Valmer's identities move: the four Valmer curves, the seven Banxico
-    fixings, and the daily Index values Valmer publishes
-    (``daily_index_value_identifiers``). Rows another producer wrote to a core
-    table stay there.
+    Only Valmer's identities move: the four Valmer curves and the seven Banxico
+    fixings. Rows another producer wrote to a core table stay there.
     """
 
     selected = list(TIME_SERIES_NAMES) if series is None else list(dict.fromkeys(series))
@@ -71,7 +68,6 @@ def time_series_copy_plans(
     builders = {
         "discount_curves": _discount_curves_plan,
         "index_fixings": _index_fixings_plan,
-        "index_values": _index_values_plan,
     }
     return [builders[name]() for name in selected]
 
@@ -104,73 +100,6 @@ def _index_fixings_plan() -> TimeSeriesCopyPlan:
         identity_column="index_identifier",
         identities=tuple(BANXICO_FIXING_INDEX_IDENTIFIERS),
     )
-
-
-def _index_values_plan() -> TimeSeriesCopyPlan:
-    from valmer_connectors.data_nodes.canonical_index_values import (
-        MarketsDailyIndexValuesStorage,
-        ValmerDailyIndexValuesStorage,
-    )
-
-    return TimeSeriesCopyPlan(
-        series="index_values",
-        source_table=MarketsDailyIndexValuesStorage,
-        instance_table=ValmerDailyIndexValuesStorage,
-        identity_column="index_identifier",
-        identities=daily_index_value_identifiers(),
-    )
-
-
-def daily_index_value_identifiers() -> tuple[str, ...]:
-    """Every Index identifier Valmer publishes as a daily Index value, sorted.
-
-    The FRED and Banxico policy identifiers are fixed. The Valmer curve-quote
-    identifiers (``VALMER_CURVE_QUOTE.*``) follow the source files, including
-    futures months that come and go, so they are read from the stored
-    per-identifier statistics of the Markets table and of Valmer's table (a
-    MetaTables catalog read; a table not yet registered is skipped). Nothing
-    but Valmer's quote identifiers is taken from the statistics.
-    """
-
-    from valmer_connectors.banxico.policy_rates import DEFAULT_BANXICO_POLICY_RATE_DEFINITIONS
-    from valmer_connectors.data_nodes.canonical_index_values import (
-        MarketsDailyIndexValuesStorage,
-        ValmerDailyIndexValuesStorage,
-    )
-    from valmer_connectors.fred.reference_rates import DEFAULT_FRED_REFERENCE_RATE_DEFINITIONS
-    from valmer_connectors.instruments.curve_quote_indices import (
-        VALMER_CURVE_QUOTE_INDEX_PREFIX,
-    )
-
-    identifiers = {
-        definition.index.unique_identifier
-        for definition in (
-            *DEFAULT_FRED_REFERENCE_RATE_DEFINITIONS,
-            *DEFAULT_BANXICO_POLICY_RATE_DEFINITIONS,
-        )
-    }
-    quote_prefix = f"{VALMER_CURVE_QUOTE_INDEX_PREFIX}."
-    for table in (MarketsDailyIndexValuesStorage, ValmerDailyIndexValuesStorage):
-        identifiers.update(
-            identifier
-            for identifier in _stored_identifiers(table)
-            if identifier.startswith(quote_prefix)
-        )
-    return tuple(sorted(identifiers))
-
-
-def _stored_identifiers(storage: type[Any]) -> set[str]:
-    """The identities in a time-index table's stored statistics."""
-
-    from msm.storage_copies import registered_time_index_meta_table
-
-    try:
-        meta_table = registered_time_index_meta_table(storage)
-    except LookupError:
-        return set()
-    statistics = meta_table.get_data_updates()
-    progress = getattr(statistics, "index_progress", None) or {}
-    return {str(identifier) for identifier in progress}
 
 
 def valmer_series_moves(series: Iterable[str] | None = None) -> list[Any]:
