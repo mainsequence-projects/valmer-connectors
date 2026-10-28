@@ -17,26 +17,28 @@
 
 ## Publish the data API and move its consumers
 
-- Scope: push `adr-0010-valmer-data-api` (ADR 0010). The push creates the
-  `valmer-data-api` release and its workload User; add that User to the Valmer
-  Team, then confirm the release is named `valmer_data_api` (consumers search
-  for that name; `VALMER_DATA_API_RELEASE_NAME` overrides it). Then push the
-  consumers' `valmer-data-api` branches: mexicofundcompetition first, then
-  marketsanalytics. Their workflows declare `reader` on the `valmer-connectors`
-  branch, so each push needs a person who manages the workload and holds
-  `reader` on that branch. The Valmer Team grants mexicofundcompetition's three
+- Scope: the 0.3.0 merge (`6d91ee5`) started no run: the backend refused its
+  workflow file. After the fix for #4 and the `data_api_image` step merge,
+  confirm a workflow run starts and `migrate`, `deploy_api` and
+  `deploy_data_api` succeed. Add the `valmer-data-api` workload User to the
+  Valmer Team and confirm the release is named `valmer_data_api` (consumers
+  search for that name; `VALMER_DATA_API_RELEASE_NAME` overrides it). The
+  consumers are already merged and deployed (marketsanalytics `4df90ab`,
+  mexicofundcompetition `0c6f680`) and read Valmer data through the API from
+  then on. The Valmer Team grants mexicofundcompetition's three
   portfolio-building Jobs `data_viewer` on
-  `valmer_connectors__vector_de_precios_valmer`; marketsanalytics' workload
-  drops its roles on the Valmer details and vector tables.
+  `valmer_connectors__vector_de_precios_valmer`, and marketsanalytics' workload
+  drops its roles on the Valmer details and vector tables. Before deploying,
+  check whether any Environment besides Production still holds Valmer rows in
+  `ms_markets__index_values__t_1d`; Production has no such table.
 - Owning skills: `mainsequence-command-center-fastapi`, `resource-release` and
   `mainsequence-access-control-and-sharing`.
-- Expected output: both consumers deploy with no `valmer-connectors` package,
-  and their Valmer screens read through the data API.
-- Required evidence: the workflow run with succeeded `deploy_data_api`, the
-  release name, `GET /api/v1/datasets/` and one bond search through the API as
-  a consumer workload, a request without a credential refused, each consumer's
-  `uv.lock` without `valmer-connectors`, and one Valmer screen per consumer
-  matching the package-backed release for the same valuation date.
+- Expected output: the Valmer run succeeds and both consumers' Valmer screens
+  read through the data API.
+- Required evidence: the workflow run with succeeded `migrate`, `deploy_api`
+  and `deploy_data_api`, the release name, `GET /api/v1/datasets/` and one
+  bond search through the API as a consumer workload, a request without a
+  credential refused, and one Valmer screen per consumer.
 
 ## Publish and verify the two-repository control plane
 

@@ -1,10 +1,9 @@
-"""Main Sequence Job: copy Valmer's curves, fixings and Index values into Valmer's tables, or back.
+"""Main Sequence Job: copy Valmer's curves and fixings into Valmer's tables, or back.
 
 A step of docs/time-series-instances.md. It copies, never recomputes, the Valmer
-rows of the Markets discount-curve, Index-fixing and daily Index-value tables
-that ``valmer_connectors__discountcurvests__valmer``,
-``valmer_connectors__indexfixingsts__valmer`` and
-``valmer_connectors__index_values__t_1d`` lack (ms-markets'
+rows of the Markets discount-curve and Index-fixing tables that
+``valmer_connectors__discountcurvests__valmer`` and
+``valmer_connectors__indexfixingsts__valmer`` lack (ms-markets'
 ``msm.storage_copies``) with ``--execute``, only counts them without it, and
 fails while a row is still missing. ``--rollback``
 copies the rows Valmer's tables gained back into the Markets tables. It makes no
@@ -25,9 +24,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--series",
         action="append",
-        choices=("discount_curves", "index_fixings", "index_values"),
+        choices=("discount_curves", "index_fixings"),
         default=None,
-        help="Copy only this series; repeat for several (default: all three).",
+        help="Copy only this series; repeat for both (default: both).",
     )
     parser.add_argument(
         "--execute",

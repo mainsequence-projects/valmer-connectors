@@ -56,10 +56,7 @@ def test_bootstrap_attaches_only_valmer_tables() -> None:
     from msm.api.remote import use_remote_backend
     from msm.models.registration import resolve_markets_meta_table_models
 
-    from valmer_connectors.data_nodes.canonical_index_values import (
-        MarketsDailyIndexValuesStorage,
-        ValmerDailyIndexValuesStorage,
-    )
+    from valmer_connectors.data_nodes.canonical_index_values import ValmerDailyIndexValuesStorage
     from valmer_connectors.instruments.bootstrap import _valmer_markets_models
 
     use_remote_backend(SimpleNamespace(call=lambda *args: pytest.fail("no row call")))
@@ -68,16 +65,14 @@ def test_bootstrap_attaches_only_valmer_tables() -> None:
     assert valmer_discount_curves_instance() in models and ValmerDailyIndexValuesStorage in models
     assert valmer_index_fixings_instance() in models
     assert DiscountCurvesStorage not in models and IndexFixingsStorage not in models
-    assert MarketsDailyIndexValuesStorage not in models
     resolved = resolve_markets_meta_table_models(models)
     assert {model.__table__.info["namespace"] for model in resolved} == {"valmer_connectors"}
 
 
 def test_valmer_owns_its_daily_index_value_table() -> None:
-    from valmer_connectors.data_nodes.canonical_index_values import (
-        MarketsDailyIndexValuesStorage,
-        ValmerDailyIndexValuesStorage,
-    )
+    from msm.time_index.indices import configured_index_values_storage
+
+    from valmer_connectors.data_nodes.canonical_index_values import ValmerDailyIndexValuesStorage
 
     table = ValmerDailyIndexValuesStorage.__table__
     assert table.name == "valmer_connectors__index_values__t_1d"
@@ -85,15 +80,14 @@ def test_valmer_owns_its_daily_index_value_table() -> None:
     assert table.info["identifier"] == "valmer_connectors.IndexValuesTS.1d"
     assert ValmerDailyIndexValuesStorage.__cadence__ == "1d"
     assert ValmerDailyIndexValuesStorage.__index_names__ == ["time_index", "index_identifier"]
+    # The same columns as the Markets daily Index-value contract.
     assert [column.name for column in table.columns] == [
-        column.name for column in MarketsDailyIndexValuesStorage.__table__.columns
+        column.name for column in configured_index_values_storage(cadence="1d").__table__.columns
     ]
     assert {key.target_fullname for key in table.foreign_keys} == {
         "ms_markets__index.unique_identifier",
         "ms_markets__indexformuladefinition.uid",
     }
-    assert MarketsDailyIndexValuesStorage.__table__.name == "ms_markets__index_values__t_1d"
-    assert MarketsDailyIndexValuesStorage.__table__.info["namespace"] == "mainsequence.markets"
 
 
 def test_daily_index_values_are_written_to_valmers_table() -> None:
@@ -286,39 +280,10 @@ def attached(monkeypatch) -> list[list[Any]]:
     return calls
 
 
-@pytest.fixture(autouse=True)
-def published_index_values(monkeypatch):
-    """The daily Index values Valmer publishes, without reading the MetaTables catalog."""
-
-    monkeypatch.setattr(
-        time_series_backfill,
-        "daily_index_value_identifiers",
-        lambda: ("BANXICO_POLICY_TARGET", QUOTE, "US_TREASURY_CMT_10Y"),
-    )
-
-
 def test_valmer_series_moves_name_valmer_tables_and_identities(attached) -> None:
     from msm.storage_copies import TableSeriesMove
 
-    from valmer_connectors.data_nodes.canonical_index_values import (
-        MarketsDailyIndexValuesStorage,
-        ValmerDailyIndexValuesStorage,
-    )
-
-    curves, fixings, index_values = time_series_backfill.valmer_series_moves()
-
-    assert (
-        index_values.core,
-        index_values.instance,
-        index_values.key_column,
-        index_values.label,
-    ) == (
-        MarketsDailyIndexValuesStorage,
-        ValmerDailyIndexValuesStorage,
-        "index_identifier",
-        "index_values",
-    )
-    assert tuple(index_values.keys) == ("BANXICO_POLICY_TARGET", QUOTE, "US_TREASURY_CMT_10Y")
+    curves, fixings = time_series_backfill.valmer_series_moves()
 
     assert all(isinstance(move, TableSeriesMove) for move in (curves, fixings))
     assert (curves.core, curves.instance, curves.key_column, curves.label) == (
@@ -339,15 +304,16 @@ def test_valmer_series_moves_name_valmer_tables_and_identities(attached) -> None
         [
             DiscountCurvesStorage,
             IndexFixingsStorage,
-            MarketsDailyIndexValuesStorage,
             valmer_discount_curves_instance(),
             valmer_index_fixings_instance(),
-            ValmerDailyIndexValuesStorage,
         ]
     ]
     assert time_series_backfill.valmer_series_moves(["index_fixings"])[0].label == "index_fixings"
     with pytest.raises(ValueError, match="Unknown Valmer time series"):
         time_series_backfill.valmer_series_moves(["vector"])
+    # Daily Index values have no move: Valmer writes them only to its own table.
+    with pytest.raises(ValueError, match="Unknown Valmer time series"):
+        time_series_backfill.valmer_series_moves(["index_values"])
 
 
 def test_the_backfill_copies_history_then_fills_the_gaps(tables) -> None:
@@ -471,7 +437,7 @@ def test_msm_series_loads_the_valmer_moves() -> None:
 
     moves = load_objects("valmer_connectors.services.time_series_backfill:valmer_series_moves")
 
-    assert [move.label for move in moves] == ["discount_curves", "index_fixings", "index_values"]
+    assert [move.label for move in moves] == ["discount_curves", "index_fixings"]
 
 
 def test_the_control_plane_launches_the_backfill_with_its_flags() -> None:
@@ -487,68 +453,3 @@ def test_the_control_plane_launches_the_backfill_with_its_flags() -> None:
         "--execute",
         "--rollback",
     ]
-
-
-def test_the_index_values_move_and_rollback(tables) -> None:
-    from valmer_connectors.data_nodes.canonical_index_values import (
-        MarketsDailyIndexValuesStorage,
-        ValmerDailyIndexValuesStorage,
-    )
-
-    markets = tables.table(MarketsDailyIndexValuesStorage)
-    valmer = tables.table(ValmerDailyIndexValuesStorage)
-    markets[QUOTE] = {"d1", "d2"}
-    markets["US_TREASURY_CMT_10Y"] = {"d1"}
-    # Another producer's Index in the Markets table is not Valmer's to move.
-    markets["SOMEONE_ELSES_INDEX"] = {"d1"}
-
-    report = time_series_backfill.backfill_valmer_time_series(series=["index_values"])
-
-    assert report["complete"] is True
-    assert set(report["series"]["index_values"]["identities"]) == {
-        "BANXICO_POLICY_TARGET",
-        QUOTE,
-        "US_TREASURY_CMT_10Y",
-    }
-    assert valmer[QUOTE] == {"d1", "d2"} and "SOMEONE_ELSES_INDEX" not in valmer
-
-    valmer[QUOTE].add("d3")
-    report = time_series_backfill.backfill_valmer_time_series(
-        series=["index_values"], rollback=True
-    )
-
-    assert report["series"]["index_values"]["target_table"] == "ms_markets__index_values__t_1d"
-    assert markets[QUOTE] == {"d1", "d2", "d3"}
-
-
-def test_daily_index_value_identifiers_take_only_valmer_quotes_from_the_statistics(
-    monkeypatch,
-) -> None:
-    monkeypatch.undo()  # drop the autouse fake of this function
-    from valmer_connectors.data_nodes.canonical_index_values import (
-        MarketsDailyIndexValuesStorage,
-        ValmerDailyIndexValuesStorage,
-    )
-
-    statistics = {
-        MarketsDailyIndexValuesStorage: {QUOTE: "t", "SOMEONE_ELSES_INDEX": "t"},
-        ValmerDailyIndexValuesStorage: None,  # not registered yet
-    }
-
-    def registered(storage):
-        progress = statistics[storage]
-        if progress is None:
-            raise LookupError("not registered")
-        return SimpleNamespace(
-            get_data_updates=lambda: SimpleNamespace(index_progress=progress)
-        )
-
-    monkeypatch.setattr("msm.storage_copies.registered_time_index_meta_table", registered)
-
-    identifiers = time_series_backfill.daily_index_value_identifiers()
-
-    assert QUOTE in identifiers and "SOMEONE_ELSES_INDEX" not in identifiers
-    assert {"BANXICO_POLICY_TARGET", "US_TREASURY_CMT_10Y", "FED_FUNDS_TARGET_UPPER"} <= set(
-        identifiers
-    )
-    assert list(identifiers) == sorted(identifiers)

@@ -45,9 +45,10 @@ registry rows are written by the `registry-seed` Job (`valmer-connectors registr
 Discount curves, Index fixings and daily Index values live only in Valmer's own tables:
 `valmer_discount_curves_instance()` and `valmer_index_fixings_instance()` (`valmer_connectors.storage`)
 and `ValmerDailyIndexValuesStorage`. Every producer, reader, bootstrap and seed names those; the core
-`DiscountCurvesStorage`, `IndexFixingsStorage` and `MarketsDailyIndexValuesStorage` appear only in the
-one-off move (`services/time_series_backfill.py`, `docs/time-series-instances.md`). Add no environment
-switch, deprecated alias or other backward-compatibility layer for them.
+`DiscountCurvesStorage` and `IndexFixingsStorage` appear only in the one-off move
+(`services/time_series_backfill.py`, `docs/time-series-instances.md`), and the migration provider
+registers no `mainsequence.markets` table (valmer-connectors#4). Add no environment switch, deprecated
+alias or other backward-compatibility layer for them.
 
 The control-plane API learns its caller only from the SDK request identity that `create_app` in
 `src/valmer_connectors/control_plane/api.py` installs once per application; route code gets the

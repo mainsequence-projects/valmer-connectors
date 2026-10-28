@@ -11,7 +11,7 @@ pricing fixing.
 | Property | Value |
 | --- | --- |
 | MetaTable | `valmer_connectors.IndexValuesTS.1d` (`ValmerDailyIndexValuesStorage`) |
-| Physical table | `valmer_connectors__index_values__t_1d`; the Markets table `ms_markets__index_values__t_1d` is only the source of the one-off move (`docs/time-series-instances.md`) |
+| Physical table | `valmer_connectors__index_values__t_1d` |
 | Grain | `(time_index, index_identifier)` |
 | Value | `value` |
 | Provenance | `definition_uid`, `observation_status`, `source_as_of`, `metadata_json` |
