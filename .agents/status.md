@@ -143,29 +143,59 @@ Last complete backend lifecycle verification: 2026-08-21
     `cascade_delete` edge and `valmer_connectors__vector_de_precios_valmer` a
     `restrict` edge.
 
-## Production Platform State (Read Only, 2026-10-11)
+## Production Platform State (Read Only Except The Team, 2026-11-11)
 
 - CodeRepositoryBranch `64338319-bd19-48db-bf14-945d8debb9be` (`main`,
-  Environment Production `18595d12-f92a-4960-84cd-0c6798a1ad25`) has no
-  workflow runs.
-- FastAPI release `584c0bf3-2ce3-41fb-aadf-022d1fa66bf5`, workload User
-  `97331098-9f56-4e6d-8366-cb081a58afc2`, backing Job
-  `ad475c1d-e79b-4998-b89f-474538db3717`: active revision `41b312ef`, desired
-  `33909ecf`. Five redeployments of `1842f93` (v0.1.45) from 2026-10-03 to
-  2026-10-09 failed with `runtime_deployment_failed`. `ValmerConnectorsMonitor`
-  pins this release UID, which the push keeps.
-- No pipeline Job exists on the branch; the only Job is the release's backing
-  Job.
-- MetaTables (DataSource `ebd9bc7f-5f11-42fa-8961-19e9e66e2196`, TimescaleDB,
-  system revision `0012_table_creator`): the namespaces are
-  `alpaca-connectors`, `mainsequence-crm`, `mainsequence-sdk-tutorial` and
-  `mainsequence.markets`. There is no `valmer_connectors` namespace, no Valmer
-  table and no `ms_markets__index_values__t_1d`; `ms_markets__asset` is active
-  under `msm:mainsequence.markets`. Writers of `mainsequence.markets` are the
-  Teams `ms-markets-production` and `alpaca-connectors-production`.
-- There is no Valmer Team.
-- Production has none of the Secrets `FRED_API_KEY`, `BANXICO_TOKEN`,
-  `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID` and
+  Environment Production `18595d12-f92a-4960-84cd-0c6798a1ad25`) is at
+  `06f14f9` (0.3.0). Its workflow runs all failed:
+  - `8b3ee99a` (`ea0d59e`, 2026-10-27): refused before any step with
+    `declared_access_not_granted`; the API's `runner` grants on seven Jobs were
+    `not_created`.
+  - `c09eabff` (`4ab9a23`, 2026-10-28 06:18 UTC): `migrate` (JobRun
+    `d7cc44cf`) got 403 `namespace_access_required` reserving
+    `ms_markets__index_values__t_1d` in `mainsequence.markets`
+    (valmer-connectors#4).
+  - `cdb46d02` (`06f14f9`, 2026-10-28 08:43 UTC): `migrate` (JobRun
+    `e073df94`) never reached the MetaTables API. The platform backend timed
+    out on `resolve-runtime-access` for the MetaTables release `d105a3eb` for
+    four minutes, then answered 500. `data_api_image` failed when its blocked
+    deployment run `7806bf41` stopped; `deploy_api` and `deploy_data_api` were
+    blocked. No run since.
+- Every pipeline Job runs the `06f14f9` image (deployment runs of 2026-10-28
+  08:43–08:47 UTC). The control-plane release `584c0bf3` (workload User
+  `97331098-9f56-4e6d-8366-cb081a58afc2`) keeps active revision `41b312ef`;
+  the platform's redeployments of `1842f93` on 2026-10-28 (06:53 and
+  09:14 UTC) failed with `runtime_deployment_failed`. The data API release is
+  `valmer_data_api` (`6c6b52dd-d146-46ef-afee-78ea565d0256`, workload User
+  `677ee840-71ce-4597-b8de-894e7c91b9a5`) and has no active revision.
+- `standard-pipeline-refresh` (`0 13 * * 1-5`, UTC) failed every weekday from
+  2026-10-28 through 2026-11-06 in `seed_valmer_registries.py`, which cannot
+  resolve Valmer's registered tables, and the pipeline stopped there.
+- MetaTables (DataSource `ebd9bc7f-5f11-42fa-8961-19e9e66e2196`): the
+  `valmer_connectors` namespace (`61995dc9-6472-403c-9159-364ed6c1a4aa`) was
+  created on 2026-10-28 by `migrate-valmer`'s workload User
+  `b398e1ea-9f09-454d-92c0-acac5550b12a`, which holds `editor` on it directly.
+  It registers only `valmer_connectors.valmer.alembic_version` and
+  `valmer_connectors.ValmerAssetDetails`. The physical tables in `public` are
+  revision `0001`'s: `valmer_connectors__alembic_version`,
+  `valmer_connectors__valmerassetdetails`,
+  `valmer_connectors__vector_de_precios_valmer` and
+  `ms_markets__index_values__t_1d`, owned by `mt_owner` and empty by
+  `pg_stat_user_tables`; revision `0002`'s and `0003`'s do not exist. Neither
+  migration JobRun logged Alembic, and reading
+  `valmer_connectors__alembic_version` was refused, so whether it records
+  `0001` is unverified. If it records nothing, the runner refuses the next
+  upgrade ("Unversioned application tables exist; reconcile them before
+  migration").
+- The Valmer Team is `valmer-connectors-production`
+  (`f15e678a-448a-47d9-908d-15c4162cdc5e`). On 2026-11-09 it was granted
+  `editor` on `valmer_connectors`, and the workload Users of both APIs and of
+  all nineteen Jobs joined it; its other members are one person and the
+  Organization's service account. It holds no role on `mainsequence.markets`.
+- The MetaTables API is served under `*.fapi-dev.main-sequence.app`, whose
+  certificate expired on 2026-11-11 at 08:34:52 UTC.
+- On 2026-10-11 Production had none of the Secrets `FRED_API_KEY`,
+  `BANXICO_TOKEN`, `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID` and
   `VALMER_ONEDRIVE_CLIENT_SECRET`, no Constant `VALMER_ONEDRIVE_DRIVE_ID`, no
   Bucket `Hitorical Valmer Vector Analytico`, and no registered MetaTable
   `dbo.vector_precios_gubernamental_pip_vista`.
