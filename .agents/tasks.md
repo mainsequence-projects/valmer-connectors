@@ -17,20 +17,28 @@
 
 ## Publish the data API and move its consumers
 
-- Scope: the 0.3.0 merge (`6d91ee5`) started no run: the backend refused its
-  workflow file. After the fix for #4 and the `data_api_image` step merge,
-  confirm a workflow run starts and `migrate`, `deploy_api` and
-  `deploy_data_api` succeed. Add the `valmer-data-api` workload User to the
-  Valmer Team and confirm the release is named `valmer_data_api` (consumers
-  search for that name; `VALMER_DATA_API_RELEASE_NAME` overrides it). The
-  consumers are already merged and deployed (marketsanalytics `4df90ab`,
-  mexicofundcompetition `0c6f680`) and read Valmer data through the API from
-  then on. The Valmer Team grants mexicofundcompetition's three
-  portfolio-building Jobs `data_viewer` on
+- Scope: workflow run `cdb46d02` (`06f14f9`) failed on 2026-10-28 before
+  `migrate` reached the MetaTables API, and nothing has run since, so neither
+  API is deployed and revisions `0002` and `0003` are not applied ("Production
+  Platform State" in `status.md`). The data API's workload User is in the
+  Valmer Team and the release is named `valmer_data_api` (2026-11-09;
+  consumers search for that name, `VALMER_DATA_API_RELEASE_NAME` overrides it).
+  Before the next push, the `*.fapi-dev.main-sequence.app` certificate must be
+  valid again, and `valmer_connectors__alembic_version` must be read: if it
+  records no revision while revision `0001`'s four empty tables exist, the
+  runner refuses the upgrade, so their recovery is decided first. Push right
+  after a 13:00 UTC run of `standard-pipeline-refresh`, or hold its schedule
+  right after the push: its first stage points the default market-data set at
+  Valmer's tables, which stay empty until the history copy
+  (`docs/time-series-instances.md`). Then confirm `migrate`, `deploy_api` and
+  `deploy_data_api` succeed. The consumers are already merged and deployed
+  (marketsanalytics `4df90ab`, mexicofundcompetition `0c6f680`) and read Valmer
+  data through the API from then on. The Valmer Team grants
+  mexicofundcompetition's three portfolio-building Jobs `data_viewer` on
   `valmer_connectors__vector_de_precios_valmer`, and marketsanalytics' workload
   drops its roles on the Valmer details and vector tables. Before deploying,
   check whether any Environment besides Production still holds Valmer rows in
-  `ms_markets__index_values__t_1d`; Production has no such table.
+  `ms_markets__index_values__t_1d`; Production's copy is empty.
 - Owning skills: `mainsequence-command-center-fastapi`, `resource-release` and
   `mainsequence-access-control-and-sharing`.
 - Expected output: the Valmer run succeeds and both consumers' Valmer screens
@@ -49,14 +57,13 @@
   pending), that its ms-markets deployment runs 2.2.10 and its migration Job
   has succeeded in the target DataSource (the Valmer foreign keys need its
   tables), that the `valmer_connectors` namespace exists and the Valmer Team
-  holds Writer on it and on `mainsequence.markets`, and that the gateway
+  holds `editor` on it (both true since 2026-11-09), and that the gateway
   forwards the platform-signed caller assertion (see "Publishing" and "Teams
   And Namespaces" in `docs/deployment.md`). The push needs a person the
   platform resolves (a linked GitHub account), because every workload
-  declares view on the `MetaTables` repository's branch. While the candidate
-  image builds, add the workload Users of the seventeen Jobs the push creates,
-  `migrate-valmer` first, and of the API to the Team; otherwise
-  `migrate-valmer` fails with `namespace_not_writable` and blocks the API.
+  declares view on the `MetaTables` repository's branch. The workload Users of
+  the nineteen Jobs and both APIs are Team members (2026-11-09); a Job or
+  release a later push creates has a new workload User, which must be added.
   Then point `ValmerConnectorsMonitor` at the release by repository and key
   and push its static-site declaration. Navigation placement remains a
   separate explicit human grant.
