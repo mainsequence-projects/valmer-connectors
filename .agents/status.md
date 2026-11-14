@@ -143,11 +143,11 @@ Last complete backend lifecycle verification: 2026-08-21
     `cascade_delete` edge and `valmer_connectors__vector_de_precios_valmer` a
     `restrict` edge.
 
-## Production Platform State (Read Only Except The Team, 2026-11-11)
+## Production Platform State (Read Only Except The Team, 2026-11-14)
 
 - CodeRepositoryBranch `64338319-bd19-48db-bf14-945d8debb9be` (`main`,
   Environment Production `18595d12-f92a-4960-84cd-0c6798a1ad25`) is at
-  `06f14f9` (0.3.0). Its workflow runs all failed:
+  `5491d50` (0.3.0 and documentation). Its workflow runs all failed:
   - `8b3ee99a` (`ea0d59e`, 2026-10-27): refused before any step with
     `declared_access_not_granted`; the API's `runner` grants on seven Jobs were
     `not_created`.
@@ -160,17 +160,30 @@ Last complete backend lifecycle verification: 2026-08-21
     out on `resolve-runtime-access` for the MetaTables release `d105a3eb` for
     four minutes, then answered 500. `data_api_image` failed when its blocked
     deployment run `7806bf41` stopped; `deploy_api` and `deploy_data_api` were
-    blocked. No run since.
-- Every pipeline Job runs the `06f14f9` image (deployment runs of 2026-10-28
-  08:43–08:47 UTC). The control-plane release `584c0bf3` (workload User
+    blocked.
+  - `4e846498` (`5491d50`, 2026-11-11 09:41 UTC, the merge of
+    valmer-connectors#7): `image` and `data_api_image` succeeded. `migrate`
+    (JobRun `16e2dc33`, 10:42–10:51 UTC) never reached the MetaTables API
+    either: every `resolve-runtime-access` call for `d105a3eb` timed out after
+    20 s until the SDK's 300 s discovery timeout, and the Job's earlier backend
+    requests took 7–22 s each. `deploy_api` and `deploy_data_api` were blocked.
+    No run since.
+- Fifteen pipeline Jobs and `Valmer migrations` run the `5491d50` image
+  (deployment runs of 2026-11-11 09:42–10:38 UTC). The image builds of
+  `Valmer Standard Pipeline Refresh`, `Valmer Pipeline Verification` and
+  `Valmer Registry Seed` failed with `code_repository_image_build_failed`, so
+  those three keep the `06f14f9` image, which has the same code. The
+  control-plane release `584c0bf3` (workload User
   `97331098-9f56-4e6d-8366-cb081a58afc2`) keeps active revision `41b312ef`;
   the platform's redeployments of `1842f93` on 2026-10-28 (06:53 and
-  09:14 UTC) failed with `runtime_deployment_failed`. The data API release is
-  `valmer_data_api` (`6c6b52dd-d146-46ef-afee-78ea565d0256`, workload User
+  09:14 UTC) and 2026-11-11 (10:59 and 22:46 UTC) failed with
+  `runtime_deployment_failed`. The data API release is `valmer_data_api`
+  (`6c6b52dd-d146-46ef-afee-78ea565d0256`, workload User
   `677ee840-71ce-4597-b8de-894e7c91b9a5`) and has no active revision.
 - `standard-pipeline-refresh` (`0 13 * * 1-5`, UTC) failed every weekday from
-  2026-10-28 through 2026-11-06 in `seed_valmer_registries.py`, which cannot
-  resolve Valmer's registered tables, and the pipeline stopped there.
+  2026-10-28 through 2026-11-10 in `seed_valmer_registries.py`, which cannot
+  resolve Valmer's registered tables, and the pipeline stopped there. It did
+  not run on 2026-11-11, 11-12 or 11-13.
 - MetaTables (DataSource `ebd9bc7f-5f11-42fa-8961-19e9e66e2196`): the
   `valmer_connectors` namespace (`61995dc9-6472-403c-9159-364ed6c1a4aa`) was
   created on 2026-10-28 by `migrate-valmer`'s workload User
@@ -180,20 +193,22 @@ Last complete backend lifecycle verification: 2026-08-21
   revision `0001`'s: `valmer_connectors__alembic_version`,
   `valmer_connectors__valmerassetdetails`,
   `valmer_connectors__vector_de_precios_valmer` and
-  `ms_markets__index_values__t_1d`, owned by `mt_owner` and empty by
-  `pg_stat_user_tables`; revision `0002`'s and `0003`'s do not exist. Neither
-  migration JobRun logged Alembic, and reading
-  `valmer_connectors__alembic_version` was refused, so whether it records
-  `0001` is unverified. If it records nothing, the runner refuses the next
-  upgrade ("Unversioned application tables exist; reconcile them before
-  migration").
+  `ms_markets__index_values__t_1d`, owned by `mt_owner`; revision `0002`'s
+  and `0003`'s do not exist. `metatables migrations current --provider
+  valmer_connectors.migrations:migration` reports `0001` (2026-11-14), so the
+  next `migrate` upgrades from it. The version table's MetaTable is not active
+  yet: row previews answer `relation_not_active`. `pg_stat_user_tables` counts
+  no rows in any of the four tables, the version table included, so those
+  counts do not show that the others are empty.
 - The Valmer Team is `valmer-connectors-production`
   (`f15e678a-448a-47d9-908d-15c4162cdc5e`). On 2026-11-09 it was granted
   `editor` on `valmer_connectors`, and the workload Users of both APIs and of
   all nineteen Jobs joined it; its other members are one person and the
   Organization's service account. It holds no role on `mainsequence.markets`.
 - The MetaTables API is served under `*.fapi-dev.main-sequence.app`, whose
-  certificate expired on 2026-11-11 at 08:34:52 UTC.
+  certificate expired on 2026-11-11 at 08:34:52 UTC. The renewed certificate,
+  valid until 2027-02-09, was served by 12:06 UTC that day. Renewal is a
+  manual operator step (Main-Sequence-Server-Side/infrastructure#107).
 - On 2026-10-11 Production had none of the Secrets `FRED_API_KEY`,
   `BANXICO_TOKEN`, `VALMER_ONEDRIVE_TENANT_ID`, `VALMER_ONEDRIVE_CLIENT_ID` and
   `VALMER_ONEDRIVE_CLIENT_SECRET`, no Constant `VALMER_ONEDRIVE_DRIVE_ID`, no

@@ -17,19 +17,18 @@
 
 ## Publish the data API and move its consumers
 
-- Scope: workflow run `cdb46d02` (`06f14f9`) failed on 2026-10-28 before
-  `migrate` reached the MetaTables API, and nothing has run since, so neither
-  API is deployed and revisions `0002` and `0003` are not applied ("Production
-  Platform State" in `status.md`). The data API's workload User is in the
-  Valmer Team and the release is named `valmer_data_api` (2026-11-09;
-  consumers search for that name, `VALMER_DATA_API_RELEASE_NAME` overrides it).
-  Before the next push, the `*.fapi-dev.main-sequence.app` certificate must be
-  valid again, and `valmer_connectors__alembic_version` must be read: if it
-  records no revision while revision `0001`'s four empty tables exist, the
-  runner refuses the upgrade, so their recovery is decided first. Push right
-  after a 13:00 UTC run of `standard-pipeline-refresh`, or hold its schedule
-  right after the push: its first stage points the default market-data set at
-  Valmer's tables, which stay empty until the history copy
+- Scope: workflow runs `cdb46d02` (`06f14f9`, 2026-10-28) and `4e846498`
+  (`5491d50`, 2026-11-11) failed before `migrate` reached the MetaTables API,
+  both because the platform backend timed out on `resolve-runtime-access`, so
+  neither API is deployed and revisions `0002` and `0003` are not applied
+  ("Production Platform State" in `status.md`). The data API's workload User
+  is in the Valmer Team and the release is named `valmer_data_api`
+  (2026-11-09; consumers search for that name, `VALMER_DATA_API_RELEASE_NAME`
+  overrides it). Production records revision `0001` (2026-11-14), so the next
+  `migrate` upgrades from it. Push right after a 13:00 UTC run of
+  `standard-pipeline-refresh` or on a weekend (it runs on weekdays only), or
+  hold its schedule right after the push: its first stage points the default
+  market-data set at Valmer's tables, which stay empty until the history copy
   (`docs/time-series-instances.md`). Then confirm `migrate`, `deploy_api` and
   `deploy_data_api` succeed. The consumers are already merged and deployed
   (marketsanalytics `4df90ab`, mexicofundcompetition `0c6f680`) and read Valmer
@@ -37,8 +36,10 @@
   mexicofundcompetition's three portfolio-building Jobs `data_viewer` on
   `valmer_connectors__vector_de_precios_valmer`, and marketsanalytics' workload
   drops its roles on the Valmer details and vector tables. Before deploying,
-  check whether any Environment besides Production still holds Valmer rows in
-  `ms_markets__index_values__t_1d`; Production's copy is empty.
+  check whether any Environment still holds Valmer rows in
+  `ms_markets__index_values__t_1d`. For Production, read the table itself:
+  `pg_stat_user_tables` counts no rows there, but it counts none in the version
+  table either, which holds `0001`.
 - Owning skills: `mainsequence-command-center-fastapi`, `resource-release` and
   `mainsequence-access-control-and-sharing`.
 - Expected output: the Valmer run succeeds and both consumers' Valmer screens
